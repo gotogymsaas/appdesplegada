@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Historia Clínica - GoToGym</title>
+    <link rel="stylesheet" href="../../css/../../css/theme.css">
+    <style>
+        .page-container {
+            width: 100%;
+            max-width: 450px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+
+        .header-left {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .back-btn {
+            background: none;
+            border: none;
+            color: var(--text-muted);
+            font-size: 22px;
+            cursor: pointer;
+            padding: 0;
+        }
+
+        .page-title {
+            font-size: 24px;
+            color: var(--secondary);
+        }
+
+        .menu-btn {
+            font-size: 24px;
+            color: var(--primary);
+            background: none;
+            border: none;
+            cursor: pointer;
+        }
+
+        .subtitle {
+            color: var(--text-muted);
+            margin-bottom: 16px;
+        }
+
+        .section-card {
+            background: var(--card-bg);
+            border-radius: var(--radius-lg);
+            padding: 20px;
+            margin-bottom: 16px;
+            border: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        .section-title {
+            font-size: 16px;
+            color: var(--secondary);
+            margin-bottom: 10px;
+        }
+
+        .text {
+            color: var(--text-muted);
+            font-size: 14px;
+            line-height: 1.5;
+        }
+
+        .bullet-list {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            margin-top: 8px;
+        }
+
+        .bullet-item {
+            display: flex;
+            gap: 10px;
+            color: var(--text-muted);
+            font-size: 14px;
+            align-items: flex-start;
+        }
+
+        .status-pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 6px 12px;
+            border-radius: 999px;
+            background: rgba(15, 191, 176, 0.1);
+            color: var(--primary);
+            font-size: 12px;
+            border: 1px solid rgba(15, 191, 176, 0.35);
+        }
+
+        .fine-print {
+            color: var(--text-muted);
+            font-size: 12px;
+            margin-top: 8px;
+            text-align: center;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="page-container">
+        <!-- Header -->
+        <div class="header">
+            <div class="header-left">
+                <button class="back-btn" onclick="goBack()" aria-label="Volver">←</button>
+                <h1 class="page-title">Historia Clínica</h1>
+            </div>
+            <button class="menu-btn" onclick="toggleMenu()">☰</button>
+        </div>
+
+        <p class="subtitle">Próximamente disponible en Colombia 🇨🇴</p>
+
+        <div class="section-card">
+            <p class="text">
+                Estamos preparando una funcionalidad avanzada que te permitirá conectar tu información clínica oficial
+                para que tu bienestar sea acompañado con mayor contexto, cuidado y precisión.
+            </p>
+        </div>
+
+        <div class="section-card">
+            <div class="section-title">¿Qué será posible?</div>
+            <p class="text">
+                Muy pronto podrás autorizar el acceso a tu Resumen Clínico disponible en el sistema de salud colombiano,
+                para que GoToGym pueda:
+            </p>
+            <div class="bullet-list">
+                <div class="bullet-item">Comprender mejor tu contexto de salud.</div>
+                <div class="bullet-item">Tener en cuenta diagnósticos, medicamentos y antecedentes relevantes.</div>
+                <div class="bullet-item">Acompañarte con recomendaciones más responsables y coherentes.</div>
+            </div>
+            <p class="text" style="margin-top: 10px;">
+                Todo solo con tu autorización explícita.
+            </p>
+        </div>
+
+        <div class="section-card">
+            <div class="section-title">¿Por qué solo en Colombia?</div>
+            <p class="text">
+                Esta funcionalidad se apoya en el modelo oficial de Historia Clínica Interoperable del sistema de salud colombiano.
+                Por eso, inicialmente estará disponible exclusivamente para usuarios en Colombia.
+            </p>
+        </div>
+
+        <div class="section-card">
+            <div class="section-title">Tu información, siempre bajo tu control</div>
+            <div class="bullet-list">
+                <div class="bullet-item">Tú decides si autorizas o no el acceso.</div>
+                <div class="bullet-item">Podrás revocar el permiso en cualquier momento.</div>
+                <div class="bullet-item">Tus datos serán tratados de forma segura, cifrada y confidencial.</div>
+                <div class="bullet-item">GoToGym nunca accede a tu información clínica sin tu consentimiento.</div>
+            </div>
+        </div>
+
+        <div class="section-card">
+            <div class="section-title">¿Cómo la usará el Quantum Coach?</div>
+            <p class="text">
+                El Quantum Coach no reemplaza a un médico ni emite diagnósticos. Utilizará esta información únicamente para:
+            </p>
+            <div class="bullet-list">
+                <div class="bullet-item">Evitar sugerencias que no sean adecuadas para ti.</div>
+                <div class="bullet-item">Ajustar recomendaciones de bienestar, descanso, nutrición y actividad física.</div>
+                <div class="bullet-item">Acompañarte con mayor responsabilidad y cuidado.</div>
+            </div>
+        </div>
+
+        <div class="section-card" style="text-align:center;">
+            <div class="section-title">Estado actual</div>
+            <div class="status-pill">🟡 En preparación</div>
+            <p class="fine-print">
+                Estamos trabajando para habilitar esta funcionalidad de forma gradual y segura.
+            </p>
+        </div>
+
+        <div class="fine-print">
+            Esta funcionalidad estará disponible únicamente cuando completes el proceso de autorización y consentimiento informado,
+            de acuerdo con la normativa colombiana.
+        </div>
+    </div>
+
+    <!-- Menu Overlay -->
+    <div id="menuOverlay" class="menu-overlay">
+        <button class="menu-close-btn" onclick="toggleMenu()">×</button>
+        <ul class="menu-links">
+            <li><a href="../profile/Perfil.html">Perfil</a></li>
+            <li><a href="../settings/Configuracion.html">Configuración</a></li>
+            <li><a href="../plans/Planes.html">Planes</a></li>
+            <li><a href="../info/SobreNosotros.html">Sobre Nosotros</a></li>
+            <li><a href="../info/Contactanos.html">Contacto</a></li>
+            <li><a href="#" onclick="cerrarSesion()" style="color: var(--error)">Cerrar Sesión</a></li>
+        </ul>
+    </div>
+
+    <script src="../../js/../../js/config.js"></script>
+    <script>
+        function toggleMenu() {
+            const menu = document.getElementById('menuOverlay');
+            menu.classList.toggle('active');
+        }
+
+        function goBack() {
+            if (window.history.length > 1) {
+                window.history.back();
+            } else {
+                window.location.href = '../settings/Configuracion.html';
+            }
+        }
+
+        function cerrarSesion() {
+            localStorage.removeItem("user");
+            localStorage.removeItem("isLoggedIn");
+            window.location.href = '../../pages/auth/indexInicioDeSesion.html';
+        }
+    </script>
+</body>
+
+</html>

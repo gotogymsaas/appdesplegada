@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Autorización de datos personales — GoToGym</title>
+
+  <link
+    href="https://fonts.googleapis.com/css2?family=Poppins:ital,wght@1,600&display=swap"
+    rel="stylesheet"
+  />
+
+  <style>
+    :root {
+      --bg: #101012;
+      --teal: #0FBFB0;
+      --gold: #D4B46A;
+      --light: #E0E3E6;
+      --muted: rgba(224,227,230,0.75);
+      --font: "Poppins", sans-serif;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: var(--font);
+      background: radial-gradient(circle at top, rgba(212,180,106,0.08), transparent 55%),
+                  var(--bg);
+      color: var(--light);
+      display: grid;
+      place-items: center;
+      padding: 20px;
+    }
+
+    .card {
+      width: min(420px, 100%);
+      border: 1px solid rgba(212,180,106,0.30);
+      border-radius: 18px;
+      padding: 22px;
+      background: rgba(0,0,0,0.35);
+      box-shadow: 0 0 18px rgba(15,191,176,0.18);
+    }
+
+    h1 {
+      margin: 0 0 10px;
+      font-size: 18px;
+      color: var(--gold);
+      letter-spacing: 0.2px;
+    }
+
+    p {
+      margin: 0 0 16px;
+      font-size: 13px;
+      line-height: 1.45;
+      color: var(--muted);
+    }
+
+    .link {
+      display: inline-block;
+      font-size: 13px;
+      color: var(--gold);
+      text-decoration: underline;
+      cursor: pointer;
+      margin-bottom: 18px;
+    }
+
+    .btn-row {
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+      justify-content: space-between;
+    }
+
+    .btn {
+      flex: 1;
+      min-width: 150px;
+      border-radius: 999px;
+      padding: 12px 14px;
+      font-size: 13px;
+      font-family: var(--font);
+      cursor: pointer;
+      border: 1px solid rgba(255,255,255,0.18);
+      background: transparent;
+      color: var(--light);
+      transition: transform 0.12s ease, opacity 0.12s ease;
+    }
+
+    .btn:hover { transform: translateY(-1px); }
+
+    .btn-accept {
+      border-color: rgba(212,180,106,0.45);
+      background: rgba(212,180,106,0.12);
+      color: var(--gold);
+    }
+
+    .btn-decline {
+      border-color: rgba(15,191,176,0.45);
+      background: rgba(15,191,176,0.10);
+      color: var(--teal);
+    }
+
+    .note {
+      margin-top: 14px;
+      font-size: 12px;
+      color: rgba(224,227,230,0.55);
+    }
+  </style>
+</head>
+
+<body>
+  <div class="card">
+    <h1>Autorización de datos personales</h1>
+
+    <p>
+      Para continuar, confirma si autorizas el tratamiento de tus datos personales
+      según los Términos y Condiciones.
+    </p>
+
+    <!-- Link a términos (abre el popup en otra pestaña) -->
+    <a class="link" href="./POPup.html" target="_blank" rel="noopener noreferrer">
+      Ver Términos y Condiciones
+    </a>
+
+    <div class="btn-row">
+      <button class="btn btn-accept" id="btnAccept">Acepto</button>
+      <button class="btn btn-decline" id="btnDecline">No acepto</button>
+    </div>
+
+    <div class="note">
+      * Puedes cambiar tu decisión más adelante desde tu cuenta.
+    </div>
+  </div>
+
+  <script>
+    // Ajusta si cambias versiones
+    const TERMS_VERSION = "2025-04-07";
+
+    // Rutas solicitadas por ti:
+    const GO_ACCEPT = "../auth/indexRegistrar.html";
+    const GO_DECLINE = "../auth/indexInicioDeSesion.html";
+
+    document.getElementById("btnAccept").addEventListener("click", () => {
+      // Marca consentimiento en el navegador (para usarlo luego en registro)
+      localStorage.setItem("privacyAccepted", "true");
+      localStorage.setItem("termsAccepted", "true");
+      localStorage.setItem("termsVersion", TERMS_VERSION);
+
+      // Vuelve al registro
+      window.location.href = GO_ACCEPT;
+    });
+
+    document.getElementById("btnDecline").addEventListener("click", () => {
+      // Limpia marca
+      localStorage.removeItem("privacyAccepted");
+      localStorage.removeItem("termsAccepted");
+
+      // Envíalo a login
+      window.location.href = GO_DECLINE;
+    });
+  </script>
+</body>
+</html>

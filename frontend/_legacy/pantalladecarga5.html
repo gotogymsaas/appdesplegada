@@ -1,0 +1,62 @@
+!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Cargando...</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    @keyframes pulseRing {
+      0% {
+        transform: scale(1);
+        opacity: 1;
+      }
+      50% {
+        transform: scale(1.08);
+        opacity: 0.6;
+      }
+      100% {
+        transform: scale(1);
+        opacity: 1;
+      }
+    }
+
+    .glow-ring {
+      animation: pulseRing 2s infinite;
+      filter: drop-shadow(0 0 5px #0FBFB0) drop-shadow(0 0 15px #0FBFB0);
+    }
+
+    body {
+      background-color: #101012;
+      font-family: 'Poppins', sans-serif;
+    }
+
+    .neon-turquesa {
+      filter: drop-shadow(0 0 3px #0FBFB0) drop-shadow(0 0 6px #0FBFB0);
+    }
+  </style>
+</head>
+<body class="flex flex-col items-center justify-center h-screen text-[#0FBFB0] italic">
+
+  <div class="relative w-40 h-40 flex items-center justify-center mb-6">
+    <!-- Aro exterior animado -->
+    <svg class="absolute inset-0 glow-ring" viewBox="0 0 100 100">
+      <circle cx="50" cy="50" r="48" stroke="#0FBFB0" stroke-width="4" fill="none" />
+    </svg>
+
+    <!-- Logo centrado como imagen -->
+    <img src="../../assets/images/recurso-14.png" alt="Logo GoToGym" class="w-24 h-24 z-10 object-contain" />
+  </div>
+
+  <!-- Texto de carga -->
+  <p class="text-[19px] neon-turquesa">Cargando...</p>
+
+  <script>
+    // Redirigir automáticamente después de 3 segundos
+    setTimeout(() => {
+      window.location.href='../info/Contactanos.html'; // Cambia esto por tu siguiente pantalla real
+    }, 3000);
+  </script>
+
+</body>
+</html>

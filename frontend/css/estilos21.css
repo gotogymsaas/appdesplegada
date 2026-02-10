@@ -1,0 +1,227 @@
+.gestin-de-datos-con {
+    position: relative;
+    width: 393px;
+    height: 1028px;
+    background-color: #101012;
+}
+
+.gestin-de-datos-con .overlap-group {
+    width: 319px;
+    height: 78px;
+    top: 281px;
+    left: 37px;
+    border-color: #0fbfb0;
+    box-shadow: 0px 0px 4px #0fbfb0;
+    position: absolute;
+    border-radius: 20px;
+    border: 1px solid;
+}
+
+.gestin-de-datos-con .polygon {
+    position: absolute;
+    width: 17px;
+    height: 20px;
+    top: 31px;
+    left: 279px;
+}
+
+.gestin-de-datos-con .ellipse {
+    position: absolute;
+    width: 54px;
+    height: 53px;
+    top: 11px;
+    left: 27px;
+    background-color: #ffffff;
+    border-radius: 27px / 26.5px;
+}
+
+.gestin-de-datos-con .text-wrapper {
+    position: absolute;
+    top: 25px;
+    left: 91px;
+    font-family: "Poppins-SemiBoldItalic", Helvetica;
+    font-weight: 600;
+    font-style: italic;
+    color: #0fbfb0;
+    font-size: 15px;
+    letter-spacing: 0;
+    line-height: normal;
+}
+
+.gestin-de-datos-con .overlap {
+    width: 291px;
+    height: 123px;
+    top: 365px;
+    left: 65px;
+    border-color: #0fbfb0;
+    box-shadow: 0px 0px 4px #0fbfb0;
+    position: absolute;
+    border-radius: 20px;
+    border: 1px solid;
+}
+
+.gestin-de-datos-con .div {
+    position: absolute;
+    top: 11px;
+    left: 20px;
+    font-family: "Poppins-MediumItalic", Helvetica;
+    font-weight: 500;
+    font-style: italic;
+    color: #0fbfb0;
+    font-size: 15px;
+    letter-spacing: 0;
+    line-height: normal;
+}
+
+.gestin-de-datos-con .text-wrapper-2 {
+    position: absolute;
+    top: 48px;
+    left: 20px;
+    font-family: "Poppins-MediumItalic", Helvetica;
+    font-weight: 500;
+    font-style: italic;
+    color: #0fbfb0;
+    font-size: 15px;
+    letter-spacing: 0;
+    line-height: normal;
+}
+
+.gestin-de-datos-con .text-wrapper-3 {
+    position: absolute;
+    top: 85px;
+    left: 20px;
+    font-family: "Poppins-MediumItalic", Helvetica;
+    font-weight: 500;
+    font-style: italic;
+    color: #0fbfb0;
+    font-size: 15px;
+    letter-spacing: 0;
+    line-height: normal;
+}
+
+.gestin-de-datos-con .overlap-2 {
+    width: 291px;
+    height: 123px;
+    top: 717px;
+    left: 65px;
+    border-color: #0fbfb0;
+    box-shadow: 0px 0px 4px #0fbfb0;
+    position: absolute;
+    border-radius: 20px;
+    border: 1px solid;
+}
+
+.gestin-de-datos-con .ellipse-2 {
+    position: absolute;
+    width: 80px;
+    height: 78px;
+    top: 139px;
+    left: 52px;
+    background-color: #ffffff;
+    border-radius: 40px / 39px;
+}
+
+.gestin-de-datos-con .div-wrapper {
+    width: 280px;
+    height: 43px;
+    top: 501px;
+    left: 57px;
+    border-color: #d4b46a;
+    box-shadow: 0px 0px 4px #d4b46a;
+    position: absolute;
+    border-radius: 20px;
+    border: 1px solid;
+}
+
+.gestin-de-datos-con .text-wrapper-4 {
+    left: 81px;
+    position: absolute;
+    top: 8px;
+    font-family: "Poppins-SemiBoldItalic", Helvetica;
+    font-weight: 600;
+    font-style: italic;
+    color: #d4b46a;
+    font-size: 15px;
+    letter-spacing: 0;
+    line-height: normal;
+}
+
+.gestin-de-datos-con .gesti-n-de-datos {
+    position: absolute;
+    top: 141px;
+    left: 142px;
+    font-family: "Poppins-MediumItalic", Helvetica;
+    font-weight: 500;
+    font-style: italic;
+    color: #e0e3e6;
+    font-size: 24px;
+    letter-spacing: 0;
+    line-height: normal;
+}
+
+.gestin-de-datos-con .overlap-3 {
+    width: 319px;
+    height: 78px;
+    top: 633px;
+    left: 37px;
+    border-color: #0fbfb0;
+    box-shadow: 0px 0px 4px #0fbfb0;
+    position: absolute;
+    border-radius: 20px;
+    border: 1px solid;
+}
+
+.gestin-de-datos-con .overlap-4 {
+    width: 280px;
+    height: 43px;
+    top: 853px;
+    left: 65px;
+    border-color: #d4b46a;
+    box-shadow: 0px 0px 4px #d4b46a;
+    position: absolute;
+    border-radius: 20px;
+    border: 1px solid;
+}
+
+.gestin-de-datos-con .text-wrapper-5 {
+    left: 76px;
+    position: absolute;
+    top: 8px;
+    font-family: "Poppins-SemiBoldItalic", Helvetica;
+    font-weight: 600;
+    font-style: italic;
+    color: #d4b46a;
+    font-size: 15px;
+    letter-spacing: 0;
+    line-height: normal;
+}
+
+.gestin-de-datos-con .text-wrapper-6 {
+    position: absolute;
+    top: 971px;
+    left: 50px;
+    font-family: "Poppins-MediumItalic", Helvetica;
+    font-weight: 500;
+    font-style: italic;
+    color: #101012;
+    font-size: 14px;
+    letter-spacing: 0;
+    line-height: normal;
+}
+
+.gestin-de-datos-con .recurso {
+    position: absolute;
+    width: 38px;
+    height: 37px;
+    top: 35px;
+    left: 73px;
+    object-fit: cover;
+}
+
+.gestin-de-datos-con .vector {
+    position: absolute;
+    width: 31px;
+    height: 28px;
+    top: 40px;
+    left: 26px;
+}

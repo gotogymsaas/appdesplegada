@@ -1,0 +1,94 @@
+################################################################################
+#                                MANUAL                                        #
+################################################################################
+#  Sigue estos pasos y el proyecto funcionará en cualquier PC.                #
+#  La única diferencia es la dirección IP (la "dirección de casa" del PC).    #
+################################################################################
+
+--------------------------------------------------------------------------------
+PASO 1: INSTALAR HERRAMIENTAS (Solo la primera vez)
+--------------------------------------------------------------------------------
+Si tu amigo nunca ha programado, necesita instalar esto:
+
+1. PYTHON: https://www.python.org/downloads/
+   >>> ¡MUY IMPORTANTE!: Marca la casilla "ADD PYTHON TO PATH" al instalar.
+   
+2. NODE.JS: https://nodejs.org/ (Descarga la versión LTS).
+
+--------------------------------------------------------------------------------
+PASO 2: CONFIGURACIÓN DE CONEXIÓN (IMPORTANTE)
+--------------------------------------------------------------------------------
+Tienes dos opciones para configurar la dirección del servidor (IP).
+Elige la que prefieras:
+
+OPCIÓN A: MODO FÁCIL (Solo PC)
+----------------------------------------
+Usa esta si solo vas a ver la página en la computadora. No sirve para celular.
+1. Abre el archivo: GoToGym_Project > frontend > js > config.js
+2. Busca la línea que define API_URL.
+3. Cámbiala por:
+   window.API_URL = 'http://localhost:8000/api/';
+
+OPCIÓN B: MODO MÓVIL (PC + Celular) - RECOMENDADO
+----------------------------------------
+Usa esta si quieres probar la app desde tu celular conectado al mismo Wi-Fi.
+1. Abre una terminal (CMD) y escribe: ipconfig
+2. Busca donde diga "Dirección IPv4" (ejemplo: 192.168.1.25 o 192.168.0.10).
+3. Abre el archivo: GoToGym_Project > frontend > js > config.js
+4. Cámbiala usando ESE número que encontraste:
+   window.API_URL = 'http://TU_NUMERO_IP_AQUI:8000/api/';
+
+--------------------------------------------------------------------------------
+PASO 3: PREPARAR EL PROYECTO (Solo la primera vez)
+--------------------------------------------------------------------------------
+1. Copia toda la carpeta "GoToGym_Project" a su escritorio.
+2. Abre la carpeta "GoToGym_Project" -> "backend".
+3. Clic derecho en un espacio vacío -> "Open in Terminal" (Abrir en Terminal).
+4. Escribe estos 3 comandos en orden (dale Enter a cada uno):
+
+   python -m venv venv_gotogym
+   .\venv_gotogym\Scripts\activate
+   pip install -r requirements.txt
+
+--------------------------------------------------------------------------------
+PASO 4: ENCENDER LOS MOTORES (¡AQUÍ ESTÁ LA CLAVE!)
+--------------------------------------------------------------------------------
+Cada vez que quiera usar el proyecto, necesita abrir **3 VENTANAS NEGRAS (TERMINALES)**.
+
+--- VENTANA 1: EL CEREBRO (BACKEND) ---
+1. Ve a la carpeta "backend". Abre Terminal.
+2. Escribe:
+   .\venv_gotogym\Scripts\activate
+   
+   * Si elegiste OPCIÓN A (Local), escribe:
+     python manage.py runserver 0.0.0.0:8000
+   
+   * Si elegiste OPCIÓN B (Móvil), escribe:
+     python manage.py runserver TU_NUMERO_IP_AQUI:8000
+     (Ej: python manage.py runserver 192.168.1.25:8000)
+
+--- VENTANA 2: LA CARA (FRONTEND) ---
+1. Ve a la carpeta principal "GoToGym_Project". Abre Terminal.
+2. Escribe:
+   npx serve ./frontend -p 5500 --cors
+   
+--- VENTANA 3: EL PUENTE IA (TÚNEL N8N) ---
+1. Ve a la carpeta principal "GoToGym_Project". Abre Terminal.
+2. Escribe:
+   npx -y localtunnel --port 8000 --subdomain gotogym-debug
+
+--------------------------------------------------------------------------------
+PASO 5: CÓMO USARLO
+--------------------------------------------------------------------------------
+
+1. PRIMERO: Activar el Túnel
+   - Copia el link de la Ventana 3 (https://gotogym-debug.loca.lt).
+   - Ábrelo en Chrome y dale a "Click to Continue".
+
+2. SEGUNDO: Entrar a la App
+   * Si usaste OPCIÓN A: Entra a http://localhost:5500
+   * Si usaste OPCIÓN B: Entra a http://TU_NUMERO_IP_AQUI:5500/pages/auth/indexInicioDeSesion.html
+   (Puedes mandar ese link por WhatsApp al celular y abrirlo ahí).
+
+¡A disfrutar!
+--------------------------------------------------------------------------------

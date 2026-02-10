@@ -1,0 +1,383 @@
+.perfil-profesion {
+  position: relative;
+  width: 393px;
+  height: 852px;
+  background-color: #ffffff;
+  overflow: hidden;
+}
+
+.perfil-profesion .overlap-group {
+  position: absolute;
+  width: 406px;
+  height: 852px;
+  top: 0;
+  left: -8px;
+}
+
+.perfil-profesion .rectangle {
+  position: absolute;
+  width: 393px;
+  height: 852px;
+  top: 0;
+  left: 8px;
+  background-color: #101012;
+}
+
+.perfil-profesion .div {
+  position: absolute;
+  width: 406px;
+  height: 98px;
+  top: 101px;
+  left: 0;
+  background-color: #101012;
+  border: 1px solid;
+  border-color: #0fbfb0;
+  filter: blur(3px);
+}
+
+.perfil-profesion .rectangle-2 {
+  position: absolute;
+  width: 406px;
+  height: 98px;
+  top: 101px;
+  left: 0;
+  background-color: #101012;
+  border: 1px solid;
+  border-color: #0fbfb0;
+  box-shadow: 0px 4px 4px #0fbfb0;
+}
+
+.perfil-profesion .ellipse {
+  background-color: #101012;
+  position: absolute;
+  width: 171px;
+  height: 165px;
+  top: 117px;
+  left: 118px;
+  border-radius: 85.5px/82.5px;
+}
+
+.perfil-profesion .ellipse-2 {
+  border: 1px solid;
+  border-color: #0fbfb0;
+  box-shadow: inset 0px 4px 4px #0fbfb0, 0px 4px 4px #0fbfb0;
+  position: absolute;
+  width: 171px;
+  height: 165px;
+  top: 117px;
+  left: 118px;
+  border-radius: 85.5px/82.5px;
+}
+
+.perfil-profesion .text-wrapper {
+  position: absolute;
+  top: 295px;
+  left: 84px;
+  text-shadow: 0px 0px 1px #ffffff;
+  font-family: "Poppins", Helvetica;
+  font-weight: 500;
+  font-style: italic;
+  color: #e0e3e6;
+  font-size: 24px;
+  letter-spacing: 0;
+  line-height: normal;
+}
+
+.perfil-profesion .text-wrapper-2 {
+  position: absolute;
+  top: 381px;
+  left: 184px;
+  font-family: "Poppins", Helvetica;
+  font-weight: 500;
+  font-style: italic;
+  color: #e0e3e6;
+  font-size: 40px;
+  letter-spacing: 0;
+  line-height: normal;
+}
+
+.perfil-profesion .element {
+  position: absolute;
+  top: 393px;
+  left: 60px;
+  font-family: "Poppins", Helvetica;
+  font-weight: 500;
+  color: transparent;
+  font-size: 40px;
+  letter-spacing: 0;
+  line-height: normal;
+}
+
+.perfil-profesion .span {
+  font-style: italic;
+  color: #e0e3e6;
+}
+
+.perfil-profesion .text-wrapper-3 {
+  font-style: italic;
+  color: #e0e3e6;
+  font-size: 24px;
+}
+
+.perfil-profesion .text-wrapper-4 {
+  position: absolute;
+  top: 331px;
+  left: 167px;
+  font-family: "Poppins", Helvetica;
+  font-weight: 500;
+  font-style: italic;
+  color: #e0e3e6;
+  font-size: 16px;
+  letter-spacing: 0;
+  line-height: normal;
+}
+
+.perfil-profesion .text-wrapper-5 {
+  position: absolute;
+  top: 429px;
+  left: 188px;
+  text-shadow: 0px 1px 4px #0fbfb0;
+  font-family: "Poppins", Helvetica;
+  font-weight: 300;
+  font-style: italic;
+  color: #0fbfb0;
+  font-size: 16px;
+  letter-spacing: 0;
+  line-height: normal;
+}
+
+.perfil-profesion .text-wrapper-6 {
+  position: absolute;
+  top: 441px;
+  left: 79px;
+  text-shadow: 0px 1px 4px #0fbfb0;
+  font-family: "Poppins", Helvetica;
+  font-weight: 300;
+  font-style: italic;
+  color: #0fbfb0;
+  font-size: 16px;
+  letter-spacing: 0;
+  line-height: normal;
+}
+
+.perfil-profesion .element-m {
+  position: absolute;
+  top: 393px;
+  left: 275px;
+  font-family: "Poppins", Helvetica;
+  font-weight: 500;
+  color: transparent;
+  font-size: 40px;
+  letter-spacing: 0;
+  line-height: normal;
+}
+
+.perfil-profesion .text-wrapper-7 {
+  position: absolute;
+  top: 441px;
+  left: 289px;
+  text-shadow: 0px 1px 4px #0fbfb0;
+  font-family: "Poppins", Helvetica;
+  font-weight: 300;
+  font-style: italic;
+  color: #0fbfb0;
+  font-size: 16px;
+  letter-spacing: 0;
+  line-height: normal;
+}
+
+.perfil-profesion .text-wrapper-8 {
+  position: absolute;
+  top: 499px;
+  left: 131px;
+  font-family: "Poppins", Helvetica;
+  font-weight: 500;
+  font-style: italic;
+  color: #e0e3e6;
+  font-size: 16px;
+  letter-spacing: 0;
+  line-height: normal;
+}
+
+.perfil-profesion .mask-group {
+  position: absolute;
+  width: 152px;
+  height: 147px;
+  top: 126px;
+  left: 128px;
+}
+
+.perfil-profesion .recurso {
+  width: 38px;
+  height: 37px;
+  top: 35px;
+  left: 79px;
+  position: absolute;
+  object-fit: cover;
+}
+
+.perfil-profesion .text-wrapper-9 {
+  position: absolute;
+  top: 790px;
+  left: 124px;
+  font-family: "Poppins", Helvetica;
+  font-weight: 500;
+  font-style: italic;
+  color: #d4b46a;
+  font-size: 16px;
+  letter-spacing: 0;
+  line-height: normal;
+}
+
+.perfil-profesion .group {
+  position: absolute;
+  width: 183px;
+  height: 177px;
+  top: 536px;
+  left: 123px;
+}
+
+.perfil-profesion .div-wrapper {
+  position: absolute;
+  width: 92px;
+  height: 72px;
+  top: 588px;
+  left: 172px;
+}
+
+.perfil-profesion .text-wrapper-10 {
+  position: absolute;
+  top: 0;
+  left: 0;
+  text-shadow: 1px 1px 2px #0fbfb0;
+  font-family: "Poppins", Helvetica;
+  font-weight: 300;
+  font-style: italic;
+  color: #ffffff;
+  font-size: 48px;
+  letter-spacing: 0;
+  line-height: normal;
+}
+
+.perfil-profesion .vector {
+  position: absolute;
+  width: 18px;
+  height: 17px;
+  top: 42px;
+  left: 354px;
+}
+
+.perfil-profesion .img {
+  position: absolute;
+  width: 31px;
+  height: 28px;
+  top: 40px;
+  left: 34px;
+}
+
+.perfil-profesion .rectangle-3 {
+  position: absolute;
+  width: 224px;
+  height: 852px;
+  top: 0;
+  left: 5px;
+  background-color: #101012e3;
+}
+
+.perfil-profesion .recurso-2 {
+  width: 85px;
+  height: 82px;
+  top: 73px;
+  left: 75px;
+  position: absolute;
+  object-fit: cover;
+}
+
+.perfil-profesion .rectangle-4 {
+  position: absolute;
+  width: 169px;
+  height: 31px;
+  top: 796px;
+  left: 30px;
+  background-color: #101012;
+  border-radius: 19px;
+  border: 1px solid;
+  border-color: #0fbfb0;
+  box-shadow: 0px 1px 4px #0fbfb0;
+}
+
+.perfil-profesion .text-wrapper-11 {
+  position: absolute;
+  top: 281px;
+  left: 24px;
+  font-family: "Poppins", Helvetica;
+  font-weight: 500;
+  font-style: italic;
+  color: #0fbfb0;
+  font-size: 19px;
+  letter-spacing: 0;
+  line-height: normal;
+}
+
+.perfil-profesion .text-wrapper-12 {
+  position: absolute;
+  top: 801px;
+  left: 62px;
+  font-family: "Poppins", Helvetica;
+  font-weight: 500;
+  font-style: italic;
+  color: #0fbfb0;
+  font-size: 13px;
+  letter-spacing: 0;
+  line-height: normal;
+}
+
+.perfil-profesion .text-wrapper-13 {
+  position: absolute;
+  top: 351px;
+  left: 24px;
+  font-family: "Poppins", Helvetica;
+  font-weight: 500;
+  font-style: italic;
+  color: #0fbfb0;
+  font-size: 19px;
+  letter-spacing: 0;
+  line-height: normal;
+}
+
+.perfil-profesion .text-wrapper-14 {
+  position: absolute;
+  top: 425px;
+  left: 24px;
+  font-family: "Poppins", Helvetica;
+  font-weight: 500;
+  font-style: italic;
+  color: #0fbfb0;
+  font-size: 19px;
+  letter-spacing: 0;
+  line-height: normal;
+}
+
+.perfil-profesion .text-wrapper-15 {
+  position: absolute;
+  top: 498px;
+  left: 24px;
+  font-family: "Poppins", Helvetica;
+  font-weight: 500;
+  font-style: italic;
+  color: #0fbfb0;
+  font-size: 19px;
+  letter-spacing: 0;
+  line-height: normal;
+}
+
+.perfil-profesion .rectangle-5 {
+  position: absolute;
+  width: 93px;
+  height: 49px;
+  top: 791px;
+  left: -115px;
+  border-radius: 19px;
+  border: 1px solid;
+  border-color: #0fbfb0;
+}

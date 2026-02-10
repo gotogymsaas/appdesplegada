@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GoToGym - Bienvenido</title>
+    <link rel="stylesheet" href="../../css/theme.css">
+
+    <!-- PWA Setup -->
+    <link rel="manifest" href="/manifest.json">
+    <meta name="theme-color" content="#0FBFB0">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <link rel="apple-touch-icon" href="/assets/images/apple-touch-icon.png">
+    <style>
+        .page-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            width: 100%;
+            height: 100vh;
+            max-width: 400px;
+            margin: 0 auto;
+            position: relative;
+        }
+
+        /* State Management Classes */
+        .hidden {
+            display: none !important;
+            opacity: 0;
+        }
+
+        .fade-in {
+            animation: fadeIn 0.5s forwards;
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+    </style>
+</head>
+
+<body>
+
+    <div class="page-container">
+
+        <!-- WELCOME STATE (Default) -->
+        <div id="welcomeState" class="fade-in"
+            style="width: 100%; display: flex; flex-direction: column; align-items: center;">
+            <!-- Large Logo -->
+            <div class="welcome-logo-container"
+                style="overflow: hidden; padding: 0; display: flex; align-items: center; justify-content: center;">
+                <img src="../../assets/images/recurso-16.png" alt="GoToGym Logo"
+                    style="width: 60%; height: 60%; object-fit: contain; object-position: center;">
+            </div>
+
+            <div style="width: 100%; padding: 0 20px; margin-top: 50px;">
+                <button class="btn btn-outline-gold" onclick="showLogin()">
+                    Iniciar Sesión
+                </button>
+
+                <button class="btn btn-outline-teal" onclick="window.location.href='../auth/indexRegistrar.html'">
+                    Registrar
+                </button>
+            </div>
+        </div>
+
+        <!-- LOGIN FORM STATE (Hidden initially) -->
+        <div id="loginState" class="hidden" style="width: 100%;">
+
+            <div class="logo-container" style="margin: 0 auto 40px auto; transform: scale(0.8);">
+                <div class="logo-circle"
+                    style="overflow: hidden; padding: 0; display: flex; align-items: center; justify-content: center;">
+                    <img src="../../assets/images/recurso-16.png" alt="GoToGym Logo"
+                        style="width: 60%; height: 60%; object-fit: contain; object-position: center;">
+                </div>
+            </div>
+
+            <form id="loginForm" onsubmit="event.preventDefault();" style="width: 100%; padding: 20px;">
+                <div class="form-group">
+                    <input type="text" id="username" class="input-field" placeholder=" " required>
+                    <label for="username" class="input-label">Usuario o Email</label>
+                </div>
+
+                <div class="form-group">
+                    <input type="password" id="password" class="input-field" placeholder=" " required>
+                    <label for="password" class="input-label">Contraseña</label>
+                </div>
+
+                <div style="margin-top: 40px;">
+                    <button type="submit" id="btnLogin" class="btn btn-primary">
+                        Iniciar Sesión
+                    </button>
+                </div>
+
+                <div style="margin-top: 20px; text-align: center;">
+                    <span style="color: var(--text-muted);">¿No tienes cuenta? </span>
+                    <a href="../auth/indexRegistrar.html"
+                        style="color: var(--primary); text-decoration: none; font-weight: bold;">Regístrate</a>
+                </div>
+            </form>
+        </div>
+
+    </div>
+
+    <!-- Toast Notification -->
+    <div id="toast" class="toast"></div>
+
+    <!-- Scripts -->
+    <script src="../../js/config.js"></script>
+    <script>
+        // State Management Functions
+        function showLogin() {
+            document.getElementById('welcomeState').style.display = 'none';
+            const loginState = document.getElementById('loginState');
+            loginState.classList.remove('hidden');
+            loginState.classList.add('fade-in');
+        }
+
+        function showWelcome() {
+            document.getElementById('loginState').classList.add('hidden');
+            const welcomeState = document.getElementById('welcomeState');
+            welcomeState.style.display = 'flex';
+            welcomeState.classList.add('fade-in');
+        }
+
+        document.addEventListener("DOMContentLoaded", () => {
+            const btnLogin = document.getElementById("btnLogin");
+            const usernameInput = document.getElementById("username");
+            const passwordInput = document.getElementById("password");
+
+            async function handleLogin() {
+                const username = usernameInput.value.trim();
+                const password = passwordInput.value.trim();
+
+                if (!username || !password) {
+                    showToast("Por favor completa los campos", "error");
+                    return;
+                }
+
+                try {
+                    btnLogin.textContent = "Cargando...";
+                    btnLogin.disabled = true;
+
+                    const res = await fetch(API_URL + "login/", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ username, password }),
+                    });
+
+                    const data = await res.json();
+
+                    if (res.ok && data.success) {
+                        showToast(`Bienvenido ${data.user.username}`, "success");
+                        localStorage.setItem("user", JSON.stringify(data.user));
+                        localStorage.setItem("isLoggedIn", "true");
+                        // 🔐 JWT (infraestructura invisible)
+                        if (data.access) {
+                            if (typeof window.setAccessToken === "function") {
+                                window.setAccessToken(data.access);
+                            } else {
+                                localStorage.setItem("access", data.access);
+                                localStorage.setItem("token", data.access);
+                            }
+                        }
+                        if (data.refresh) {
+                            if (typeof window.setRefreshToken === "function") {
+                                window.setRefreshToken(data.refresh);
+                            } else {
+                                localStorage.setItem("refresh", data.refresh);
+                            }
+                        }
+
+                        // Verify Admin Status
+                        console.log("User login:", data.user); // Debug
+                        if (data.user.is_superuser === true) {
+                            showToast("Redirigiendo a Panel Admin...");
+                            setTimeout(() => {
+                                window.location.href = "../admin/AdminDashboard.html";
+                            }, 500); // Faster redirect
+                            return;
+                        }
+
+                        // Normal User Flow
+                        if (!data.user.age || !data.user.weight || !data.user.height) {
+                            setTimeout(() => {
+                                window.location.href = '../auth/Onboarding.html';
+                            }, 1000);
+                        } else {
+                            setTimeout(() => {
+                                window.location.href = '../profile/Perfil.html';
+                            }, 1000);
+                        }
+                    } else {
+                        showToast(data.error || "Error al iniciar sesión", "error");
+                        btnLogin.textContent = "Iniciar Sesión";
+                        btnLogin.disabled = false;
+                    }
+                } catch (error) {
+                    console.error(error);
+                    // Show detailed error for debugging
+                    showToast(`Conexión fallida: ${API_URL} - ${error.message}`, "error");
+                    btnLogin.textContent = "Iniciar Sesión";
+                    btnLogin.disabled = false;
+                }
+            }
+
+            btnLogin.addEventListener("click", handleLogin);
+
+            function showToast(message, type = "success") {
+                const toast = document.getElementById("toast");
+                toast.textContent = message;
+                toast.className = `toast ${type}`;
+                toast.style.display = "block";
+                setTimeout(() => toast.style.display = "none", 3000);
+            }
+
+            // Auto redirect if logged in
+            if (localStorage.getItem('isLoggedIn') === 'true') {
+                window.location.href = '../profile/Perfil.html';
+            }
+        });
+    </script>
+    <script>
+        // Register Service Worker
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('/sw.js')
+                    .then(registration => console.log('SW Registered:', registration.scope))
+                    .catch(err => console.log('SW Registration Failed:', err));
+            });
+        }
+    </script>
+</body>
+
+</html>

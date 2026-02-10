@@ -1,0 +1,193 @@
+.dispositivos {
+  position: relative;
+  width: 393px;
+  height: 852px;
+  background-color: #101012;
+}
+
+.dispositivos .text-wrapper {
+  position: absolute;
+  top: 109px;
+  left: 123px;
+  font-family: "Poppins", Helvetica;
+  font-weight: 500;
+  font-style: italic;
+  color: #e0e3e6;
+  font-size: 25px;
+  letter-spacing: 0;
+  line-height: normal;
+}
+
+.dispositivos .overlap {
+  position: absolute;
+  width: 317px;
+  height: 168px;
+  top: 232px;
+  left: 43px;
+  border-radius: 19px;
+  border: 1px solid;
+  border-color: #d4b46a;
+  box-shadow: 0px 0px 4px #d4b46a;
+}
+
+.dispositivos .overlap-group {
+  position: absolute;
+  width: 95px;
+  height: 64px;
+  top: 26px;
+  left: 136px;
+}
+
+.dispositivos .div {
+  position: absolute;
+  width: 95px;
+  height: 50px;
+  top: 0;
+  left: 0;
+}
+
+.dispositivos .text-wrapper-2 {
+  position: absolute;
+  top: 26px;
+  left: 0;
+  font-family: "Poppins", Helvetica;
+  font-weight: 500;
+  font-style: italic;
+  color: #d4b46a;
+  font-size: 16px;
+  letter-spacing: 0;
+  line-height: normal;
+}
+
+.dispositivos .text-wrapper-3 {
+  position: absolute;
+  top: 0;
+  left: 0;
+  font-family: "Poppins", Helvetica;
+  font-weight: 600;
+  font-style: italic;
+  color: #d4b46a;
+  font-size: 20px;
+  letter-spacing: 0;
+  line-height: normal;
+}
+
+.dispositivos .text-wrapper-4 {
+  position: absolute;
+  top: 50px;
+  left: 0;
+  font-family: "Poppins", Helvetica;
+  font-weight: 500;
+  font-style: italic;
+  color: #d4b46a;
+  font-size: 9px;
+  letter-spacing: 0;
+  line-height: normal;
+}
+
+.dispositivos .rectangle {
+  position: absolute;
+  width: 89px;
+  height: 115px;
+  top: 25px;
+  left: 31px;
+  background-color: #ffffff;
+  border-radius: 19px;
+}
+
+.dispositivos .overlap-group-2 {
+  position: absolute;
+  width: 317px;
+  height: 168px;
+  top: 417px;
+  left: 43px;
+  border-radius: 19px;
+  border: 1px solid;
+  border-color: #d4b46a;
+  box-shadow: 0px 0px 4px #d4b46a;
+}
+
+.dispositivos .overlap-2 {
+  position: absolute;
+  width: 130px;
+  height: 57px;
+  top: 30px;
+  left: 136px;
+}
+
+.dispositivos .text-wrapper-5 {
+  position: absolute;
+  top: 22px;
+  left: 0;
+  font-family: "Poppins", Helvetica;
+  font-weight: 500;
+  font-style: italic;
+  color: #d4b46a;
+  font-size: 16px;
+  letter-spacing: 0;
+  line-height: normal;
+}
+
+.dispositivos .text-wrapper-6 {
+  position: absolute;
+  top: 43px;
+  left: 0;
+  font-family: "Poppins", Helvetica;
+  font-weight: 500;
+  font-style: italic;
+  color: #d4b46a;
+  font-size: 9px;
+  letter-spacing: 0;
+  line-height: normal;
+}
+
+.dispositivos .overlap-3 {
+  position: absolute;
+  width: 134px;
+  height: 23px;
+  top: 621px;
+  left: 138px;
+  border-radius: 10px;
+}
+
+.dispositivos .rectangle-2 {
+  position: absolute;
+  width: 134px;
+  height: 23px;
+  top: 0;
+  left: 0;
+  border-radius: 10px;
+  border: 1px solid;
+  border-color: #0fbfb0;
+  box-shadow: 0px 0px 4px #0fbfb0;
+}
+
+.dispositivos .text-wrapper-7 {
+  position: absolute;
+  top: 4px;
+  left: 20px;
+  font-family: "Poppins", Helvetica;
+  font-weight: 600;
+  font-style: italic;
+  color: #0fbfb0;
+  font-size: 9px;
+  letter-spacing: 0;
+  line-height: normal;
+}
+
+.dispositivos .recurso {
+  position: absolute;
+  width: 38px;
+  height: 37px;
+  top: 35px;
+  left: 75px;
+  object-fit: cover;
+}
+
+.dispositivos .vector {
+  position: absolute;
+  width: 31px;
+  height: 28px;
+  top: 40px;
+  left: 25px;
+}

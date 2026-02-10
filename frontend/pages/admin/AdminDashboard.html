@@ -1,0 +1,641 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard Admin - GoToGym</title>
+    <link rel="stylesheet" href="../../css/theme.css">
+    <style>
+        .admin-container {
+            width: 100%;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        .admin-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 30px;
+            border-bottom: 2px solid var(--secondary);
+            padding-bottom: 20px;
+        }
+
+        /* KPI GRID */
+        .kpi-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+
+        .kpi-card {
+            background: var(--card-bg);
+            border-radius: var(--radius-lg);
+            padding: 20px;
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            text-align: center;
+        }
+
+        .kpi-value {
+            font-size: 32px;
+            font-weight: bold;
+            color: white;
+            margin-bottom: 5px;
+        }
+
+        .kpi-label {
+            font-size: 14px;
+            color: var(--text-muted);
+        }
+
+        /* MAIN DASHBOARD LAYOUT */
+        .dashboard-main {
+            display: grid;
+            grid-template-columns: 1fr 300px;
+            gap: 20px;
+        }
+
+        @media (max-width: 768px) {
+            .dashboard-main {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        /* TABLE SECTION */
+        .table-section {
+            background-color: var(--card-bg);
+            border-radius: var(--radius-lg);
+            padding: 20px;
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+
+        .toolbar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        .search-input {
+            padding: 10px;
+            border-radius: 8px;
+            border: 1px solid #333;
+            background: #111;
+            color: white;
+            width: 250px;
+        }
+
+        .table-wrapper {
+            overflow-x: auto;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            color: var(--text-main);
+        }
+
+        th,
+        td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        th {
+            color: var(--primary);
+            font-weight: 600;
+        }
+
+        tr:hover {
+            background-color: rgba(15, 191, 176, 0.05);
+        }
+
+        /* ACTIONS */
+        .btn-delete {
+            background: transparent;
+            border: 1px solid var(--error);
+            color: var(--error);
+            border-radius: 4px;
+            cursor: pointer;
+            padding: 4px 8px;
+            font-size: 12px;
+            transition: 0.3s;
+        }
+
+        .btn-delete:hover {
+            background: var(--error);
+            color: white;
+        }
+
+        /* NOTIFICATION WIDGET */
+        .widget-section {
+            background-color: var(--card-bg);
+            border-radius: var(--radius-lg);
+            padding: 20px;
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            height: fit-content;
+        }
+
+        .widget-title {
+            color: var(--secondary);
+            font-size: 18px;
+            margin-bottom: 15px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            padding-bottom: 10px;
+        }
+
+        /* BADGES */
+        .badge {
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: bold;
+        }
+
+        .badge-premium {
+            background: rgba(212, 180, 106, 0.2);
+            color: var(--secondary);
+        }
+
+        .badge-free {
+            background: rgba(255, 255, 255, 0.1);
+            color: var(--text-muted);
+        }
+
+        /* MODAL */
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.8);
+            z-index: 1000;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .modal-content {
+            background: var(--card-bg);
+            padding: 30px;
+            border-radius: var(--radius-lg);
+            width: 100%;
+            max-width: 400px;
+            border: 1px solid var(--primary);
+            position: relative;
+        }
+    </style>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+
+<body>
+
+    <div class="admin-container">
+        <!-- HEADER -->
+        <div class="admin-header">
+            <h3>Panel de Administración</h3>
+            <button class="btn btn-outline-gold btn-sm" style="border-color: var(--error); color: var(--error);"
+                onclick="logout()">Cerrar Sesión</button>
+        </div>
+
+        <!-- KPI CARDS -->
+        <div class="kpi-grid">
+            <div class="kpi-card">
+                <div class="kpi-value" id="kpi-total">--</div>
+                <div class="kpi-label">Usuarios Totales</div>
+            </div>
+            <div class="kpi-card">
+                <div class="kpi-value" style="color: var(--secondary);" id="kpi-premium">--</div>
+                <div class="kpi-label">Usuarios Premium</div>
+            </div>
+            <div class="kpi-card">
+                <div class="kpi-value" style="color: var(--primary);" id="kpi-today">--</div>
+                <div class="kpi-label">Nuevos Hoy</div>
+            </div>
+        </div>
+
+        <!-- DASHBOARD CONTENT -->
+        <div class="dashboard-main">
+            <!-- LEFT: USERS -->
+            <!-- LEFT: USERS -->
+            <div style="display:flex; flex-direction:column; gap:20px;">
+                <!-- Global Chart -->
+                <div class="table-section">
+                    <h2 style="margin: 0 0 20px 0; color: var(--text-main); font-size: 18px;">Felicidad Global (Últimos
+                        30 días)</h2>
+                    <div style="height: 200px;">
+                        <canvas id="globalChart"></canvas>
+                    </div>
+                </div>
+
+                <!-- Users Table -->
+                <div class="table-section">
+                    <div class="toolbar">
+                        <h2 style="margin: 0; color: var(--text-main); font-size: 18px;">Usuarios</h2>
+                        <div style="display: flex; gap: 10px;">
+                            <input type="text" id="searchInput" class="search-input"
+                                placeholder="Buscar por nombre o email..." onkeyup="filterUsers()">
+                            <button class="btn btn-primary btn-sm" onclick="openModal()">+ Nuevo</button>
+                        </div>
+                    </div>
+
+                    <div class="table-wrapper">
+                        <table id="usersTable">
+                            <thead>
+                                <tr>
+                                    <th>ID</th>
+                                    <th>Usuario</th>
+                                    <th>Email</th>
+                                    <th>Plan</th>
+                                    <th>Registro</th>
+                                    <th>Acción</th>
+                                </tr>
+                            </thead>
+                            <tbody id="usersBody">
+                                <!-- Rows -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- RIGHT: WIDGET -->
+            <div class="widget-section">
+                <div class="widget-title">🔔 Notificaciones</div>
+                <p style="font-size: 12px; color: #aaa; margin-bottom: 15px;">Envía alertas de prueba a todos los
+                    dispositivos suscritos (simulado local).</p>
+
+                <button class="btn btn-outline-teal" style="width: 100%; margin-bottom: 10px;"
+                    onclick="requestPermission()">Activar Permisos</button>
+
+                <select id="notifVariable" class="input-field" style="margin-bottom: 10px;">
+                    <option value="s_sleep">Horas de sueño</option>
+                    <option value="s_stress_inv">Nivel de Estrés</option>
+                    <option value="s_energy">Nivel de Energía</option>
+                </select>
+
+                <button class="btn btn-primary" style="width: 100%;" onclick="sendDashboardNotification()">Enviar
+                    Alerta</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Create User Modal -->
+    <div id="createModal" class="modal">
+        <div class="modal-content">
+            <button class="close-modal" onclick="closeModal()"
+                style="position:absolute; right:15px; top:15px; background:none; border:none; color:white; font-size:20px; cursor:pointer;">×</button>
+            <h3 style="margin-bottom: 20px; text-align: center; color: var(--primary);">Crear Usuario</h3>
+            <form id="createForm" onsubmit="handleCreate(event)">
+                <div class="form-group">
+                    <input type="text" id="newUsername" class="input-field" placeholder=" " required>
+                    <label class="input-label">Usuario</label>
+                </div>
+                <!-- ... (Simplified for brevity, same fields) ... -->
+                <div class="form-group">
+                    <input type="email" id="newEmail" class="input-field" placeholder=" " required>
+                    <label class="input-label">Email</label>
+                </div>
+                <div class="form-group">
+                    <input type="password" id="newPassword" class="input-field" placeholder=" " required>
+                    <label class="input-label">Contraseña</label>
+                </div>
+                <div class="form-group">
+                    <select id="newPlan" class="input-field" style="color: grey;">
+                        <option value="Gratis">Plan Gratis</option>
+                        <option value="Premium">Plan Premium</option>
+                    </select>
+                </div>
+                <button type="submit" class="btn btn-primary">Registrar</button>
+            </form>
+        </div>
+        <!-- Edit User Modal -->
+        <div id="editModal" class="modal">
+            <div class="modal-content">
+                <button class="close-modal" onclick="closeEditModal()"
+                    style="position:absolute; right:15px; top:15px; background:none; border:none; color:white; font-size:20px; cursor:pointer;">×</button>
+                <h3 style="margin-bottom: 20px; text-align: center; color: var(--secondary);">Editar Usuario</h3>
+                <form id="editForm" onsubmit="handleEdit(event)">
+                    <input type="hidden" id="editUserId">
+                    <div class="form-group">
+                        <input type="text" id="editUsername" class="input-field" placeholder=" " required>
+                        <label class="input-label">Usuario</label>
+                    </div>
+                    <div class="form-group">
+                        <input type="email" id="editEmail" class="input-field" placeholder=" " required>
+                        <label class="input-label">Email</label>
+                    </div>
+                    <!-- Password is NOT editable here for security simplicity, typically reset is separate -->
+                    <div class="form-group">
+                        <select id="editPlan" class="input-field" style="color: grey;">
+                            <option value="Gratis">Plan Gratis</option>
+                            <option value="Premium">Plan Premium</option>
+                        </select>
+                    </div>
+                    <button type="submit" class="btn btn-primary"
+                        style="background: var(--secondary); color:black;">Guardar Cambios</button>
+                </form>
+            </div>
+        </div>
+
+        <!-- Toast Notification -->
+        <div id="toast" class="toast"></div>
+
+        <script src="../../js/config.js"></script>
+        <script>
+            // --- AUTH CHECK PROTECTION ---
+            (function () {
+                const userStr = localStorage.getItem("user");
+                if (!userStr) {
+                    window.location.href = '../auth/indexInicioDeSesion.html';
+                    return;
+                }
+                try {
+                    const user = JSON.parse(userStr);
+                    // Force check if superuser. If undefined or false, redirect.
+                    // Note: user.is_superuser coming from API.
+                    if (!user.is_superuser) {
+                        alert("Acceso denegado. Área exclusiva para administradores.");
+                        window.location.href = '../pages/profile/Perfil.html';
+                    }
+                } catch (e) {
+                    localStorage.removeItem("user");
+                    window.location.href = '../pages/auth/indexInicioDeSesion.html';
+                }
+            })();
+
+            let allUsers = []; // Store for filtering
+
+            document.addEventListener('DOMContentLoaded', () => {
+                fetchUsers();
+                // Register SW if needed for notifications
+                if ('serviceWorker' in navigator) {
+                    navigator.serviceWorker.register('../../sw.js')
+                        .catch(err => console.error("SW Fail", err));
+                }
+            });
+
+            async function requestPermission() {
+                const permission = await Notification.requestPermission();
+                if (permission === 'granted') {
+                    showToast("Permiso concedido ✅");
+                } else {
+                    alert("Permiso denegado: " + permission);
+                    showToast("Permiso denegado ❌");
+                }
+            }
+
+            async function fetchUsers() {
+                try {
+                    const res = await authFetch(API_URL + 'users/');
+                    const users = await res.json();
+
+                    if (users.error) {
+                        showToast('Error cargando usuarios', 'error');
+                        return;
+                    }
+
+                    allUsers = users; // Save for search
+                    renderTable(users);
+                    calculateKPIs(users);
+                    loadGlobalChart();
+
+                } catch (e) {
+                    console.error(e);
+                    showToast('Error de conexión', 'error');
+                }
+            }
+
+            function renderTable(users) {
+                const tbody = document.getElementById('usersBody');
+                tbody.innerHTML = '';
+
+                users.forEach(user => {
+                    const row = document.createElement('tr');
+                    const date = user.date_joined ? new Date(user.date_joined).toLocaleDateString() : '-';
+                    const badgeClass = user.plan === 'Premium' ? 'badge-premium' : 'badge-free';
+
+                    row.innerHTML = `
+                    <td>#${user.id}</td>
+                    <td style="font-weight: bold; color: white;">${user.username}</td>
+                    <td style="color: var(--text-muted);">${user.email}</td>
+                    <td><span class="badge ${badgeClass}">${user.plan}</span></td>
+                    <td>${date}</td>
+                    <td>
+                    <td>
+                        <button class="btn-delete" style="border-color: var(--secondary); color: var(--secondary); margin-right:5px;" onclick='openEditModal(${JSON.stringify(user)})'>✏️</button>
+                        <button class="btn-delete" onclick="deleteUser(${user.id})">🗑️</button>
+                    </td>
+                `;
+                    tbody.appendChild(row);
+                });
+            }
+
+            function calculateKPIs(users) {
+                document.getElementById('kpi-total').innerText = users.length;
+
+                const premiumCount = users.filter(u => u.plan === 'Premium').length;
+                const percentage = users.length > 0 ? Math.round((premiumCount / users.length) * 100) : 0;
+                document.getElementById('kpi-premium').innerText = `${premiumCount} (${percentage}%)`;
+
+                const today = new Date().toLocaleDateString();
+                const newToday = users.filter(u => u.date_joined && new Date(u.date_joined).toLocaleDateString() === today).length;
+                document.getElementById('kpi-today').innerText = newToday;
+            }
+
+            function filterUsers() {
+                const term = document.getElementById('searchInput').value.toLowerCase();
+                const filtered = allUsers.filter(u =>
+                    u.username.toLowerCase().includes(term) ||
+                    u.email.toLowerCase().includes(term)
+                );
+                renderTable(filtered);
+            }
+
+            // --- ACTIONS ---
+            async function deleteUser(id) {
+                if (!confirm('¿Eliminar usuario?')) return;
+                try {
+                    const res = await authFetch(API_URL + `users/delete/${id}/`, { method: 'DELETE' });
+                    if (res.ok) {
+                        showToast('Eliminado', 'success');
+                        fetchUsers();
+                    } else showToast('Error', 'error');
+                } catch (e) { showToast('Error', 'error'); }
+            }
+
+            async function handleCreate(e) {
+                e.preventDefault();
+                const username = document.getElementById('newUsername').value;
+                const email = document.getElementById('newEmail').value;
+                const password = document.getElementById('newPassword').value;
+                const plan = document.getElementById('newPlan').value;
+
+                try {
+                    const res = await authFetch(API_URL + 'users/create/', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ username, email, password, plan })
+                    });
+                    if (res.ok) {
+                        showToast('Usuario creado', 'success');
+                        closeModal();
+                        fetchUsers();
+                        e.target.reset();
+                    } else showToast('Error al crear', 'error');
+                } catch (e) { showToast('Error', 'error'); }
+            }
+
+            async function handleEdit(e) {
+                e.preventDefault();
+                const id = document.getElementById('editUserId').value;
+                const username = document.getElementById('editUsername').value;
+                const email = document.getElementById('editEmail').value;
+                const plan = document.getElementById('editPlan').value;
+
+                try {
+                    const res = await authFetch(API_URL + `users/update_admin/${id}/`, {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ username, email, plan })
+                    });
+
+                    if (res.ok) {
+                        showToast('Usuario actualizado', 'success');
+                        closeEditModal();
+                        fetchUsers();
+                    } else showToast('Error al actualizar', 'error');
+                } catch (e) { showToast('Error', 'error'); }
+            }
+
+            async function loadGlobalChart() {
+                try {
+                    const res = await authFetch(API_URL + 'stats/global_history/');
+                    const data = await res.json();
+
+                    if (!data || data.length === 0) return;
+
+                    const labels = data.map(d => d.date);
+                    const values = data.map(d => d.value);
+
+                    const ctx = document.getElementById('globalChart').getContext('2d');
+                    new Chart(ctx, {
+                        type: 'line',
+                        data: {
+                            labels: labels,
+                            datasets: [{
+                                label: 'Felicidad Promedio',
+                                data: values,
+                                borderColor: '#D4B46A', // Gold
+                                backgroundColor: 'rgba(212, 180, 106, 0.1)',
+                                borderWidth: 2,
+                                tension: 0.4,
+                                fill: true
+                            }]
+                        },
+                        options: {
+                            responsive: true,
+                            maintainAspectRatio: false,
+                            plugins: { legend: { display: false } },
+                            scales: {
+                                y: { beginAtZero: true, max: 10, grid: { color: 'rgba(255,255,255,0.1)' } },
+                                x: { grid: { display: false } }
+                            }
+                        }
+                    });
+                } catch (e) { console.error("Chart error", e); }
+            }
+
+            // --- NOTIFICATIONS ---
+            async function requestPermission() {
+                const permission = await Notification.requestPermission();
+                if (permission === 'granted') {
+                    showToast("Permisos activados ✅");
+                } else {
+                    showToast("Permiso denegado ❌", "error");
+                }
+            }
+
+            async function sendDashboardNotification() {
+                if (!('serviceWorker' in navigator)) {
+                    showToast("❌ Las alertas solo funcionan en localhost o HTTPS (no en IP numérica)", "error");
+                    return;
+                }
+
+                if (Notification.permission !== 'granted') {
+                    await requestPermission();
+                    if (Notification.permission !== 'granted') {
+                        showToast("🚫 Permiso denegado", "error");
+                        return;
+                    }
+                }
+
+                try {
+                    const variable = document.getElementById("notifVariable").value;
+                    const reg = await navigator.serviceWorker.ready;
+
+                    const questions = {
+                        "s_sleep": "¿Cómo dormiste?",
+                        "s_stress_inv": "¿Cómo está tu estrés?",
+                        "s_energy": "¿Cómo está tu energía?"
+                    };
+                    const questionBody = questions[variable] || "¿Cómo te sientes?";
+
+                    const options = {
+                        body: questionBody,
+                        icon: '../../assets/images/recurso-14.png',
+                        actions: [
+                            { action: `${variable}-2`, title: 'Mal (2)' },
+                            { action: `${variable}-10`, title: 'Bien (10)' }
+                        ]
+                    };
+
+                    reg.showNotification("GoToGym Alerta 🔔", options);
+                    showToast("Notificación enviada");
+                } catch (e) {
+                    console.error(e);
+                    showToast("Error al enviar", "error");
+                }
+            }
+
+            // --- MODAL ---
+            function openModal() { document.getElementById('createModal').style.display = 'flex'; }
+            function closeModal() { document.getElementById('createModal').style.display = 'none'; }
+
+            function openEditModal(user) {
+                document.getElementById('editUserId').value = user.id;
+                document.getElementById('editUsername').value = user.username;
+                document.getElementById('editEmail').value = user.email;
+                document.getElementById('editPlan').value = user.plan;
+                document.getElementById('editModal').style.display = 'flex';
+            }
+            function closeEditModal() { document.getElementById('editModal').style.display = 'none'; }
+
+            function logout() {
+                if (confirm("¿Cerrar sesión de administrador?")) {
+                    localStorage.removeItem("user");
+                    localStorage.removeItem("isLoggedIn");
+                    window.location.href = '../auth/indexInicioDeSesion.html';
+                }
+            }
+
+            function showToast(message, type = "success") {
+                const t = document.getElementById("toast");
+                t.textContent = message;
+                t.className = `toast ${type}`;
+                t.style.display = "block";
+                setTimeout(() => t.style.display = "none", 3000);
+            }
+        </script>
+</body>
+
+</html>

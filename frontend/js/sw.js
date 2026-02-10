@@ -1,0 +1,107 @@
+const CACHE_NAME = 'gotogym-v4';
+const ASSETS_TO_CACHE = [
+    '/',
+    '/manifest.json',
+    '/css/theme.css',
+    '/js/config.js',
+    '/assets/images/recurso-14.png',
+    '/assets/images/logo-gotogym-192.png',
+    '/assets/images/apple-touch-icon.png'
+];
+
+self.addEventListener('install', event => {
+    event.waitUntil(
+        caches.open(CACHE_NAME)
+            .then(cache => {
+                console.log('[Service Worker] Caching core assets');
+                return cache.addAll(ASSETS_TO_CACHE);
+            })
+    );
+    self.skipWaiting();
+});
+
+self.addEventListener('activate', event => {
+    event.waitUntil(
+        caches.keys().then(keyList => {
+            return Promise.all(keyList.map(key => {
+                if (key !== CACHE_NAME) {
+                    return caches.delete(key);
+                }
+            }));
+        })
+    );
+    self.clients.claim();
+});
+
+self.addEventListener('fetch', event => {
+    // Only cache GET requests
+    if (event.request.method !== 'GET') return;
+
+    event.respondWith(
+        caches.match(event.request)
+            .then(response => {
+                return response || fetch(event.request);
+            })
+    );
+});
+
+// Interactive Notification Handler
+self.addEventListener('notificationclick', event => {
+    event.notification.close();
+
+    // If normal click (no action), open app
+    if (!event.action) {
+        clients.openWindow('/pages/profile/Perfil.html');
+        return;
+    }
+
+    // Handle Actions (e.g. action="s_sleep-8")
+    // Format: "variable-value"
+    const [variable, value] = event.action.split('-');
+
+    if (variable && value) {
+        // We need the username. In a real app we'd store it in IndexedDB or similar.
+        // For this demo, let's assume we can get it from an open window or it was passed in notification data.
+        // Simpler: Broadcast to client or just try to grab from notification data if sent.
+
+        // Let's assume the notification data container the username
+        const username = event.notification.data ? event.notification.data.username : null;
+
+        if (username) {
+            event.waitUntil(
+                submitScoreUpdate(username, variable, value)
+            );
+        }
+    }
+});
+
+async function submitScoreUpdate(username, variable, value) {
+    try {
+        // Need absolute URL for SW
+        // Try localhost and local IP fallback is hard in SW without config.
+        // We will assume the origin that registered the SW.
+        // But SW 'self.location.origin' works.
+        const apiUrl = self.location.origin.replace(':5500', ':8000') + '/api/update_score/';
+
+        const res = await fetch(apiUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ username, variable, value })
+        });
+
+        const data = await res.json();
+
+        if (data.success) {
+            self.registration.showNotification("¡Actualizado!", {
+                body: `Tu Índice de Felicidad ahora es ${data.happiness_percentage}%`,
+                icon: '/assets/images/logo-gotogym-192.png'
+            });
+
+            // Refresh open windows
+            const clientsArr = await self.clients.matchAll();
+            clientsArr.forEach(client => client.postMessage({ type: 'REFRESH_PROFILE' }));
+        }
+    } catch (e) {
+        console.error("Update failed", e);
+    }
+}

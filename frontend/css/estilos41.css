@@ -1,0 +1,390 @@
+.plan-premium-men {
+    position: relative;
+    width: 393px;
+    height: 1033px;
+    background-color: #ffffff;
+    overflow: hidden;
+}
+
+.plan-premium-men .overlap-group {
+    position: absolute;
+    width: 393px;
+    height: 1033px;
+    top: 0;
+    left: 0;
+    background-color: #101012;
+}
+
+.plan-premium-men .overlap {
+    position: absolute;
+    width: 332px;
+    height: 1033px;
+    top: 0;
+    left: 0;
+}
+
+.plan-premium-men .text-wrapper {
+    position: absolute;
+    top: 84px;
+    left: 155px;
+    font-family: "Poppins-MediumItalic", Helvetica;
+    font-weight: 500;
+    font-style: italic;
+    color: #e0e3e6;
+    font-size: 25px;
+    letter-spacing: 0;
+    line-height: normal;
+}
+
+.plan-premium-men .elije-uno-de {
+    position: absolute;
+    top: 123px;
+    left: 65px;
+    font-family: "Poppins-MediumItalic", Helvetica;
+    font-weight: 500;
+    font-style: italic;
+    color: #e0e3e6;
+    font-size: 16px;
+    text-align: center;
+    letter-spacing: 0;
+    line-height: normal;
+}
+
+.plan-premium-men .ellipse {
+    position: absolute;
+    width: 52px;
+    height: 49px;
+    top: 904px;
+    left: 89px;
+    border-radius: 26px / 24.5px;
+    border: 1px solid;
+    border-color: #0fbfb0;
+}
+
+.plan-premium-men .div {
+    position: absolute;
+    top: 955px;
+    left: 49px;
+    font-family: "Poppins-MediumItalic", Helvetica;
+    font-weight: 500;
+    font-style: italic;
+    color: #0fbfb0;
+    font-size: 10px;
+    text-align: center;
+    letter-spacing: 0;
+    line-height: normal;
+}
+
+.plan-premium-men .rectangle {
+    position: absolute;
+    width: 271px;
+    height: 709px;
+    top: 183px;
+    left: 61px;
+    border-radius: 19px;
+    border: 1px solid;
+    border-color: #d4b46a;
+}
+
+.plan-premium-men .text-wrapper-2 {
+    position: absolute;
+    top: 200px;
+    left: 144px;
+    font-family: "Poppins-MediumItalic", Helvetica;
+    font-weight: 500;
+    font-style: italic;
+    color: #d4b46a;
+    font-size: 15px;
+    text-align: center;
+    letter-spacing: 0;
+    line-height: normal;
+}
+
+.plan-premium-men .element-mes {
+    position: absolute;
+    top: 223px;
+    left: 149px;
+    font-family: "Poppins-LightItalic", Helvetica;
+    font-weight: 300;
+    font-style: italic;
+    color: #d4b46a;
+    font-size: 12px;
+    text-align: center;
+    letter-spacing: 0;
+    line-height: normal;
+}
+
+.plan-premium-men .rectangle-2 {
+    position: absolute;
+    width: 99px;
+    height: 22px;
+    top: 851px;
+    left: 147px;
+    border-radius: 7px;
+    border: 1px solid;
+    border-color: #d4b46a;
+}
+
+.plan-premium-men .text-wrapper-3 {
+    position: absolute;
+    top: 854px;
+    left: 173px;
+    font-family: "Poppins-MediumItalic", Helvetica;
+    font-weight: 500;
+    font-style: italic;
+    color: #d4b46a;
+    font-size: 9px;
+    letter-spacing: 0;
+    line-height: normal;
+}
+
+.plan-premium-men .recurso {
+    width: 38px;
+    height: 37px;
+    top: 34px;
+    left: 78px;
+    position: absolute;
+    object-fit: cover;
+}
+
+.plan-premium-men .vector {
+    position: absolute;
+    width: 31px;
+    height: 28px;
+    top: 39px;
+    left: 30px;
+}
+
+.plan-premium-men .img {
+    top: 917px;
+    left: 102px;
+    position: absolute;
+    width: 25px;
+    height: 24px;
+}
+
+.plan-premium-men .servicios-DE-PAGO {
+    position: absolute;
+    width: 260px;
+    top: 252px;
+    left: 67px;
+    font-family: "Poppins-Medium", Helvetica;
+    font-weight: 400;
+    color: transparent;
+    font-size: 9px;
+    letter-spacing: 0;
+    line-height: normal;
+}
+
+.plan-premium-men .span {
+    font-weight: 500;
+    color: #d4b46a;
+}
+
+.plan-premium-men .text-wrapper-4 {
+    font-family: "Poppins-Light", Helvetica;
+    font-weight: 300;
+    color: #ffffff;
+}
+
+.plan-premium-men .text-wrapper-5 {
+    font-family: "Poppins-MediumItalic", Helvetica;
+    font-weight: 500;
+    font-style: italic;
+    color: #d4b46a;
+}
+
+.plan-premium-men .rectangle-3 {
+    position: absolute;
+    width: 224px;
+    height: 1033px;
+    top: 0;
+    left: 0;
+    background-color: #101012e3;
+}
+
+.plan-premium-men .recurso-2 {
+    width: 93px;
+    height: 90px;
+    top: 94px;
+    left: 66px;
+    position: absolute;
+    object-fit: cover;
+}
+
+.plan-premium-men .rectangle-4 {
+    position: absolute;
+    width: 169px;
+    height: 38px;
+    top: 965px;
+    left: 25px;
+    background-color: #101012;
+    border-radius: 19px;
+    border: 1px solid;
+    border-color: #0fbfb0;
+    box-shadow: 0px 1px 4px #0fbfb0;
+}
+
+.plan-premium-men .text-wrapper-6 {
+    position: absolute;
+    width: 47px;
+    top: 341px;
+    left: 19px;
+    font-family: "Poppins-MediumItalic", Helvetica;
+    font-weight: 500;
+    font-style: italic;
+    color: #0fbfb0;
+    font-size: 19px;
+    letter-spacing: 0;
+    line-height: normal;
+}
+
+.plan-premium-men .text-wrapper-7 {
+    position: absolute;
+    width: 105px;
+    top: 972px;
+    left: 57px;
+    font-family: "Poppins-MediumItalic", Helvetica;
+    font-weight: 500;
+    font-style: italic;
+    color: #0fbfb0;
+    font-size: 13px;
+    letter-spacing: 0;
+    line-height: normal;
+}
+
+.plan-premium-men .text-wrapper-8 {
+    position: absolute;
+    width: 146px;
+    top: 426px;
+    left: 19px;
+    font-family: "Poppins-MediumItalic", Helvetica;
+    font-weight: 500;
+    font-style: italic;
+    color: #0fbfb0;
+    font-size: 19px;
+    letter-spacing: 0;
+    line-height: normal;
+}
+
+.plan-premium-men .text-wrapper-9 {
+    position: absolute;
+    width: 90px;
+    top: 516px;
+    left: 19px;
+    font-family: "Poppins-MediumItalic", Helvetica;
+    font-weight: 500;
+    font-style: italic;
+    color: #0fbfb0;
+    font-size: 19px;
+    letter-spacing: 0;
+    line-height: normal;
+}
+
+.plan-premium-men .text-wrapper-10 {
+    position: absolute;
+    width: 137px;
+    top: 604px;
+    left: 19px;
+    font-family: "Poppins-MediumItalic", Helvetica;
+    font-weight: 500;
+    font-style: italic;
+    color: #0fbfb0;
+    font-size: 19px;
+    letter-spacing: 0;
+    line-height: normal;
+}
+
+.plan-premium-men .vector-wrapper {
+    position: absolute;
+    width: 52px;
+    height: 49px;
+    top: 904px;
+    left: 251px;
+    border-radius: 26px / 24.5px;
+    border: 1px solid;
+    border-color: #0fbfb0;
+}
+
+.plan-premium-men .vector-2 {
+    top: 12px;
+    left: 12px;
+    position: absolute;
+    width: 25px;
+    height: 24px;
+}
+
+.plan-premium-men .text-wrapper-11 {
+    position: absolute;
+    top: 955px;
+    left: 230px;
+    font-family: "Poppins-MediumItalic", Helvetica;
+    font-weight: 500;
+    font-style: italic;
+    color: #0fbfb0;
+    font-size: 10px;
+    text-align: center;
+    letter-spacing: 0;
+    line-height: normal;
+}
+
+.plan-premium-men .recurso-3 {
+    width: 85px;
+    height: 82px;
+    top: -5729px;
+    left: -1757px;
+    position: absolute;
+    object-fit: cover;
+}
+
+.plan-premium-men .text-wrapper-12 {
+    position: absolute;
+    top: 241px;
+    left: 497px;
+    font-family: "Poppins-MediumItalic", Helvetica;
+    font-weight: 500;
+    font-style: italic;
+    color: #0fbfb0;
+    font-size: 19px;
+    letter-spacing: 0;
+    line-height: normal;
+}
+
+.plan-premium-men .text-wrapper-13 {
+    position: absolute;
+    top: 311px;
+    left: 497px;
+    font-family: "Poppins-MediumItalic", Helvetica;
+    font-weight: 500;
+    font-style: italic;
+    color: #0fbfb0;
+    font-size: 19px;
+    letter-spacing: 0;
+    line-height: normal;
+}
+
+.plan-premium-men .text-wrapper-14 {
+    position: absolute;
+    top: 385px;
+    left: 497px;
+    font-family: "Poppins-MediumItalic", Helvetica;
+    font-weight: 500;
+    font-style: italic;
+    color: #0fbfb0;
+    font-size: 19px;
+    letter-spacing: 0;
+    line-height: normal;
+}
+
+.plan-premium-men .text-wrapper-15 {
+    position: absolute;
+    top: 458px;
+    left: 497px;
+    font-family: "Poppins-MediumItalic", Helvetica;
+    font-weight: 500;
+    font-style: italic;
+    color: #0fbfb0;
+    font-size: 19px;
+    letter-spacing: 0;
+    line-height: normal;
+}

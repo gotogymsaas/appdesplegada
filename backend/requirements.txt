@@ -1,0 +1,17 @@
+Django>=4.0
+djangorestframework
+django-cors-headers
+numpy
+pandas
+scikit-learn
+joblib
+xgboost
+Pillow
+pytesseract
+pypdf
+pdf2image
+pillow-heif
+
+azure-communication-email
+
+python-dotenv

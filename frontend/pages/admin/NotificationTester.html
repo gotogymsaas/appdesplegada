@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Notificaciones - GoToGym</title>
+    <link rel="stylesheet" href="../../css/theme.css">
+</head>
+
+<body style="padding: 20px; text-align: center;">
+
+    <h2 style="color: var(--primary);">Probador de Notificaciones</h2>
+
+    <div class="card" style="background: var(--card-bg); padding: 20px; border-radius: 10px; margin-top: 20px;">
+        <p>1. Primero permite notificaciones:</p>
+        <button class="btn btn-primary" onclick="requestPermission()">Activar Permisos</button>
+
+        <hr style="border-color: rgba(255,255,255,0.1); margin: 20px 0;">
+
+        <p>2. Enviar Pregunta de Prueba:</p>
+
+        <select id="variableSelect" class="input-field" style="margin-bottom: 10px;">
+            <option value="s_sleep">Horas de sueño</option>
+            <option value="s_stress_inv">Nivel de Estrés</option>
+            <option value="s_energy">Nivel de Energía</option>
+        </select>
+
+        <button class="btn btn-outline-teal" onclick="sendTestNotification()">Enviar Notificación</button>
+    </div>
+
+    <!-- Toast -->
+    <div id="toast" class="toast"></div>
+
+    <script src="../../js/config.js"></script>
+    <script>
+        function showToast(message) {
+            const t = document.getElementById('toast');
+            t.innerText = message;
+            t.style.display = 'block';
+            setTimeout(() => t.style.display = 'none', 3000);
+        }
+
+        async function requestPermission() {
+            const permission = await Notification.requestPermission();
+            if (permission === 'granted') {
+                showToast("Permiso concedido ✅");
+            } else {
+                showToast("Permiso denegado ❌");
+            }
+        }
+
+        async function sendTestNotification() {
+            if (Notification.permission !== 'granted') {
+                showToast("Primero activa los permisos");
+                return;
+            }
+
+            const variable = document.getElementById("variableSelect").value;
+            const user = JSON.parse(localStorage.getItem("user"));
+
+            if (!user) {
+                showToast("Debes iniciar sesión primero");
+                return;
+            }
+
+            // Custom Question Map
+            const reg = await navigator.serviceWorker.ready;
+
+            const questions = {
+                "s_sleep": "¿Cómo dormiste?",
+                "s_stress_inv": "¿Cómo está tu estrés en este momento?",
+                "s_energy": "¿Cómo está tu nivel de energía?"
+            };
+            const questionBody = questions[variable] || "¿Cómo te sientes hoy?";
+
+            // Simulating a Push from server (creating it locally)
+            const title = "GoToGym Check-in 🧠";
+            const options = {
+                body: questionBody,
+                icon: '/assets/images/recurso-14.png',
+                data: { username: user.username }, // Pass username for the action
+                actions: [
+                    { action: `${variable}-2`, title: 'Mal (2)' },
+                    { action: `${variable}-10`, title: 'Bien (10)' }
+                ]
+            };
+
+            reg.showNotification(title, options);
+            showToast("Notificación enviada (Revisa tu barra de estado)");
+        }
+    </script>
+</body>
+
+</html>

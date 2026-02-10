@@ -1,0 +1,598 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Perfil - GoToGym</title>
+    <link rel="stylesheet" href="../../css/../../css/theme.css">
+
+    <!-- PWA Setup -->
+    <link rel="manifest" href="/manifest.json">
+    <meta name="theme-color" content="#0FBFB0">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+        <link rel="apple-touch-icon" href="/assets/images/apple-touch-icon.png">
+            <style>
+                /* High Fidelity Profile Styles */
+                body {
+                    background-color: var(--bg-color);
+                    color: var(--text-main);
+                    font-family: 'Poppins', sans-serif;
+                }
+                
+                .profile-container {
+                    width: 100%;
+                    max-width: 450px;
+                    margin: 0 auto;
+                    position: relative;
+                    padding-bottom: 50px;
+                }
+                
+                /* HEADER */
+                .header-container {
+                    display: flex;
+                    justify-content: space-between;
+                    align-items: center;
+                    padding: 20px 25px;
+                    margin-bottom: 20px;
+                }
+                
+                .header-left {
+                    display: flex;
+                    align-items: center;
+                    gap: 15px;
+                }
+                
+                .menu-btn {
+                    background: none;
+                    border: none;
+                    cursor: pointer;
+                    display: flex;
+                    flex-direction: column;
+                    gap: 5px;
+                }
+                
+                .hamburger-line {
+                    width: 28px;
+                    height: 3px;
+                    background-color: var(--primary);
+                    /* Teal */
+                    border-radius: 2px;
+                }
+                
+                
+                
+                .header-logo {
+                    font-size: 28px;
+                    color: var(--secondary);
+                    /* Gold */
+                    font-weight: bold;
+                    letter-spacing: -1px;
+                }
+                
+                .edit-btn {
+                    background: none;
+                    border: none;
+                    cursor: pointer;
+                    padding: 5px;
+                }
+                
+                /* GLOW LINE */
+                .glow-line-container {
+                    width: 100%;
+                    height: 2px;
+                    background: rgba(15, 191, 176, 0.2);
+                    position: relative;
+                    margin-top: 30px;
+                    margin-bottom: 50px;
+                }
+                
+                .glow-line {
+                    width: 100%;
+                    height: 100%;
+                    background: var(--primary);
+                    box-shadow: 0 0 15px var(--primary);
+                }
+                
+                /* AVATAR */
+                .avatar-section {
+                    display: flex;
+                    flex-direction: column;
+                    align-items: center;
+                    margin-top: -100px;
+                    /* Pull up over the line */
+                    position: relative;
+                    z-index: 2;
+                }
+                
+                .avatar-wrapper {
+                    position: relative;
+                    width: 130px;
+                    height: 130px;
+                    margin-bottom: 20px;
+                }
+                
+                .avatar {
+                    width: 100%;
+                    height: 100%;
+                    border-radius: 50%;
+                    background: var(--card-bg);
+                    /* Placeholder image bg */
+                    position: relative;
+                    z-index: 2;
+                    display: flex;
+                    justify-content: center;
+                    align-items: center;
+                    font-size: 50px;
+                    color: var(--text-muted);
+                    overflow: hidden;
+                    border: 2px solid transparent;
+                }
+                
+                /* The teal ring around avatar */
+                .avatar-glow {
+                    position: absolute;
+                    top: -5px;
+                    left: -5px;
+                    right: -5px;
+                    bottom: -5px;
+                    border-radius: 50%;
+                    border: 2px solid var(--primary);
+                    box-shadow: 0 0 15px rgba(15, 191, 176, 0.5);
+                    z-index: 1;
+                }
+                
+                .user-name {
+                    font-size: 24px;
+                    font-weight: 500;
+                    color: var(--text-main);
+                    margin: 0;
+                    text-align: center;
+                }
+                
+                .user-role {
+                    font-size: 14px;
+                    color: var(--text-muted);
+                    /* Grey/White muted */
+                    font-style: italic;
+                    margin-top: 5px;
+                }
+                
+                /* STATS */
+                .stats-grid {
+                    display: flex;
+                    justify-content: center;
+                    gap: 20px;
+                    margin-top: 40px;
+                    gap: 20px;
+                    margin-top: 40px;
+                    margin-bottom: 40px;
+                }
+                
+                /* BADGES */
+                .badges-grid {
+                    display: flex;
+                    justify-content: center;
+                    gap: 15px;
+                    flex-wrap: wrap;
+                    margin-bottom: 40px;
+                }
+                
+                .badge-item {
+                    background: linear-gradient(145deg, #1e1e1e, #252525);
+                    border: 1px solid #333;
+                    border-radius: 12px;
+                    padding: 10px;
+                    text-align: center;
+                    width: 80px;
+                    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+                }
+                
+                .badge-icon {
+                    font-size: 24px;
+                    display: block;
+                    margin-bottom: 5px;
+                }
+                
+                .badge-label {
+                    font-size: 10px;
+                    color: var(--text-muted);
+                    line-height: 1.2;
+                }
+                
+                .stat-item {
+                    text-align: center;
+                }
+                
+                .stat-value {
+                    font-size: 32px;
+                    color: var(--text-main);
+                    font-weight: 400;
+                    line-height: 1;
+                    display: flex;
+                    align-items: baseline;
+                    justify-content: center;
+                }
+                
+                .stat-unit {
+                    font-size: 14px;
+                    margin-left: 2px;
+                }
+                
+                .stat-label {
+                    color: var(--primary);
+                    /* Teal labels */
+                    font-size: 14px;
+                    margin-top: 5px;
+                }
+                
+                /* HAPPINESS INDEX */
+                .happiness-section {
+                    text-align: center;
+                    margin-bottom: 60px;
+                }
+                
+                .happiness-title {
+                    color: var(--text-main);
+                    /* Title is white in image */
+                    font-style: italic;
+                    font-size: 16px;
+                    margin-bottom: 20px;
+                }
+                
+                .happiness-chart {
+                    display: flex;
+                    justify-content: center;
+                }
+                
+                /* FOOTER ACTION */
+                .footer-action {
+                    text-align: center;
+                    margin-top: 20px;
+                }
+                
+                .gold-link {
+                    color: var(--secondary);
+                    text-decoration: none;
+                    font-style: italic;
+                    font-size: 16px;
+                }
+
+                body[data-theme="light"] .badge-item {
+                    background: #F1F3F5;
+                    border-color: #D5D9DD;
+                    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.08);
+                }
+            </style>
+            <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+</head>
+
+<body>
+    
+    <div class="profile-container">
+        <!-- Header -->
+        <div class="header-container">
+            <div class="header-left">
+                <button class="menu-btn" onclick="toggleMenu()">
+                    <div class="hamburger-line"></div>
+                    <div class="hamburger-line"></div>
+                    <div class="hamburger-line"></div>
+                </button>
+                <div class="header-logo">GoToGym</div>
+            </div>
+            
+            <button class="edit-btn" onclick="window.location.href='../../pages/settings/CuentaYSeguridad.html'">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path
+                    d="M11 4H4C3.46957 4 2.96086 4.21071 2.58579 4.58579C2.21071 4.96086 2 5.46957 2 6V20C2 20.5304 2.21071 21.0391 2.58579 21.4142C2.96086 21.7893 3.46957 22 4 22H18C18.5304 22 19.0391 21.7893 19.4142 21.4142C19.7893 21.0391 20 20.5304 20 20V13"
+                    stroke="#0FBFB0" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+                    <path
+                    d="M18.5 2.50001C18.8978 2.10219 19.4374 1.87869 20 1.87869C20.5626 1.87869 21.1022 2.10219 21.5 2.50001C21.8978 2.89784 22.1213 3.4374 22.1213 4.00001C22.1213 4.56262 21.8978 5.10219 21.5 5.50001L12 15L8 16L9 12L18.5 2.50001Z"
+                    stroke="#0FBFB0" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+                </svg>
+            </button>
+        </div>
+    </div>
+    
+    <!-- Glowing Line -->
+    <div class="glow-line-container">
+        <div class="glow-line"></div>
+    </div>
+    
+    <!-- Avatar Section -->
+    <div class="avatar-section">
+        <div class="avatar-wrapper">
+            <div class="avatar-glow"></div>
+            <div class="avatar" id="userAvatar">U</div>
+        </div>
+        
+        <h2 class="user-name" id="userName">Cargando...</h2>
+        <p class="user-role" id="userProfession">Profesión</p>
+    </div>
+    
+    <!-- Stats Grid -->
+    <div class="stats-grid">
+        <div class="stat-item">
+            <div class="stat-value"><span id="stat-weight">--</span><span class="stat-unit">kg</span></div>
+            <div class="stat-label">Peso</div>
+        </div>
+        <div class="stat-item">
+            <div class="stat-value" id="stat-age">--</div>
+            <div class="stat-label">Edad</div>
+        </div>
+        <div class="stat-item">
+            <div class="stat-value"><span id="stat-height">--</span><span class="stat-unit">m</span></div>
+            <div class="stat-label">Altura</div>
+        </div>
+    </div>
+    
+    <!-- Happiness Index -->
+    <div class="happiness-section">
+        <div class="happiness-title">Indice de felicidad</div>
+        <div class="happiness-chart" onclick="window.location.href='../../pages/forms/CuestionarioIF.html'"
+            style="cursor: pointer;">
+            <!-- SVG Heart Shape inside Circle -->
+            <svg width="120" height="120" viewBox="0 0 120 120">
+                <circle cx="60" cy="60" r="58" stroke="#0FBFB0" stroke-width="2" fill="none"
+                style="filter: drop-shadow(0 0 5px #0FBFB0);" />
+                <!-- Background heart -->
+                <path
+                d="M60 100C60 100 20 70 20 45C20 30 35 20 50 30C55 35 60 40 60 40C60 40 65 35 70 30C85 20 100 30 100 45C100 70 60 100 60 100Z"
+                fill="none" stroke="rgba(15, 191, 176, 0.3)" stroke-width="1" />
+                
+                <!-- Text centered -->
+                <text x="50%" y="55%" dominant-baseline="middle" text-anchor="middle" fill="var(--text-main)" font-size="24"
+                    font-family="'Poppins', sans-serif" font-weight="bold" id="happinessValue">--</text>
+            </svg>
+        </div>
+        <div style="margin-top:10px; font-size: 12px; color: var(--primary);">Clic para calcular</div>
+    </div>
+    
+    <!-- History Chart -->
+    <div style="width: 90%; max-width: 400px; margin: 0 auto 40px auto;">
+        <p style="color: var(--text-muted); text-align:center; font-size:14px; margin-bottom:10px;">Tu evolución</p>
+        <canvas id="happinessChart"></canvas>
+    </div>
+    
+    <!-- Streak Section (Moved) -->
+    <div style="text-align: center; margin-bottom: 40px;">
+        <div style="font-size: 40px; color: #FF5722; font-weight: bold; line-height: 1;">
+            🔥 <span id="stat-streak">0</span>
+        </div>
+        <div style="font-size: 14px; color: #FF5722; margin-top: 5px;">Racha actual</div>
+    </div>
+    
+    <!-- Badges Section -->
+    <!-- Badges Section Removed -->
+    
+    
+    
+    <!-- Footer Link Removed -->
+    </div>
+    
+    <!-- Menu Overlay -->
+    <div id="menuOverlay" class="menu-overlay">
+        <button class="menu-close-btn" onclick="toggleMenu()">×</button>
+        <ul class="menu-links">
+            <li><a href="../profile/Perfil.html" onclick="toggleMenu()">Perfil</a></li>
+            <li><a href="../settings/Configuracion.html">Configuración</a></li>
+            <li><a href="../plans/Planes.html">Planes</a></li>
+            <li><a href="../info/SobreNosotros.html">Sobre Nosotros</a></li>
+            <li><a href="../info/Contactanos.html">Contacto</a></li>
+            <li>
+                <a href="/pages/auth/indexInicioDeSesion.html"
+                     onclick="cerrarSesion(event)"
+                     style="color: var(--error)">
+                    Cerrar Sesión
+                </a>
+            </li>
+        </ul>
+    </div>
+    
+    <!-- Toast Notification -->
+    <div id="toast" class="toast"></div>
+    
+    <script src="../../js/../../js/config.js"></script>
+    <script>
+        function toggleMenu() {
+            const menu = document.getElementById('menuOverlay');
+            menu.classList.toggle('active');
+        }
+        
+        document.addEventListener('DOMContentLoaded', () => {
+            const userData = localStorage.getItem("user");
+            
+            if (!userData) {
+                // For demo purposes if run directly without login, show dummy data or redirect
+                // window.location.href='../../auth/indexInicioDeSesion.html';
+                // return;
+                
+                // FALLBACK FOR PREVIEW IF EMPTY (Remove for prod)
+                console.log("No user data found, using fallback for UI check");
+                document.getElementById('userName').textContent = "Nombres y apellidos";
+                document.getElementById('userProfession').textContent = "Profesion";
+                document.getElementById("stat-weight").innerText = "70";
+                document.getElementById("stat-height").innerText = "1.8";
+                document.getElementById("stat-age").innerText = "30";
+                return;
+            }
+            
+            try {
+                const user = JSON.parse(userData);
+                document.getElementById('userName').textContent = user.full_name || user.username || "Nombres y apellidos";
+                
+                const avatarEl = document.getElementById('userAvatar');
+                if (user.profile_picture) {
+                    const baseUrl = API_URL.replace('/api/', '');
+                    avatarEl.innerHTML = `<img src="${baseUrl}${user.profile_picture}" style="width:100%; height:100%; object-fit:cover;">`;
+                    avatarEl.style.background = 'transparent';
+                } else {
+                    avatarEl.textContent = (user.username || "U").charAt(0).toUpperCase();
+                }
+                
+                document.getElementById('userProfession').textContent = user.profession || "Profesión";
+                
+                // Stats
+                // Note: The design separates number and unit.
+                document.getElementById("stat-weight").innerText = user.weight || "--";
+                document.getElementById("stat-height").innerText = user.height || "--";
+                document.getElementById("stat-age").innerText = user.age || "--";
+                document.getElementById("stat-streak").innerText = user.current_streak || "0";
+                
+                // Happiness Index
+                if (user.happiness_index !== undefined && user.happiness_index !== null) {
+                    // Convert 0-10 to 0-100%
+                    const percent = Math.round(user.happiness_index * 10);
+                    document.getElementById('happinessValue').textContent = percent + "%";
+                    // Load Chart
+                    loadChart(user.username);
+                } else {
+                    document.getElementById('happinessValue').textContent = "--";
+                    document.getElementById("happinessValue").style.fontSize = "16px";
+                }
+                // Render Badges
+                const badgesContainer = document.getElementById("badges-container");
+
+                // ✅ Guard: si el contenedor no existe en este HTML, salimos sin romper nada
+                if (!badgesContainer) {
+                  console.warn("badges-container no existe en este template, se omite Render Badges");
+                } else {
+                  if (user.badges && user.badges.length > 0) {
+                    badgesContainer.innerHTML = ""; // Clear loader
+
+                    const badgeConfig = {
+                      "iniciado": { icon: "🚀", label: "Iniciado" },
+                      "on_fire": { icon: "🔥", label: "On Fire" },
+                      "zen_master": { icon: "🧘", label: "Zen Master" }
+                    };
+
+                    user.badges.forEach(badgeKey => {
+                      const config = badgeConfig[badgeKey] || { icon: "🏅", label: badgeKey };
+                      const badgeHTML = `
+                        <div class="badge-item">
+                          <span class="badge-icon">${config.icon}</span>
+                          <span class="badge-label">${config.label}</span>
+                        </div>
+                      `;
+                      badgesContainer.innerHTML += badgeHTML;
+                    });
+
+                  } else {
+                    badgesContainer.innerHTML = `<p style="color:#666;font-size:12px;">Aún no tienes logros.</p>`;
+                  }
+                }
+
+                showToast("Perfil actualizado", "success");
+            } catch (e) {
+                console.error(e);
+            }
+        });
+        
+        function cerrarSesion() {
+            localStorage.removeItem("user");
+            localStorage.removeItem("isLoggedIn");
+            window.location.href='../../pages/auth/indexInicioDeSesion.html';
+        }
+        
+        function showToast(message, type = "success") {
+            const toast = document.getElementById("toast");
+            toast.textContent = message;
+            toast.className = `toast ${type}`;
+            toast.style.display = "block";
+            setTimeout(() => toast.style.display = "none", 3000);
+        }
+    </script>
+    <script>
+        // Register Service Worker
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('/sw.js')
+                .then(registration => console.log('SW Registered:', registration.scope))
+                .catch(err => console.log('SW Registration Failed:', err));
+                
+                // Listen for updates from SW
+                navigator.serviceWorker.addEventListener('message', event => {
+                    if (event.data && event.data.type === 'REFRESH_PROFILE') {
+                        console.log("Recibida actualización desde notificación");
+                        fetchUserProfile(); // Refresh data
+                    }
+                });
+            });
+        }
+        
+        async function loadChart(username) {
+            try {
+                const res = await authFetch(`${API_URL}users/history/?username=${username}`);
+                if (!res.ok) return;
+                const data = await res.json();
+                
+                // Labels (Dates) and Values
+                const labels = data.map(d => d.date);
+                const values = data.map(d => d.value);
+                
+                const ctx = document.getElementById('happinessChart').getContext('2d');
+                
+                // Destroy old if exists (simple check or let it redraw since page reload)
+                if (window.myChart) window.myChart.destroy();
+                
+                const styles = getComputedStyle(document.body);
+                const primary = styles.getPropertyValue('--primary').trim() || '#0FBFB0';
+                const textMuted = styles.getPropertyValue('--text-muted').trim() || '#a0a0a0';
+                const isLight = document.body.dataset.theme === 'light';
+                const gridColor = isLight ? 'rgba(16,16,18,0.12)' : 'rgba(255,255,255,0.1)';
+                const primaryFill = hexToRgba(primary, 0.1);
+
+                window.myChart = new Chart(ctx, {
+                    type: 'line',
+                    data: {
+                        labels: labels,
+                        datasets: [{
+                            label: 'Índice de Felicidad',
+                            data: values,
+                            borderColor: primary,
+                            backgroundColor: primaryFill,
+                            borderWidth: 2,
+                            tension: 0.4, // Smooth curves
+                            pointRadius: 3,
+                            fill: true
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        plugins: {
+                            legend: { display: false }
+                        },
+                        scales: {
+                            y: {
+                                beginAtZero: true,
+                                max: 10,
+                                grid: { color: gridColor },
+                                ticks: { color: textMuted }
+                            },
+                            x: {
+                                grid: { display: false },
+                                ticks: { color: textMuted, maxTicksLimit: 5 }
+                            }
+                        }
+                    }
+                });
+                
+            } catch (e) {
+                console.error("Error loading chart", e);
+            }
+        }
+
+        function hexToRgba(hex, alpha) {
+            const cleaned = hex.replace('#', '').trim();
+            if (cleaned.length !== 6) return `rgba(15, 191, 176, ${alpha})`;
+            const r = parseInt(cleaned.slice(0, 2), 16);
+            const g = parseInt(cleaned.slice(2, 4), 16);
+            const b = parseInt(cleaned.slice(4, 6), 16);
+            return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+        }
+    </script>
+</body>
+
+</html>

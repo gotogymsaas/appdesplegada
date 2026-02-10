@@ -1,0 +1,370 @@
+.informacin-de {
+    width: 393px;
+    height: 852px;
+    background-color: #101012;
+}
+
+.informacin-de .overlap {
+    position: relative;
+    width: 364px;
+    height: 852px;
+}
+
+.informacin-de .overlap-group {
+    position: absolute;
+    width: 364px;
+    height: 852px;
+    top: 0;
+    left: 0;
+}
+
+.informacin-de .ellipse {
+    width: 105px;
+    height: 102px;
+    top: 181px;
+    left: 73px;
+    border-radius: 52.5px / 51px;
+    border-color: #d4b46a;
+    box-shadow: 0px 0px 4px #d4b46a;
+    position: absolute;
+    border: 1px solid;
+}
+
+.informacin-de .div {
+    width: 105px;
+    height: 102px;
+    top: 181px;
+    left: 215px;
+    border-radius: 52.5px / 51px;
+    border-color: #d4b46a;
+    box-shadow: 0px 0px 4px #d4b46a;
+    position: absolute;
+    border: 1px solid;
+}
+
+.informacin-de .ellipse-2 {
+    width: 105px;
+    height: 102px;
+    top: 320px;
+    left: 75px;
+    border-radius: 52.5px / 51px;
+    border-color: #d4b46a;
+    box-shadow: 0px 0px 4px #d4b46a;
+    position: absolute;
+    border: 1px solid;
+}
+
+.informacin-de .ellipse-3 {
+    width: 105px;
+    height: 102px;
+    top: 323px;
+    left: 215px;
+    border-radius: 52.5px / 51px;
+    border-color: #d4b46a;
+    box-shadow: 0px 0px 4px #d4b46a;
+    position: absolute;
+    border: 1px solid;
+}
+
+.informacin-de .rectangle {
+    position: absolute;
+    width: 335px;
+    height: 200px;
+    top: 502px;
+    left: 29px;
+    border-radius: 20px;
+    border: 1px solid;
+    border-color: #0fbfb0;
+    box-shadow: 0px 2px 4px #0fbfb0;
+}
+
+.informacin-de .lunes-viernes-a {
+    position: absolute;
+    top: 533px;
+    left: 60px;
+    font-family: "Poppins-SemiBoldItalic", Helvetica;
+    font-weight: 600;
+    font-style: italic;
+    color: #0fbfb0;
+    font-size: 14px;
+    letter-spacing: 0;
+    line-height: normal;
+}
+
+.informacin-de .text-wrapper {
+    position: absolute;
+    top: 554px;
+    left: 186px;
+    font-family: "Poppins-SemiBoldItalic", Helvetica;
+    font-weight: 600;
+    font-style: italic;
+    color: #0fbfb0;
+    font-size: 14px;
+    letter-spacing: 0;
+    line-height: normal;
+}
+
+.informacin-de .sabados-am-a {
+    position: absolute;
+    top: 600px;
+    left: 60px;
+    font-family: "Poppins-SemiBoldItalic", Helvetica;
+    font-weight: 600;
+    font-style: italic;
+    color: #0fbfb0;
+    font-size: 14px;
+    letter-spacing: 0;
+    line-height: normal;
+}
+
+.informacin-de .festivos-am-a {
+    position: absolute;
+    top: 647px;
+    left: 60px;
+    font-family: "Poppins-SemiBoldItalic", Helvetica;
+    font-weight: 600;
+    font-style: italic;
+    color: #0fbfb0;
+    font-size: 14px;
+    letter-spacing: 0;
+    line-height: normal;
+}
+
+.informacin-de .text-wrapper-2 {
+    position: absolute;
+    top: 471px;
+    left: 45px;
+    font-family: "Poppins-SemiBoldItalic", Helvetica;
+    font-weight: 600;
+    font-style: italic;
+    color: #101012;
+    font-size: 15px;
+    letter-spacing: 0;
+    line-height: normal;
+}
+
+.informacin-de .text-wrapper-3 {
+    position: absolute;
+    top: 120px;
+    left: 42px;
+    font-family: "Poppins-SemiBoldItalic", Helvetica;
+    font-weight: 600;
+    font-style: italic;
+    color: #e0e3e6;
+    font-size: 24px;
+    letter-spacing: 0;
+    line-height: normal;
+}
+
+.informacin-de .ellipse-4 {
+    width: 52px;
+    height: 49px;
+    top: 731px;
+    left: 94px;
+    border-radius: 26px / 24.5px;
+    border-color: #0fbfb0;
+    box-shadow: 0px 0px 4px #0fbfb0;
+    position: absolute;
+    border: 1px solid;
+}
+
+.informacin-de .text-wrapper-4 {
+    position: absolute;
+    top: 782px;
+    left: 54px;
+    font-family: "Poppins-MediumItalic", Helvetica;
+    font-weight: 500;
+    font-style: italic;
+    color: #0fbfb0;
+    font-size: 10px;
+    text-align: center;
+    letter-spacing: 0;
+    line-height: normal;
+}
+
+.informacin-de .recurso {
+    width: 38px;
+    height: 37px;
+    top: 33px;
+    left: 73px;
+    position: absolute;
+    object-fit: cover;
+}
+
+.informacin-de .vector {
+    position: absolute;
+    width: 34px;
+    height: 33px;
+    top: 216px;
+    left: 109px;
+}
+
+.informacin-de .img {
+    position: absolute;
+    width: 34px;
+    height: 33px;
+    top: 216px;
+    left: 251px;
+}
+
+.informacin-de .vector-2 {
+    position: absolute;
+    width: 34px;
+    height: 33px;
+    top: 358px;
+    left: 251px;
+}
+
+.informacin-de .vector-3 {
+    position: absolute;
+    width: 34px;
+    height: 33px;
+    top: 355px;
+    left: 109px;
+}
+
+.informacin-de .vector-4 {
+    position: absolute;
+    width: 25px;
+    height: 24px;
+    top: 743px;
+    left: 107px;
+}
+
+.informacin-de .group {
+    position: absolute;
+    width: 41px;
+    height: 42px;
+    top: 34px;
+    left: 23px;
+}
+
+.informacin-de .rectangle-2 {
+    position: absolute;
+    width: 224px;
+    height: 852px;
+    top: 0;
+    left: 0;
+    background-color: #101012e3;
+}
+
+.informacin-de .recurso-2 {
+    width: 85px;
+    height: 82px;
+    top: 73px;
+    left: 70px;
+    position: absolute;
+    object-fit: cover;
+}
+
+.informacin-de .rectangle-3 {
+    position: absolute;
+    width: 169px;
+    height: 31px;
+    top: 796px;
+    left: 25px;
+    background-color: #101012;
+    border-radius: 19px;
+    border: 1px solid;
+    border-color: #0fbfb0;
+    box-shadow: 0px 1px 4px #0fbfb0;
+}
+
+.informacin-de .text-wrapper-5 {
+    position: absolute;
+    top: 281px;
+    left: 19px;
+    font-family: "Poppins-MediumItalic", Helvetica;
+    font-weight: 500;
+    font-style: italic;
+    color: #0fbfb0;
+    font-size: 19px;
+    letter-spacing: 0;
+    line-height: normal;
+}
+
+.informacin-de .text-wrapper-6 {
+    position: absolute;
+    top: 801px;
+    left: 57px;
+    font-family: "Poppins-MediumItalic", Helvetica;
+    font-weight: 500;
+    font-style: italic;
+    color: #0fbfb0;
+    font-size: 13px;
+    letter-spacing: 0;
+    line-height: normal;
+}
+
+.informacin-de .text-wrapper-7 {
+    position: absolute;
+    top: 351px;
+    left: 19px;
+    font-family: "Poppins-MediumItalic", Helvetica;
+    font-weight: 500;
+    font-style: italic;
+    color: #0fbfb0;
+    font-size: 19px;
+    letter-spacing: 0;
+    line-height: normal;
+}
+
+.informacin-de .text-wrapper-8 {
+    position: absolute;
+    top: 425px;
+    left: 19px;
+    font-family: "Poppins-MediumItalic", Helvetica;
+    font-weight: 500;
+    font-style: italic;
+    color: #0fbfb0;
+    font-size: 19px;
+    letter-spacing: 0;
+    line-height: normal;
+}
+
+.informacin-de .text-wrapper-9 {
+    position: absolute;
+    top: 498px;
+    left: 19px;
+    font-family: "Poppins-MediumItalic", Helvetica;
+    font-weight: 500;
+    font-style: italic;
+    color: #0fbfb0;
+    font-size: 19px;
+    letter-spacing: 0;
+    line-height: normal;
+}
+
+.informacin-de .vector-wrapper {
+    position: absolute;
+    width: 52px;
+    height: 49px;
+    top: 731px;
+    left: 252px;
+    border-radius: 26px / 24.5px;
+    border: 1px solid;
+    border-color: #0fbfb0;
+    box-shadow: 0px 0px 4px #00000040;
+}
+
+.informacin-de .vector-5 {
+    position: absolute;
+    width: 25px;
+    height: 24px;
+    top: 11px;
+    left: 12px;
+}
+
+.informacin-de .text-wrapper-10 {
+    position: absolute;
+    top: 782px;
+    left: 231px;
+    font-family: "Poppins-MediumItalic", Helvetica;
+    font-weight: 500;
+    font-style: italic;
+    color: #0fbfb0;
+    font-size: 10px;
+    text-align: center;
+    letter-spacing: 0;
+    line-height: normal;
+}

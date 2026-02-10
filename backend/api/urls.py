@@ -1,0 +1,29 @@
+from django.urls import path
+from . import views
+
+urlpatterns = [
+    path('register/', views.register, name='register'),
+    path('login/', views.login, name='login'),
+    path('update_profile/', views.update_profile, name='update_profile'),
+    path('users/', views.get_users, name='get_users'),
+    path('users/create/', views.create_user_admin, name='create_user_admin'),
+    path('users/delete/<int:user_id>/', views.delete_user, name='delete_user'),
+    path('predict_if/', views.predict_happiness, name='predict_happiness'),
+    path('if/question/', views.get_if_question, name='get_if_question'),
+    path('if/answer/', views.submit_if_answer, name='submit_if_answer'),
+    path('users/update_profile/', views.update_profile_settings, name='update_profile_settings'),
+    path('users/history/', views.get_happiness_history, name='get_happiness_history'),
+    path('update_score/', views.update_single_score, name='update_single_score'),
+    path('users/update_admin/<int:user_id>/', views.update_user_admin, name='update_user_admin'),
+    path('stats/global_history/', views.get_global_history, name='get_global_history'),
+    path('chat/', views.chat_n8n, name='chat_n8n'),
+    path('user_profile/', views.get_user_profile, name='get_user_profile'),
+    path('upload_medical/', views.upload_medical_record, name='upload_medical'),
+    path('user_documents/', views.user_documents, name='user_documents'),
+    path('user_documents/delete/', views.user_documents_delete, name='user_documents_delete'),
+    path('contact/', views.contact_message, name='contact_message'),
+    path('push/register/', views.push_register, name='push_register'),
+    path('push/unregister/', views.push_unregister, name='push_unregister'),
+    path('push/send_test/', views.push_send_test, name='push_send_test'),
+    path('billing/webhook/mercadopago/', views.mercadopago_webhook, name='mercadopago_webhook'),
+]

@@ -1,0 +1,228 @@
+.contactanos {
+    position: relative;
+    width: 393px;
+    height: 852px;
+    background-color: #101012;
+}
+
+.contactanos .overlap-group {
+    position: absolute;
+    width: 309px;
+    height: 365px;
+    top: 244px;
+    left: 42px;
+    background-color: #101012;
+    border-radius: 19px;
+    box-shadow: 0px 2px 6px #d4b46a;
+}
+
+.contactanos .overlap {
+    position: absolute;
+    width: 289px;
+    height: 40px;
+    top: 37px;
+    left: 10px;
+    border-radius: 13px;
+    border: 1px solid;
+    border-color: #d4b46a;
+    box-shadow: 0px 0px 4px #d4b46a;
+}
+
+.contactanos .text-wrapper {
+    position: absolute;
+    top: 10px;
+    left: 6px;
+    font-family: "Poppins-MediumItalic", Helvetica;
+    font-weight: 500;
+    font-style: italic;
+    color: #ffffff;
+    font-size: 10px;
+    text-align: center;
+    letter-spacing: 0;
+    line-height: normal;
+}
+
+.contactanos .div-wrapper {
+    position: absolute;
+    width: 289px;
+    height: 40px;
+    top: 104px;
+    left: 10px;
+    border-radius: 13px;
+    border: 1px solid;
+    border-color: #d4b46a;
+    box-shadow: 0px 0px 4px #d4b46a;
+}
+
+.contactanos .div {
+    position: absolute;
+    width: 289px;
+    height: 93px;
+    top: 170px;
+    left: 10px;
+    border-radius: 13px;
+    border: 1px solid;
+    border-color: #d4b46a;
+    box-shadow: 0px 0px 4px #d4b46a;
+}
+
+.contactanos .text-wrapper-2 {
+    position: absolute;
+    top: 12px;
+    left: 6px;
+    font-family: "Poppins-MediumItalic", Helvetica;
+    font-weight: 500;
+    font-style: italic;
+    color: #ffffff;
+    font-size: 10px;
+    text-align: center;
+    letter-spacing: 0;
+    line-height: normal;
+}
+
+.contactanos .overlap-2 {
+    position: absolute;
+    width: 210px;
+    height: 45px;
+    top: 293px;
+    left: 50px;
+    border-radius: 19px;
+}
+
+.contactanos .text-wrapper-3 {
+    position: absolute;
+    top: 10px;
+    left: 79px;
+    font-family: "Poppins-BoldItalic", Helvetica;
+    font-weight: 700;
+    font-style: italic;
+    color: #d4b46a;
+    font-size: 16px;
+    text-align: center;
+    letter-spacing: 0;
+    line-height: normal;
+}
+
+.contactanos .rectangle {
+    position: absolute;
+    width: 210px;
+    height: 45px;
+    top: 0;
+    left: 0;
+    border-radius: 19px;
+    border: 1px solid;
+    border-color: #d4b46a;
+    box-shadow: 0px 0px 4px #d4b46a;
+}
+
+.contactanos .text-wrapper-4 {
+    position: absolute;
+    top: 126px;
+    left: 114px;
+    font-family: "Poppins-MediumItalic", Helvetica;
+    font-weight: 500;
+    font-style: italic;
+    color: #e0e3e6;
+    font-size: 25px;
+    letter-spacing: 0;
+    line-height: normal;
+}
+
+.contactanos .contactate-con {
+    position: absolute;
+    top: 175px;
+    left: 43px;
+    font-family: "Poppins-MediumItalic", Helvetica;
+    font-weight: 500;
+    font-style: italic;
+    color: #e0e3e6;
+    font-size: 16px;
+    text-align: center;
+    letter-spacing: 0;
+    line-height: normal;
+}
+
+.contactanos .vector-wrapper {
+    position: absolute;
+    width: 52px;
+    height: 49px;
+    top: 701px;
+    left: 92px;
+    border-radius: 26px / 24.5px;
+    border: 1px solid;
+    border-color: #0fbfb0;
+    box-shadow: 0px 0px 4px #0fbfb0;
+}
+
+.contactanos .vector {
+    position: absolute;
+    width: 25px;
+    height: 24px;
+    top: 11px;
+    left: 13px;
+}
+
+.contactanos .img-wrapper {
+    position: absolute;
+    width: 52px;
+    height: 49px;
+    top: 701px;
+    left: 250px;
+    border-radius: 26px / 24.5px;
+    border: 1px solid;
+    border-color: #0fbfb0;
+    box-shadow: 0px 0px 4px #0fbfb0;
+}
+
+.contactanos .img {
+    position: absolute;
+    width: 25px;
+    height: 24px;
+    top: 11px;
+    left: 12px;
+}
+
+.contactanos .text-wrapper-5 {
+    position: absolute;
+    top: 752px;
+    left: 52px;
+    font-family: "Poppins-MediumItalic", Helvetica;
+    font-weight: 500;
+    font-style: italic;
+    color: #0fbfb0;
+    font-size: 10px;
+    text-align: center;
+    letter-spacing: 0;
+    line-height: normal;
+}
+
+.contactanos .text-wrapper-6 {
+    position: absolute;
+    top: 752px;
+    left: 229px;
+    font-family: "Poppins-MediumItalic", Helvetica;
+    font-weight: 500;
+    font-style: italic;
+    color: #0fbfb0;
+    font-size: 10px;
+    text-align: center;
+    letter-spacing: 0;
+    line-height: normal;
+}
+
+.contactanos .recurso {
+    position: absolute;
+    width: 38px;
+    height: 37px;
+    top: 30px;
+    left: 68px;
+    object-fit: cover;
+}
+
+.contactanos .vector-2 {
+    position: absolute;
+    width: 31px;
+    height: 28px;
+    top: 35px;
+    left: 21px;
+}

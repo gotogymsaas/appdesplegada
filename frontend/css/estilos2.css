@@ -1,0 +1,73 @@
+body {
+  margin: 0;
+  padding: 0;
+  background-color: #101012;
+  font-family: 'Poppins', sans-serif;
+}
+
+.pantalla-seleccion {
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: space-around;
+  padding: 40px 20px;
+}
+
+.logo-container {
+  margin-top: 40px;
+}
+
+.logo-circular {
+  width: 240px;
+  height: 240px;
+  border-radius: 50%;
+  background-color: #101012;
+  border: 2px solid #0FBFB0;
+  box-shadow: 0 0 15px #0FBFB0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.logo-img {
+  width: 140px;
+  height: auto;
+}
+
+.botones {
+  display: flex;
+  flex-direction: column;
+  gap: 30px;
+  margin-top: 40px;
+}
+
+.btn {
+  width: 309px;
+  height: 45px;
+  border-radius: 19px;
+  line-height: 45px;
+  text-align: center;
+  text-decoration: none;
+  display: block;
+  font-size: 15px;
+  font-family: 'Poppins', sans-serif;
+}
+
+.btn-dorado {
+  color: #D4B46A;
+  background-color: #101012;
+  border: 1px solid #D4B46A;
+  box-shadow: 0 0 4px #D4B46A;
+  font-weight: 600;       /* SemiBold */
+  font-style: italic;     /* Italic */
+}
+
+.btn-turquesa {
+  color: #0FBFB0;
+  background-color: #101012;
+  border: 1px solid #0FBFB0;
+  box-shadow: 0 0 4px #0FBFB0;
+  font-weight: 700;       /* Bold */
+  font-style: italic;     /* Italic */
+}

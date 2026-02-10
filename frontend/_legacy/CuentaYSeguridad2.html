@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Cuenta y Seguridad</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body {
+      background-color: #101012;
+      font-family: 'Poppins', sans-serif;
+    }
+
+    .input-line {
+      border-bottom: 2px solid #0FBFB0;
+      background-color: transparent;
+      color: #E0E3E6;
+      outline: none;
+      padding: 8px 0;
+      width: 100%;
+    }
+
+    .input-line::placeholder {
+      color: #E0E3E6;
+      opacity: 0.6;
+    }
+
+    .neon-btn-gold {
+      border: 2px solid #D4B46A;
+      color: #D4B46A;
+      background-color: transparent;
+      padding: 10px 0;
+      border-radius: 9999px;
+      text-align: center;
+      transition: all 0.3s ease;
+    }
+
+    .neon-btn-gold:hover {
+      background-color: #D4B46A;
+      color: #101012;
+    }
+
+    .neon-border {
+      border: 1px solid #0FBFB0;
+      box-shadow: 0 0 8px #0FBFB0;
+      border-radius: 20px;
+      padding: 20px;
+    }
+  </style>
+</head>
+<body class="flex flex-col items-center justify-start px-4 pt-6 text-white min-h-screen">
+
+  <!-- Header -->
+  <div class="w-full flex justify-between items-center mb-6 px-2">
+    <div class="text-3xl text-[#0FBFB0]">&#9776;</div>
+    <img src="logo.png" alt="Logo" class="w-10 h-10" />
+  </div>
+
+  <!-- Perfil -->
+  <div class="flex items-center gap-4 mb-6">
+    <div class="w-16 h-16 rounded-full bg-white"></div>
+    <div class="text-left">
+      <p class="text-white text-lg font-semibold italic leading-tight">Cuenta y</p>
+      <p class="text-white text-lg font-semibold italic leading-tight">seguridad</p>
+    </div>
+  </div>
+
+  <!-- Formulario -->
+  <form class="w-full neon-border bg-[#101012]">
+    <h2 class="text-center text-[#0FBFB0] font-medium italic mb-4">Cambiar contraseña</h2>
+
+    <div class="mb-4">
+      <label class="block text-[#0FBFB0] italic mb-1">Contraseña anterior</label>
+      <input type="password" placeholder="***********" class="input-line" />
+    </div>
+
+    <div class="mb-4">
+      <label class="block text-[#0FBFB0] italic mb-1">Contraseña nueva</label>
+      <input type="password" placeholder="***********" class="input-line" />
+    </div>
+
+    <div class="mb-6">
+      <label class="block text-[#0FBFB0] italic mb-1">Confirmar Contraseña</label>
+      <input type="password" placeholder="***********" class="input-line" />
+    </div>
+
+    <button type="submit" class="w-full neon-btn-gold">Cambiar contraseña</button>
+  </form>
+
+</body>
+</html>

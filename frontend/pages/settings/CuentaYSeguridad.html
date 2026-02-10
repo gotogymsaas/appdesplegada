@@ -1,0 +1,400 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Cuenta y Seguridad - GoToGym</title>
+  <link rel="stylesheet" href="../../css/../../css/theme.css">
+  <style>
+    .page-container {
+      width: 100%;
+      max-width: 450px;
+      margin: 0 auto;
+      padding: 20px;
+    }
+
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 30px;
+        }
+
+        .header-left {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .back-btn {
+            background: none;
+            border: none;
+            color: var(--text-muted);
+            font-size: 22px;
+            cursor: pointer;
+            padding: 0;
+        }
+
+        .page-title {
+            font-size: 24px;
+            color: var(--secondary);
+        }
+
+    .menu-btn {
+      font-size: 24px;
+      color: var(--primary);
+      background: none;
+      border: none;
+      cursor: pointer;
+    }
+
+    .avatar-edit-section {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      margin-bottom: 30px;
+    }
+
+    .avatar-preview {
+      width: 100px;
+      height: 100px;
+      border-radius: 50%;
+      background: #222;
+      border: 2px solid var(--primary);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 40px;
+      color: var(--secondary);
+      margin-bottom: 15px;
+      position: relative;
+    }
+
+    .change-photo-btn {
+      color: var(--primary);
+      font-size: 14px;
+      background: none;
+      border: none;
+      cursor: pointer;
+      text-decoration: underline;
+    }
+
+    .section-label {
+      color: var(--text-muted);
+      font-size: 14px;
+      margin-bottom: 15px;
+      margin-top: 30px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+      padding-bottom: 5px;
+    }
+
+    .input-field[readonly] {
+      color: var(--text-muted);
+      background: rgba(255, 255, 255, 0.02);
+      cursor: not-allowed;
+    }
+  </style>
+</head>
+
+<body>
+    
+    <div class="page-container">
+        <!-- Header -->
+        <div class="header">
+            <div class="header-left">
+                <button class="back-btn" onclick="goBack()" aria-label="Volver">←</button>
+                <h1 class="page-title">Cuenta</h1>
+            </div>
+            <button class="menu-btn" onclick="toggleMenu()">☰</button>
+        </div>
+        
+        <!-- Avatar -->
+        <div class="avatar-edit-section">
+            <!-- Image or Default Initials -->
+            <div class="avatar-preview" id="avatarPreview" style="overflow: hidden;">U</div>
+            <button class="change-photo-btn" onclick="document.getElementById('fileInput').click()">Cambiar Foto</button>
+            <input type="file" id="fileInput" accept="image/*" style="display: none;" onchange="previewImage(event)">
+        </div>
+        
+        <!-- Form -->
+        <form id="profileForm" onsubmit="event.preventDefault(); saveChanges();">
+            <div class="section-label">Información Personal</div>
+            
+            <div class="form-group">
+                <input type="text" id="full_name" class="input-field" placeholder=" ">
+                    <label class="input-label">Nombre y Apellido</label>
+            </div>
+
+            <div class="form-group">
+                <input type="text" id="username" class="input-field" placeholder=" " required readonly>
+                    <label class="input-label">Nombre de Usuario</label>
+            </div>
+            
+            <div class="form-group">
+                <input type="email" id="email" class="input-field" placeholder=" " required>
+                    <label class="input-label">Correo Electrónico</label>
+            </div>
+
+            <div class="form-group">
+                <input type="number" id="weight" class="input-field" placeholder=" " min="0" step="0.1">
+                    <label class="input-label">Peso (kg)</label>
+            </div>
+
+            <div class="form-group">
+                <input type="number" id="age" class="input-field" placeholder=" " min="0" step="1">
+                    <label class="input-label">Edad</label>
+            </div>
+
+            <div class="form-group">
+                <input type="number" id="height" class="input-field" placeholder=" " min="0" step="0.01">
+                    <label class="input-label">Altura (m)</label>
+            </div>
+            
+            <div class="form-group">
+                <input type="text" id="profession" class="input-field" placeholder=" ">
+                    <label class="input-label">Profesión / Ocupación</label>
+            </div>
+
+            <div class="form-group">
+                <input type="text" id="favorite_exercise_time" class="input-field" placeholder=" ">
+                    <label class="input-label">Hora de ejercicio favorita</label>
+            </div>
+
+            <div class="form-group">
+                <input type="text" id="favorite_sport" class="input-field" placeholder=" ">
+                    <label class="input-label">Que deporte practicas o realizas</label>
+            </div>
+            
+            <div class="section-label">Seguridad</div>
+            
+            <div class="form-group">
+                <input type="password" id="password" class="input-field" placeholder=" ">
+                    <label class="input-label">Nueva Contraseña (Opcional)</label>
+            </div>
+
+            <div class="form-group">
+                <input type="password" id="password_confirm" class="input-field" placeholder=" ">
+                    <label class="input-label">Confirmar Contraseña</label>
+            </div>
+
+            <div id="passwordHelp" style="color: var(--text-muted); font-size: 12px; margin-top: -10px; margin-bottom: 12px;">
+                Mínimo 8 caracteres, 1 mayúscula y 1 número.
+            </div>
+
+            <div style="display:flex; align-items:center; gap:10px; margin-bottom: 10px;">
+                <button type="button" class="btn btn-outline-teal" style="width:auto; margin-bottom:0;" onclick="togglePassword()">Ver / Ocultar</button>
+                <span id="passwordStrength" style="color: var(--text-muted); font-size: 12px;">Fortaleza: —</span>
+            </div>
+            
+            <button type="submit" class="btn btn-primary" style="margin-top: 30px;">
+                Guardar Cambios
+            </button>
+        </form>
+    </div>
+    
+    <!-- Menu Overlay -->
+    <div id="menuOverlay" class="menu-overlay">
+        <button class="menu-close-btn" onclick="toggleMenu()">×</button>
+        <ul class="menu-links">
+            <li><a href="../profile/Perfil.html">Perfil</a></li>
+            <li><a href="../settings/Configuracion.html">Configuración</a></li>
+            <li><a href="../plans/Planes.html">Planes</a></li>
+            <li><a href="../info/SobreNosotros.html">Sobre Nosotros</a></li>
+            <li><a href="../info/Contactanos.html">Contacto</a></li>
+            <li><a href="#" onclick="cerrarSesion()" style="color: var(--error)">Cerrar Sesión</a></li>
+        </ul>
+    </div>
+    
+    <!-- Toast Notification -->
+    <div id="toast" class="toast"></div>
+    
+    <script src="../../js/../../js/config.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const userData = localStorage.getItem("user");
+            if (userData) {
+                const user = JSON.parse(userData);
+                document.getElementById('username').value = user.username || "";
+                document.getElementById('email').value = user.email || "";
+                document.getElementById('full_name').value = user.full_name || "";
+                
+                // Show avatar or Initial
+                const preview = document.getElementById('avatarPreview');
+                if (user.profile_picture) {
+                    // Construct full URL. user.profile_picture might be "/media/..."
+                    const baseUrl = API_URL.replace('/api/', '');
+                    preview.innerHTML = `<img src="${baseUrl}${user.profile_picture}" style="width:100%; height:100%; object-fit:cover;">`;
+                } else {
+                    preview.textContent = (user.username || "U").charAt(0).toUpperCase();
+                }
+                
+                document.getElementById('profession').value = user.profession || "";
+                document.getElementById('weight').value = user.weight ?? "";
+                document.getElementById('age').value = user.age ?? "";
+                document.getElementById('height').value = user.height ?? "";
+                document.getElementById('favorite_exercise_time').value = user.favorite_exercise_time || "";
+                document.getElementById('favorite_sport').value = user.favorite_sport || "";
+            }
+        });
+        
+        function toggleMenu() {
+            const menu = document.getElementById('menuOverlay');
+            menu.classList.toggle('active');
+        }
+
+        function goBack() {
+            if (window.history.length > 1) {
+                window.history.back();
+            } else {
+                window.location.href = '../profile/Perfil.html';
+            }
+        }
+        
+        async function saveChanges() {
+            const username = document.getElementById('username').value;
+            const email = document.getElementById('email').value;
+            const fileInput = document.getElementById('fileInput');
+            const fullName = document.getElementById('full_name').value;
+            const profession = document.getElementById('profession').value;
+            const favoriteExerciseTime = document.getElementById('favorite_exercise_time').value;
+            const favoriteSport = document.getElementById('favorite_sport').value;
+            const weight = document.getElementById('weight').value;
+            const age = document.getElementById('age').value;
+            const height = document.getElementById('height').value;
+            const password = document.getElementById('password').value;
+            const passwordConfirm = document.getElementById('password_confirm').value;
+            
+            if (!username || !email) {
+                showToast("Nombre y correo son obligatorios", "error");
+                return;
+            }
+
+            if (password || passwordConfirm) {
+                if (password !== passwordConfirm) {
+                    showToast("Las contraseñas no coinciden", "error");
+                    return;
+                }
+                if (!isPasswordStrong(password)) {
+                    showToast("La contraseña no cumple los requisitos", "error");
+                    return;
+                }
+            }
+            
+            const formData = new FormData();
+            formData.append('username', username);
+            formData.append('email', email);
+            formData.append('full_name', fullName);
+            formData.append('profession', profession);
+            formData.append('favorite_exercise_time', favoriteExerciseTime);
+            formData.append('favorite_sport', favoriteSport);
+            formData.append('weight', weight);
+            formData.append('age', age);
+            formData.append('height', height);
+            if (password) {
+                formData.append('password', password);
+                formData.append('password_confirm', passwordConfirm);
+            }
+            
+            if (fileInput.files.length > 0) {
+                formData.append('profile_picture', fileInput.files[0]);
+            }
+            
+            try {
+                const response = await authFetch(`${API_URL}users/update_profile/`, {
+                    method: 'POST',
+                    body: formData // No headers needed for FormData
+                });
+                
+                if (response.ok) {
+                    const updatedUser = await response.json();
+                    
+                    // Update LocalStorage
+                    // Merge with existing to keep other fields (like token if separate)
+                    const current = JSON.parse(localStorage.getItem("user") || "{}");
+                    const finalUser = { ...current, ...updatedUser };
+                    
+                    localStorage.setItem("user", JSON.stringify(finalUser));
+                    
+                    showToast("Perfil actualizado correctamente", "success");
+                    
+                    setTimeout(() => {
+                        // Optional: Redirect or refresh
+                    }, 1000);
+                    
+                } else {
+                    const err = await response.json();
+                    showToast("Error: " + (err.error || "Desconocido"), "error");
+                }
+            } catch (error) {
+                console.error(error);
+                showToast("Error de conexión", "error");
+            }
+        }
+        
+        function previewImage(event) {
+            const file = event.target.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = function (e) {
+                    const preview = document.getElementById('avatarPreview');
+                    preview.innerHTML = `<img src="${e.target.result}" style="width:100%; height:100%; object-fit:cover;">`;
+                }
+                reader.readAsDataURL(file);
+            }
+        }
+        
+        function cerrarSesion() {
+            localStorage.removeItem("user");
+            localStorage.removeItem("isLoggedIn");
+            window.location.href='../../auth/indexInicioDeSesion.html';
+        }
+        
+        function showToast(message, type = "success") {
+            const toast = document.getElementById("toast");
+            toast.textContent = message;
+            toast.className = `toast ${type}`;
+            toast.style.display = "block";
+            setTimeout(() => toast.style.display = "none", 3000);
+        }
+
+        function togglePassword() {
+            const pass = document.getElementById('password');
+            const confirm = document.getElementById('password_confirm');
+            const nextType = pass.type === 'password' ? 'text' : 'password';
+            pass.type = nextType;
+            confirm.type = nextType;
+        }
+
+        function isPasswordStrong(pwd) {
+            if (!pwd || pwd.length < 8) return false;
+            if (!/[A-Z]/.test(pwd)) return false;
+            if (!/[0-9]/.test(pwd)) return false;
+            return true;
+        }
+
+        function updatePasswordStrength() {
+            const pwd = document.getElementById('password').value;
+            const label = document.getElementById('passwordStrength');
+            if (!pwd) {
+                label.textContent = "Fortaleza: —";
+                return;
+            }
+            const hasUpper = /[A-Z]/.test(pwd);
+            const hasNum = /[0-9]/.test(pwd);
+            const hasLen = pwd.length >= 8;
+            const score = [hasUpper, hasNum, hasLen].filter(Boolean).length;
+            if (score <= 1) {
+                label.textContent = "Fortaleza: Débil";
+            } else if (score === 2) {
+                label.textContent = "Fortaleza: Media";
+            } else {
+                label.textContent = "Fortaleza: Fuerte";
+            }
+        }
+
+        document.getElementById('password')?.addEventListener('input', updatePasswordStrength);
+    </script>
+</body>
+
+</html>

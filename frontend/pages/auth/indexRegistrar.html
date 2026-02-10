@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GoToGym - Registro</title>
+<link rel="stylesheet" href="../../css/../../css/theme.css">
+<style>
+.page-container {
+display: flex;
+flex-direction: column;
+align-items: center;
+justify-content: center;
+width: 100%;
+max-width: 350px;
+}
+select.input-field {
+color: var(--text-main);
+background: #050505;
+/* Solid bg for dropdown */
+padding-left: 0;
+appearance: none;
+/* Custom arrow if needed, but default is mostly fine */
+}
+</style>
+</head>
+<body>
+<div class="page-container">
+<!-- Header -->
+<h2 style="color: var(--secondary); margin-bottom: 30px; font-size:
+32px;">Registro</h2>
+<!-- Formulario -->
+<form id="registerForm" onsubmit="event.preventDefault();" style="width:
+100%;">
+<div class="form-group">
+<input type="text" id="username" class="input-field" placeholder=" "
+required>
+<label for="username" class="input-label">Nombre y Apellido</label>
+</div>
+<div class="form-group">
+<input type="email" id="email" class="input-field" placeholder=" "
+required>
+<label for="email" class="input-label">Email</label>
+</div>
+<div class="form-group">
+<input type="password" id="password" class="input-field" placeholder="
+" required>
+<label for="password" class="input-label">Contraseña</label>
+</div>
+<div class="form-group">
+  <input type="password" id="password2" class="input-field" placeholder=" " required>
+  <label for="password2" class="input-label">Confirmar Contraseña</label>
+</div>
+<div id="passwordHelp" style="color: var(--text-muted); font-size: 12px; margin-top: -10px; margin-bottom: 12px;">
+  Mínimo 8 caracteres, 1 mayúscula y 1 número.
+</div>
+<div style="display:flex; align-items:center; gap:10px; margin-bottom: 10px;">
+  <button type="button" class="btn btn-outline-teal" style="width:auto; margin-bottom:0;" onclick="togglePassword()">Ver / Ocultar</button>
+  <span id="passwordStrength" style="color: var(--text-muted); font-size: 12px;">Fortaleza: —</span>
+</div>
+
+
+<!-- 🧠 Planes disponibles -->
+<div class="form-group" style="margin-top: 30px;">
+  <h3 style="color: var(--secondary); font-size: 18px; margin-bottom: 14px;">
+    Planes disponibles
+  </h3>
+
+  <!-- Plan Gratuito -->
+  <label style="
+    display: block;
+    border: 1px solid rgba(255,255,255,0.12);
+    border-radius: 14px;
+    padding: 14px;
+    margin-bottom: 12px;
+    cursor: pointer;
+  ">
+    <input
+      type="radio"
+      name="plan"
+      value="Gratis"
+      checked
+      style="margin-right: 8px;"
+    >
+    <strong style="color: #E6E6E6;">Plan Gratuito</strong>
+    <p style="margin: 6px 0 0 26px; font-size: 13px; color: var(--text-muted);">
+      Empieza a entender tu bienestar.<br>
+      Observa tu estado actual y explora GoToGym.
+    </p>
+  </label>
+
+  <!-- Plan Premium -->
+  <label style="
+    display: block;
+    border: 1px solid rgba(212,180,106,0.35);
+    border-radius: 14px;
+    padding: 14px;
+    cursor: pointer;
+  ">
+    <input
+      type="radio"
+      name="plan"
+      value="Premium"
+      style="margin-right: 8px;"
+    >
+    <strong style="color: var(--secondary);">
+      Plan Premium <span style="font-size: 12px; opacity: 0.8;">(opcional)</span>
+    </strong>
+    <p style="margin: 6px 0 0 26px; font-size: 13px; color: var(--text-muted);">
+      Evoluciona con acompañamiento inteligente.<br>
+      Registra tu progreso, accede a nuevas opciones y construye bienestar en el tiempo.
+    </p>
+  </label>
+</div>
+
+<!-- ✅ NUEVO: Aceptación de Términos y Condiciones -->
+<div class="form-group" style="margin-top: 10px;">
+  <label style="display:flex; gap:10px; align-items:flex-start; color: var(--text-muted); font-size: 13px; line-height: 1.3;">
+    <input type="checkbox" id="termsAccepted" style="margin-top: 3px;">
+    <span>
+      Acepto los
+      <a
+        href="/pages/auth/POPup.html"
+        target="_blank"
+        style="color: var(--primary); text-decoration: none;"
+      >
+        Términos y Condiciones
+      </a>
+      
+    </span>
+  </label>
+</div>
+
+</select>
+<label for="plan" class="input-label" style="top: -10px; font-size:
+12px; color: var(--primary);">Plan
+Seleccionado</label>
+</div>
+<div style="margin-top: 40px;">
+<button type="submit" id="btnRegister" class="btn btn-primary">
+Crear Cuenta
+</button>
+<p style="text-align: center; color: var(--text-muted); font-size:
+14px; margin-top: 20px;">
+¿Ya tienes cuenta?
+<a href="../auth/indexInicioDeSesion.html" style="color:
+var(--primary); text-decoration: none;">Inicia
+Sesión</a>
+</p>
+</div>
+</form>
+</div>
+<!-- Toast Notification -->
+<div id="toast" class="toast"></div>
+<!-- Scripts -->
+<script src="../../js/../../js/config.js"></script>
+<script>
+document.addEventListener("DOMContentLoaded", () => {
+const btnRegister = document.getElementById("btnRegister");
+async function handleRegister() {
+    const fullName = document.getElementById("username").value.trim(); // Nombre y Apellido (visible)
+    const email = document.getElementById("email").value.trim().toLowerCase(); // Email (visible)
+    const username = email; // ✅ username técnico = email
+    const password = document.getElementById("password").value.trim();
+    const password2 = document.getElementById("password2").value.trim();
+const plan = document.querySelector('input[name="plan"]:checked')?.value || "Gratis";
+const termsAccepted = document.getElementById("termsAccepted")?.checked;
+const termsVersion = localStorage.getItem("termsVersion") || "2025-04-07";
+
+if (!username || !email || !password) {
+showToast("Por favor completa todos los campos", "error");
+return;
+}
+if (!termsAccepted) {
+showToast("Debes aceptar los Términos y Condiciones", "error");
+return;
+}
+localStorage.setItem("termsAccepted", termsAccepted ? "true" : "false");
+if (password !== password2) {
+showToast("Las contraseñas no coinciden", "error");
+return;
+}
+if (!isPasswordStrong(password)) {
+showToast("La contraseña no cumple los requisitos", "error");
+return;
+}
+try {
+btnRegister.textContent = "Registrando...";
+btnRegister.disabled = true;
+const res = await fetch(API_URL + "register/", {
+method: "POST",
+headers: { "Content-Type": "application/json" },
+body: JSON.stringify({ username, email, password, plan, fullName, termsAccepted, termsVersion, termsSource: "web" }),
+});
+const data = await res.json();
+if (res.ok) {
+showToast("¡Registro exitoso! Redirigiendo...", "success");
+setTimeout(() => {
+window.location.href='../../pages/auth/indexInicioDeSesion.html';
+}, 2000);
+} else {
+showToast(data.error || "No se pudo registrar", "error");
+btnRegister.textContent = "Crear Cuenta";
+btnRegister.disabled = false;
+}
+} catch (error) {
+console.error(error);
+showToast("Error de conexión", "error");
+btnRegister.textContent = "Crear Cuenta";
+btnRegister.disabled = false;
+}
+}
+btnRegister.addEventListener("click", handleRegister);
+function showToast(message, type = "success") {
+const toast = document.getElementById("toast");
+toast.textContent = message;
+toast.className = `toast ${type}`;
+toast.style.display = "block";
+setTimeout(() => toast.style.display = "none", 3000);
+}
+
+function togglePassword() {
+const pass = document.getElementById('password');
+const confirm = document.getElementById('password2');
+const nextType = pass.type === 'password' ? 'text' : 'password';
+pass.type = nextType;
+confirm.type = nextType;
+}
+
+function isPasswordStrong(pwd) {
+if (!pwd || pwd.length < 8) return false;
+if (!/[A-Z]/.test(pwd)) return false;
+if (!/[0-9]/.test(pwd)) return false;
+return true;
+}
+
+function updatePasswordStrength() {
+const pwd = document.getElementById('password').value;
+const label = document.getElementById('passwordStrength');
+if (!pwd) {
+label.textContent = "Fortaleza: —";
+return;
+}
+const hasUpper = /[A-Z]/.test(pwd);
+const hasNum = /[0-9]/.test(pwd);
+const hasLen = pwd.length >= 8;
+const score = [hasUpper, hasNum, hasLen].filter(Boolean).length;
+if (score <= 1) {
+label.textContent = "Fortaleza: Débil";
+} else if (score === 2) {
+label.textContent = "Fortaleza: Media";
+} else {
+label.textContent = "Fortaleza: Fuerte";
+}
+}
+
+document.getElementById('password')?.addEventListener('input', updatePasswordStrength);
+});
+</script>
+</body>
+</html>

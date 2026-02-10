@@ -1,0 +1,321 @@
+.sobre-nosotros-men {
+    position: relative;
+    width: 393px;
+    height: 852px;
+    background-color: #ffffff;
+    overflow: hidden;
+}
+
+.sobre-nosotros-men .overlap-group {
+    position: absolute;
+    width: 411px;
+    height: 856px;
+    top: 0;
+    left: -7px;
+}
+
+.sobre-nosotros-men .blank-profile {
+    position: absolute;
+    width: 118px;
+    height: 118px;
+    top: 172px;
+    left: 145px;
+    object-fit: cover;
+}
+
+.sobre-nosotros-men .rectangle {
+    position: absolute;
+    width: 393px;
+    height: 852px;
+    top: 0;
+    left: 7px;
+    background-color: #101012;
+}
+
+.sobre-nosotros-men .text-wrapper {
+    position: absolute;
+    width: 111px;
+    top: 296px;
+    left: 148px;
+    font-family: "Poppins-MediumItalic", Helvetica;
+    font-weight: 500;
+    font-style: italic;
+    color: #e0e3e6;
+    font-size: 16px;
+    letter-spacing: 0;
+    line-height: normal;
+    white-space: nowrap;
+}
+
+.sobre-nosotros-men .div {
+    position: absolute;
+    width: 111px;
+    top: 310px;
+    left: 148px;
+    font-family: "Poppins-MediumItalic", Helvetica;
+    font-weight: 500;
+    font-style: italic;
+    color: #e0e3e6;
+    font-size: 16px;
+    text-align: center;
+    letter-spacing: 0;
+    line-height: normal;
+    white-space: nowrap;
+}
+
+.sobre-nosotros-men .ellipse {
+    position: absolute;
+    width: 60px;
+    height: 58px;
+    top: 362px;
+    left: 64px;
+    border-radius: 30px / 29px;
+    border: 1px solid;
+    border-color: #d4b46a;
+    box-shadow: 0px 0px 4px #d4b46a;
+}
+
+.sobre-nosotros-men .ellipse-2 {
+    position: absolute;
+    width: 60px;
+    height: 58px;
+    top: 362px;
+    left: 137px;
+    border-radius: 30px / 29px;
+    border: 1px solid;
+    border-color: #d4b46a;
+    box-shadow: 0px 0px 4px #d4b46a;
+}
+
+.sobre-nosotros-men .ellipse-3 {
+    position: absolute;
+    width: 130px;
+    height: 125px;
+    top: 169px;
+    left: 139px;
+    background-color: #101012;
+    border-radius: 65px / 62.5px;
+    border: 1px solid;
+    border-color: #0fbfb0;
+    box-shadow: 0px 1px 2px #0fbfb0;
+}
+
+.sobre-nosotros-men .ellipse-4 {
+    position: absolute;
+    width: 60px;
+    height: 58px;
+    top: 362px;
+    left: 210px;
+    border-radius: 30px / 29px;
+    border: 1px solid;
+    border-color: #d4b46a;
+    box-shadow: 0px 0px 4px #d4b46a;
+}
+
+.sobre-nosotros-men .ellipse-5 {
+    position: absolute;
+    width: 60px;
+    height: 58px;
+    top: 362px;
+    left: 283px;
+    border-radius: 30px / 29px;
+    border: 1px solid;
+    border-color: #d4b46a;
+    box-shadow: 0px 0px 4px #d4b46a;
+}
+
+.sobre-nosotros-men .text-wrapper-2 {
+    position: absolute;
+    top: 494px;
+    left: 100px;
+    font-family: "Poppins-MediumItalic", Helvetica;
+    font-weight: 500;
+    font-style: italic;
+    color: #101012;
+    font-size: 20px;
+    letter-spacing: 0;
+    line-height: normal;
+}
+
+.sobre-nosotros-men .rectangle-2 {
+    position: absolute;
+    width: 411px;
+    height: 400px;
+    top: 456px;
+    left: 0;
+    border: 1px solid;
+    border-color: #0fbfb0;
+    box-shadow: 0px 0px 4px #0fbfb0;
+}
+
+.sobre-nosotros-men .text-wrapper-3 {
+    position: absolute;
+    top: 97px;
+    left: 67px;
+    font-family: "Poppins-MediumItalic", Helvetica;
+    font-weight: 500;
+    font-style: italic;
+    color: #e0e3e6;
+    font-size: 36px;
+    letter-spacing: 0;
+    line-height: normal;
+}
+
+.sobre-nosotros-men .gotogym-es-una {
+    position: absolute;
+    width: 323px;
+    top: 510px;
+    left: 48px;
+    font-family: "Poppins-MediumItalic", Helvetica;
+    font-weight: 500;
+    font-style: italic;
+    color: #d4b46a;
+    font-size: 15px;
+    letter-spacing: 0;
+    line-height: normal;
+}
+
+.sobre-nosotros-men .recurso {
+    width: 38px;
+    height: 37px;
+    top: 34px;
+    left: 85px;
+    position: absolute;
+    object-fit: cover;
+}
+
+.sobre-nosotros-men .vector {
+    position: absolute;
+    width: 25px;
+    height: 24px;
+    top: 378px;
+    left: 154px;
+}
+
+.sobre-nosotros-men .img {
+    top: 378px;
+    left: 227px;
+    position: absolute;
+    width: 25px;
+    height: 24px;
+}
+
+.sobre-nosotros-men .vector-2 {
+    top: 378px;
+    left: 300px;
+    position: absolute;
+    width: 25px;
+    height: 24px;
+}
+
+.sobre-nosotros-men .vector-3 {
+    top: 379px;
+    left: 81px;
+    position: absolute;
+    width: 25px;
+    height: 24px;
+}
+
+.sobre-nosotros-men .rectangle-3 {
+    position: absolute;
+    width: 224px;
+    height: 852px;
+    top: 0;
+    left: 7px;
+    background-color: #101012e3;
+}
+
+.sobre-nosotros-men .recurso-2 {
+    width: 85px;
+    height: 82px;
+    top: 73px;
+    left: 77px;
+    position: absolute;
+    object-fit: cover;
+}
+
+.sobre-nosotros-men .rectangle-4 {
+    position: absolute;
+    width: 169px;
+    height: 31px;
+    top: 796px;
+    left: 32px;
+    background-color: #101012;
+    border-radius: 19px;
+    border: 1px solid;
+    border-color: #0fbfb0;
+    box-shadow: 0px 1px 4px #0fbfb0;
+}
+
+.sobre-nosotros-men .text-wrapper-4 {
+    position: absolute;
+    top: 281px;
+    left: 26px;
+    font-family: "Poppins-MediumItalic", Helvetica;
+    font-weight: 500;
+    font-style: italic;
+    color: #0fbfb0;
+    font-size: 19px;
+    letter-spacing: 0;
+    line-height: normal;
+}
+
+.sobre-nosotros-men .text-wrapper-5 {
+    position: absolute;
+    top: 801px;
+    left: 64px;
+    font-family: "Poppins-MediumItalic", Helvetica;
+    font-weight: 500;
+    font-style: italic;
+    color: #0fbfb0;
+    font-size: 13px;
+    letter-spacing: 0;
+    line-height: normal;
+}
+
+.sobre-nosotros-men .text-wrapper-6 {
+    position: absolute;
+    top: 351px;
+    left: 26px;
+    font-family: "Poppins-MediumItalic", Helvetica;
+    font-weight: 500;
+    font-style: italic;
+    color: #0fbfb0;
+    font-size: 19px;
+    letter-spacing: 0;
+    line-height: normal;
+}
+
+.sobre-nosotros-men .text-wrapper-7 {
+    position: absolute;
+    top: 425px;
+    left: 26px;
+    font-family: "Poppins-MediumItalic", Helvetica;
+    font-weight: 500;
+    font-style: italic;
+    color: #0fbfb0;
+    font-size: 19px;
+    letter-spacing: 0;
+    line-height: normal;
+}
+
+.sobre-nosotros-men .text-wrapper-8 {
+    position: absolute;
+    top: 498px;
+    left: 26px;
+    font-family: "Poppins-MediumItalic", Helvetica;
+    font-weight: 500;
+    font-style: italic;
+    color: #0fbfb0;
+    font-size: 19px;
+    letter-spacing: 0;
+    line-height: normal;
+}
+
+.sobre-nosotros-men .ellipse-6 {
+    position: absolute;
+    width: 116px;
+    height: 112px;
+    top: -1259px;
+    left: -3608px;
+}

@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cuestionario de Indice de Felicidad - GoToGym</title>
+    <link rel="stylesheet" href="../../css/theme.css">
+    <style>
+        .question-container {
+            background: var(--card-bg);
+            padding: 20px;
+            margin-bottom: 20px;
+            border-radius: var(--radius-md);
+            border: 1px solid rgba(15, 191, 176, 0.1);
+        }
+
+        .range-slider {
+            width: 100%;
+            margin: 15px 0;
+            accent-color: var(--primary);
+        }
+
+        .value-display {
+            color: var(--primary);
+            font-weight: bold;
+            float: right;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container" style="max-width: 600px; padding-top: 40px;">
+        <h2 style="text-align: center; margin-bottom: 30px; color: var(--secondary);">Ayudanos con honestidad ¿Cómo te sientes de 1 a 10 hoy?
+        </h2>
+
+        <form id="ifForm" onsubmit="calculateIF(event)">
+            <!-- 16 Variables -->
+            <div id="questions"></div>
+
+            <button type="submit" class="btn btn-primary" id="btnCalc">Calcular Ahora</button>
+            <button type="button" class="btn btn-outline-gold" onclick="window.history.back()"
+                style="margin-top: 10px;">Cancelar</button>
+        </form>
+    </div>
+
+    <!-- Toast -->
+    <div id="toast" class="toast"></div>
+
+    <script src="../../js/config.js"></script>
+    <script>
+        const variables = [
+            { id: "s_steps", label: "Nivel de actividad física (Pasos)" },
+            { id: "s_sleep", label: "Horas de sueño promedio" },
+            { id: "s_stress_inv", label: "Manejo del estrés (10 = Excelente, 1 = Pésimo)" },
+            { id: "s_intensity", label: "Intensidad de entrenamientos" },
+            { id: "s_emotional", label: "Estabilidad emocional" },
+            { id: "s_social", label: "Vida social y conexiones" },
+            { id: "s_hrv", label: "Variabilidad cardíaca (Sensación de recuperación)" },
+            { id: "s_bio_age", label: "Edad Biológica (Percepción de vitalidad)" },
+            { id: "s_sleep_quality", label: "Calidad del sueño" },
+            { id: "s_circadian", label: "Sincronización ritmo circadiano (Rutina)" },
+            { id: "s_focus", label: "Capacidad de enfoque" },
+            { id: "s_mood_sust", label: "Estado de ánimo sostenido" },
+            { id: "s_flow", label: "Frecuencia de estado de Flow" },
+            { id: "s_purpose", label: "Sentido de propósito" },
+            { id: "s_hobbies", label: "Tiempo dedicado a hobbies" },
+            { id: "s_prosocial", label: "Actitudes prosociales (Ayudar a otros)" }
+        ];
+
+        // Render inputs
+        const container = document.getElementById("questions");
+        variables.forEach(v => {
+            const div = document.createElement("div");
+            div.className = "question-container";
+            div.innerHTML = `
+                <label>${v.label} <span class="value-display" id="val_${v.id}">5</span></label>
+                <input type="range" class="range-slider" min="0" max="10" step="1" value="5" 
+                    id="${v.id}" oninput="document.getElementById('val_${v.id}').innerText = this.value">
+            `;
+            container.appendChild(div);
+        });
+
+        async function calculateIF(e) {
+            e.preventDefault();
+            const btn = document.getElementById("btnCalc");
+            btn.disabled = true;
+            btn.innerText = "Calculando...";
+
+            // Build payload
+            const scores = {};
+            variables.forEach(v => {
+                scores[v.id] = parseInt(document.getElementById(v.id).value);
+            });
+
+            // Get user
+            const userData = localStorage.getItem("user");
+            const user = userData ? JSON.parse(userData) : null;
+            const username = user ? user.username : null;
+
+            try {
+                console.log("DEBUG payload predict_if:", { username, scores });
+                console.log("DEBUG user localStorage:", user);
+               const res = await authFetch(API_URL + "predict_if/", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ username, scores })
+                });
+
+                const data = await res.json();
+
+                if (res.ok) {
+                    // Update local storage user data
+                    if (user) {
+                        user.happiness_index = data.happiness_index;
+                        localStorage.setItem("user", JSON.stringify(user));
+                    }
+                    showToast("¡Cálculo exitoso!", "success");
+                    setTimeout(() => window.location.href = "../profile/Perfil.html", 1500);
+                } else {
+                    showToast(data.error || "Error al calcular", "error");
+                    btn.disabled = false;
+                    btn.innerText = "Calcular Ahora";
+                }
+            } catch (err) {
+                console.error(err);
+                showToast("Error de conexión", "error");
+                btn.disabled = false;
+                btn.innerText = "Calcular Ahora";
+            }
+        }
+
+        function showToast(message, type = "success") {
+            const toast = document.getElementById("toast");
+            toast.textContent = message;
+            toast.className = `toast ${type}`;
+            toast.style.display = "block";
+            setTimeout(() => toast.style.display = "none", 3000);
+        }
+    </script>
+</body>
+
+</html>

@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>QR GoToGym</title>
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        background: #f6f6f6;
+        color: #222;
+        margin: 0;
+        padding: 24px;
+      }
+      h1 {
+        margin: 0 0 16px;
+        font-size: 22px;
+      }
+      .grid {
+        display: grid;
+        gap: 16px;
+        grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      }
+      .card {
+        background: #fff;
+        border-radius: 12px;
+        padding: 16px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+        text-align: center;
+      }
+      img {
+        width: 180px;
+        height: 180px;
+        object-fit: contain;
+      }
+      .url {
+        font-size: 12px;
+        color: #666;
+        word-break: break-all;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>QR GoToGym</h1>
+    <div class="grid">
+      <div class="card">
+        <h2>Inicio</h2>
+        <img src="assets/qr/gotogym-home.png" alt="QR Inicio" />
+        <div class="url">http://192.168.20.218:5500/</div>
+      </div>
+      <div class="card">
+        <h2>Sobre Nosotros</h2>
+        <img src="assets/qr/gotogym-sobrenosotros.png" alt="QR Sobre Nosotros" />
+        <div class="url">http://192.168.20.218:5500/pages/info/SobreNosotros.html</div>
+      </div>
+    </div>
+  </body>
+</html>

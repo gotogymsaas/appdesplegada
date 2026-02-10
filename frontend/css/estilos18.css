@@ -1,0 +1,296 @@
+.gestin-de-datos {
+    width: 393px;
+    height: 852px;
+    background-color: #101012;
+}
+
+.gestin-de-datos .overlap-group {
+    position: relative;
+    width: 356px;
+    height: 852px;
+}
+
+.gestin-de-datos .rectangle {
+    position: absolute;
+    width: 319px;
+    height: 78px;
+    top: 281px;
+    left: 37px;
+    border-radius: 20px;
+    border: 1px solid;
+    border-color: #0fbfb0;
+    box-shadow: 0px 0px 4px #0fbfb0;
+}
+
+.gestin-de-datos .polygon {
+    top: 317px;
+    position: absolute;
+    width: 20px;
+    height: 17px;
+    left: 319px;
+}
+
+.gestin-de-datos .ellipse {
+    width: 80px;
+    height: 78px;
+    top: 139px;
+    left: 52px;
+    border-radius: 40px / 39px;
+    position: absolute;
+    background-color: #ffffff;
+}
+
+.gestin-de-datos .div {
+    width: 54px;
+    height: 53px;
+    top: 293px;
+    left: 65px;
+    border-radius: 27px / 26.5px;
+    position: absolute;
+    background-color: #ffffff;
+}
+
+.gestin-de-datos .rectangle-2 {
+    position: absolute;
+    width: 280px;
+    height: 43px;
+    top: 383px;
+    left: 57px;
+    border-radius: 20px;
+    border: 1px solid;
+    border-color: #d4b46a;
+    box-shadow: 0px 0px 4px #d4b46a;
+}
+
+.gestin-de-datos .gesti-n-de-datos {
+    position: absolute;
+    top: 144px;
+    left: 143px;
+    font-family: "Poppins-MediumItalic", Helvetica;
+    font-weight: 500;
+    font-style: italic;
+    color: #e0e3e6;
+    font-size: 24px;
+    letter-spacing: 0;
+    line-height: normal;
+}
+
+.gestin-de-datos .text-wrapper {
+    position: absolute;
+    top: 307px;
+    left: 129px;
+    font-family: "Poppins-SemiBoldItalic", Helvetica;
+    font-weight: 600;
+    font-style: italic;
+    color: #0fbfb0;
+    font-size: 15px;
+    letter-spacing: 0;
+    line-height: normal;
+}
+
+.gestin-de-datos .text-wrapper-2 {
+    position: absolute;
+    top: 392px;
+    left: 139px;
+    font-family: "Poppins-SemiBoldItalic", Helvetica;
+    font-weight: 600;
+    font-style: italic;
+    color: #d4b46a;
+    font-size: 15px;
+    letter-spacing: 0;
+    line-height: normal;
+}
+
+.gestin-de-datos .rectangle-3 {
+    position: absolute;
+    width: 319px;
+    height: 78px;
+    top: 515px;
+    left: 37px;
+    border-radius: 20px;
+    border: 1px solid;
+    border-color: #0fbfb0;
+    box-shadow: 0px 0px 4px #0fbfb0;
+}
+
+.gestin-de-datos .img {
+    top: 551px;
+    position: absolute;
+    width: 20px;
+    height: 17px;
+    left: 319px;
+}
+
+.gestin-de-datos .ellipse-2 {
+    width: 54px;
+    height: 53px;
+    top: 527px;
+    left: 65px;
+    border-radius: 27px / 26.5px;
+    position: absolute;
+    background-color: #ffffff;
+}
+
+.gestin-de-datos .rectangle-4 {
+    position: absolute;
+    width: 280px;
+    height: 43px;
+    top: 617px;
+    left: 57px;
+    border-radius: 20px;
+    border: 1px solid;
+    border-color: #d4b46a;
+    box-shadow: 0px 0px 4px #d4b46a;
+}
+
+.gestin-de-datos .text-wrapper-3 {
+    position: absolute;
+    top: 541px;
+    left: 129px;
+    font-family: "Poppins-SemiBoldItalic", Helvetica;
+    font-weight: 600;
+    font-style: italic;
+    color: #0fbfb0;
+    font-size: 15px;
+    letter-spacing: 0;
+    line-height: normal;
+}
+
+.gestin-de-datos .text-wrapper-4 {
+    position: absolute;
+    top: 626px;
+    left: 139px;
+    font-family: "Poppins-SemiBoldItalic", Helvetica;
+    font-weight: 600;
+    font-style: italic;
+    color: #d4b46a;
+    font-size: 15px;
+    letter-spacing: 0;
+    line-height: normal;
+}
+
+.gestin-de-datos .text-wrapper-5 {
+    position: absolute;
+    top: 785px;
+    left: 57px;
+    font-family: "Poppins-MediumItalic", Helvetica;
+    font-weight: 500;
+    font-style: italic;
+    color: #101012;
+    font-size: 14px;
+    letter-spacing: 0;
+    line-height: normal;
+}
+
+.gestin-de-datos .recurso {
+    width: 38px;
+    height: 37px;
+    top: 35px;
+    left: 73px;
+    position: absolute;
+    object-fit: cover;
+}
+
+.gestin-de-datos .vector {
+    position: absolute;
+    width: 31px;
+    height: 28px;
+    top: 40px;
+    left: 26px;
+}
+
+.gestin-de-datos .rectangle-5 {
+    position: absolute;
+    width: 224px;
+    height: 852px;
+    top: 0;
+    left: 0;
+    background-color: #101012e3;
+}
+
+.gestin-de-datos .recurso-2 {
+    width: 85px;
+    height: 82px;
+    top: 73px;
+    left: 70px;
+    position: absolute;
+    object-fit: cover;
+}
+
+.gestin-de-datos .rectangle-6 {
+    position: absolute;
+    width: 169px;
+    height: 31px;
+    top: 796px;
+    left: 25px;
+    background-color: #101012;
+    border-radius: 19px;
+    border: 1px solid;
+    border-color: #0fbfb0;
+    box-shadow: 0px 1px 4px #0fbfb0;
+}
+
+.gestin-de-datos .text-wrapper-6 {
+    position: absolute;
+    top: 281px;
+    left: 19px;
+    font-family: "Poppins-MediumItalic", Helvetica;
+    font-weight: 500;
+    font-style: italic;
+    color: #0fbfb0;
+    font-size: 19px;
+    letter-spacing: 0;
+    line-height: normal;
+}
+
+.gestin-de-datos .text-wrapper-7 {
+    position: absolute;
+    top: 801px;
+    left: 57px;
+    font-family: "Poppins-MediumItalic", Helvetica;
+    font-weight: 500;
+    font-style: italic;
+    color: #0fbfb0;
+    font-size: 13px;
+    letter-spacing: 0;
+    line-height: normal;
+}
+
+.gestin-de-datos .text-wrapper-8 {
+    position: absolute;
+    top: 351px;
+    left: 19px;
+    font-family: "Poppins-MediumItalic", Helvetica;
+    font-weight: 500;
+    font-style: italic;
+    color: #0fbfb0;
+    font-size: 19px;
+    letter-spacing: 0;
+    line-height: normal;
+}
+
+.gestin-de-datos .text-wrapper-9 {
+    position: absolute;
+    top: 425px;
+    left: 19px;
+    font-family: "Poppins-MediumItalic", Helvetica;
+    font-weight: 500;
+    font-style: italic;
+    color: #0fbfb0;
+    font-size: 19px;
+    letter-spacing: 0;
+    line-height: normal;
+}
+
+.gestin-de-datos .text-wrapper-10 {
+    position: absolute;
+    top: 498px;
+    left: 19px;
+    font-family: "Poppins-MediumItalic", Helvetica;
+    font-weight: 500;
+    font-style: italic;
+    color: #0fbfb0;
+    font-size: 19px;
+    letter-spacing: 0;
+    line-height: normal;
+}

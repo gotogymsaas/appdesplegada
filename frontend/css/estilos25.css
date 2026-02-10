@@ -1,0 +1,338 @@
+.chat-con-las {
+    width: 393px;
+    height: 852px;
+    background-color: #e0e3e6;
+}
+
+.chat-con-las .overlap-group {
+    position: relative;
+    height: 852px;
+    background-color: #101012;
+}
+
+.chat-con-las .overlap {
+    position: absolute;
+    width: 188px;
+    height: 39px;
+    top: 429px;
+    left: 43px;
+}
+
+.chat-con-las .text-wrapper {
+    position: absolute;
+    top: 18px;
+    left: 25px;
+    font-family: "Poppins-Medium", Helvetica;
+    font-weight: 500;
+    color: #101012;
+    font-size: 14px;
+    letter-spacing: 0;
+    line-height: normal;
+}
+
+.chat-con-las .rectangle {
+    width: 188px;
+    height: 33px;
+    top: 0;
+    position: absolute;
+    left: 0;
+    background-color: #101012;
+    border-radius: 19px;
+    border: 1px solid;
+    border-color: #0fbfb0;
+    box-shadow: 0px 1px 4px #0fbfb0;
+}
+
+.chat-con-las .div {
+    position: absolute;
+    top: 6px;
+    left: 10px;
+    font-family: "Poppins-Medium", Helvetica;
+    font-weight: 500;
+    color: #0fbfb0;
+    font-size: 14px;
+    letter-spacing: 0;
+    line-height: normal;
+}
+
+.chat-con-las .overlap-2 {
+    position: absolute;
+    width: 200px;
+    height: 33px;
+    top: 502px;
+    left: 43px;
+}
+
+.chat-con-las .text-wrapper-2 {
+    position: absolute;
+    top: 0;
+    left: 40px;
+    font-family: "Poppins-Medium", Helvetica;
+    font-weight: 500;
+    color: #101012;
+    font-size: 14px;
+    letter-spacing: 0;
+    line-height: normal;
+}
+
+.chat-con-las .rectangle-2 {
+    width: 200px;
+    height: 32px;
+    top: 1px;
+    position: absolute;
+    left: 0;
+    background-color: #101012;
+    border-radius: 19px;
+    border: 1px solid;
+    border-color: #0fbfb0;
+    box-shadow: 0px 1px 4px #0fbfb0;
+}
+
+.chat-con-las .text-wrapper-3 {
+    position: absolute;
+    top: 6px;
+    left: 14px;
+    font-family: "Poppins-Medium", Helvetica;
+    font-weight: 500;
+    color: #0fbfb0;
+    font-size: 14px;
+    letter-spacing: 0;
+    line-height: normal;
+}
+
+.chat-con-las .overlap-3 {
+    position: absolute;
+    width: 223px;
+    height: 24px;
+    top: 369px;
+    left: 85px;
+}
+
+.chat-con-las .text-wrapper-4 {
+    position: absolute;
+    top: 0;
+    left: 0;
+    font-family: "Poppins-Medium", Helvetica;
+    font-weight: 500;
+    color: #e0e3e6;
+    font-size: 16px;
+    letter-spacing: 0;
+    line-height: normal;
+}
+
+.chat-con-las .recurso-wrapper {
+    position: absolute;
+    width: 38px;
+    height: 37px;
+    top: 35px;
+    left: 74px;
+    background-image: url(./img/recurso-16.png);
+    background-size: cover;
+    background-position: 50% 50%;
+}
+
+.chat-con-las .recurso {
+    width: 38px;
+    height: 37px;
+    top: 0;
+    left: 0;
+    position: absolute;
+    object-fit: cover;
+}
+
+.chat-con-las .overlap-4 {
+    position: absolute;
+    width: 255px;
+    height: 49px;
+    top: 790px;
+    left: 9px;
+    border-radius: 19px;
+    border: 1px solid;
+    border-color: #0fbfb0;
+}
+
+.chat-con-las .overlap-5 {
+    position: absolute;
+    width: 38px;
+    height: 37px;
+    top: 6px;
+    left: 4px;
+}
+
+.chat-con-las .ellipse {
+    position: absolute;
+    width: 38px;
+    height: 37px;
+    top: 0;
+    left: 0;
+}
+
+.chat-con-las .line {
+    width: 1px;
+    height: 17px;
+    top: 10px;
+    left: 19px;
+    position: absolute;
+    object-fit: cover;
+}
+
+.chat-con-las .img {
+    width: 17px;
+    height: 1px;
+    top: 18px;
+    left: 11px;
+    position: absolute;
+    object-fit: cover;
+}
+
+.chat-con-las .img-wrapper {
+    position: absolute;
+    width: 38px;
+    height: 37px;
+    top: 6px;
+    left: 83px;
+    background-image: url(./img/ellipse-8.svg);
+    background-size: 100% 100%;
+}
+
+.chat-con-las .recurso-2 {
+    width: 21px;
+    height: 22px;
+    top: 7px;
+    left: 8px;
+    position: absolute;
+    object-fit: cover;
+}
+
+.chat-con-las .overlap-6 {
+    position: absolute;
+    width: 38px;
+    height: 37px;
+    top: 6px;
+    left: 162px;
+    background-image: url(./img/ellipse-9.svg);
+    background-size: 100% 100%;
+}
+
+.chat-con-las .recurso-3 {
+    width: 26px;
+    height: 21px;
+    top: 7px;
+    left: 6px;
+    position: absolute;
+    object-fit: cover;
+}
+
+.chat-con-las .line-2 {
+    width: 393px;
+    height: 1px;
+    top: 779px;
+    left: 0;
+    position: absolute;
+    object-fit: cover;
+}
+
+.chat-con-las .p {
+    position: absolute;
+    top: 336px;
+    left: 59px;
+    font-family: "Poppins-MediumItalic", Helvetica;
+    font-weight: 500;
+    font-style: italic;
+    color: #e0e3e6;
+    font-size: 16px;
+    letter-spacing: 0;
+    line-height: normal;
+}
+
+.chat-con-las .div-wrapper {
+    position: absolute;
+    width: 119px;
+    height: 33px;
+    top: 469px;
+    left: 235px;
+    background-color: #101012;
+    border-radius: 19px;
+    border: 1px solid;
+    border-color: #0fbfb0;
+    box-shadow: 0px 1px 4px #0fbfb0;
+}
+
+.chat-con-las .text-wrapper-5 {
+    position: absolute;
+    top: 4px;
+    left: 10px;
+    font-family: "Poppins-Medium", Helvetica;
+    font-weight: 500;
+    color: #0fbfb0;
+    font-size: 14px;
+    letter-spacing: 0;
+    line-height: normal;
+}
+
+.chat-con-las .overlap-7 {
+    position: absolute;
+    width: 163px;
+    height: 33px;
+    top: 547px;
+    left: 191px;
+    background-color: #101012;
+    border-radius: 19px;
+    border: 1px solid;
+    border-color: #0fbfb0;
+    box-shadow: 0px 1px 4px #0fbfb0;
+}
+
+.chat-con-las .text-wrapper-6 {
+    position: absolute;
+    top: 5px;
+    left: 12px;
+    font-family: "Poppins-Medium", Helvetica;
+    font-weight: 500;
+    color: #0fbfb0;
+    font-size: 14px;
+    letter-spacing: 0;
+    line-height: normal;
+}
+
+.chat-con-las .overlap-8 {
+    position: absolute;
+    width: 199px;
+    height: 33px;
+    top: 592px;
+    left: 43px;
+    background-color: #101012;
+    border-radius: 19px;
+    border: 1px solid;
+    border-color: #0fbfb0;
+    box-shadow: 0px 1px 4px #0fbfb0;
+}
+
+.chat-con-las .text-wrapper-7 {
+    position: absolute;
+    top: 4px;
+    left: 13px;
+    font-family: "Poppins-Medium", Helvetica;
+    font-weight: 500;
+    color: #0fbfb0;
+    font-size: 14px;
+    letter-spacing: 0;
+    line-height: normal;
+}
+
+.chat-con-las .recurso-4 {
+    position: absolute;
+    width: 107px;
+    height: 104px;
+    top: 198px;
+    left: 141px;
+    object-fit: cover;
+}
+
+.chat-con-las .vector {
+    position: absolute;
+    width: 31px;
+    height: 28px;
+    top: 40px;
+    left: 26px;
+}

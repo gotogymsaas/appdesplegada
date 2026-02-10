@@ -1,0 +1,21 @@
+{
+  "name": "gotogym_project_janathan",
+  "version": "1.0.0",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": "",
+  "dependencies": {
+    "@capacitor/android": "^8.0.2",
+    "@capacitor/cli": "^8.0.2",
+    "@capacitor/core": "^8.0.2",
+    "@capacitor/ios": "^8.0.2",
+    "@capacitor/push-notifications": "^8.0.0",
+    "capacitor-google-fit": "^0.2.4",
+    "capacitor-healthkit": "^0.2.1"
+  }
+}

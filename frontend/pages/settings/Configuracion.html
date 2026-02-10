@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Configuración - GoToGym</title>
+    <link rel="stylesheet" href="../../css/../../css/theme.css">
+    <style>
+        .settings-container {
+            width: 100%;
+            max-width: 450px;
+            margin: 0 auto;
+            padding: 20px;
+            padding-bottom: 40px;
+        }
+
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 30px;
+        }
+
+        .page-title {
+            font-size: 24px;
+            color: var(--secondary);
+        }
+
+        .menu-btn {
+            font-size: 24px;
+            color: var(--primary);
+            background: none;
+            border: none;
+            cursor: pointer;
+        }
+
+        .setting-group {
+            margin-bottom: 30px;
+        }
+
+        .group-title {
+            font-size: 14px;
+            color: var(--text-muted);
+            margin-bottom: 10px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .setting-item {
+            background: var(--card-bg);
+            border-radius: var(--radius-md);
+            padding: 15px 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            cursor: pointer;
+            transition: 0.2s;
+        }
+
+        .setting-item:hover {
+            border-color: var(--primary);
+        }
+
+        .setting-label {
+            font-size: 16px;
+            color: var(--text-main);
+        }
+
+        .setting-value {
+            font-size: 14px;
+            color: var(--primary);
+        }
+
+        .toggle-switch {
+            position: relative;
+            width: 50px;
+            height: 26px;
+            background: #333;
+            border-radius: 20px;
+            transition: 0.3s;
+        }
+
+        .toggle-switch::after {
+            content: '';
+            position: absolute;
+            top: 3px;
+            left: 3px;
+            width: 20px;
+            height: 20px;
+            background: white;
+            border-radius: 50%;
+            transition: 0.3s;
+        }
+
+        .toggle-switch.active {
+            background: var(--primary);
+        }
+
+        .toggle-switch.active::after {
+            transform: translateX(24px);
+        }
+
+        .footer-links {
+            margin-top: 40px;
+            text-align: center;
+        }
+
+        .footer-link {
+            display: block;
+            color: var(--text-muted);
+            font-size: 14px;
+            margin-bottom: 10px;
+            text-decoration: none;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="settings-container">
+        <!-- Header -->
+        <div class="header">
+            <h1 class="page-title">Configuración</h1>
+            <button class="menu-btn" onclick="toggleMenu()">☰</button>
+        </div>
+
+        <!-- Group: Cuenta -->
+        <div class="setting-group">
+            <div class="group-title">Cuenta</div>
+
+            <div class="setting-item" onclick="window.location.href='../../pages/settings/CuentaYSeguridad.html'">
+                <span class="setting-label">Cuenta y Seguridad</span>
+                <span class="setting-value">›</span>
+            </div>
+
+            <div class="setting-item" onclick="window.location.href='../../pages/settings/Dispositivos.html'">
+                <span class="setting-label">Dispositivos</span>
+                <span class="setting-value">›</span>
+            </div>
+
+            <div class="setting-item" onclick="window.location.href='../../pages/plans/Planes.html'">
+                <span class="setting-label">Mis Planes</span>
+                <span class="setting-value">Gratis</span>
+            </div>
+        </div>
+
+        <!-- Group: Preferencias -->
+        <div class="setting-group">
+            <div class="group-title">Preferencias</div>
+
+            <div class="setting-item">
+                <span class="setting-label">Notificaciones</span>
+                <div id="notifToggle" class="toggle-switch active"></div>
+            </div>
+
+            <div class="setting-item">
+                <span class="setting-label">Tema Oscuro</span>
+                <div id="themeToggle" class="toggle-switch active"></div>
+            </div>
+        </div>
+
+        <!-- Group: Documentación -->
+        <div class="setting-group">
+            <div class="group-title">Documentación</div>
+
+            <div class="setting-item" onclick="window.location.href='../../pages/settings/PlanNutricion.html'">
+                <span class="setting-label">Plan de Nutrición</span>
+                <span class="setting-value">›</span>
+            </div>
+
+            <div class="setting-item" onclick="window.location.href='../../pages/settings/PlanEntrenamiento.html'">
+                <span class="setting-label">Plan de Entrenamiento</span>
+                <span class="setting-value">›</span>
+            </div>
+
+            <div class="setting-item" onclick="window.location.href='../../pages/settings/HistoriaClinica.html'">
+                <span class="setting-label">Historia Clínica</span>
+                <span class="setting-value">›</span>
+            </div>
+        </div>
+
+        <!-- Group: Soporte -->
+        <div class="setting-group">
+            <div class="group-title">Soporte</div>
+
+            <div class="setting-item" onclick="window.location.href='../../pages/info/Contactanos.html'">
+                <span class="setting-label">Ayuda y Soporte</span>
+                <span class="setting-value">›</span>
+            </div>
+
+            <div class="setting-item" onclick="window.location.href='../../pages/info/SobreNosotros.html'">
+                <span class="setting-label">Sobre GoToGym</span>
+                <span class="setting-value">v1.0</span>
+            </div>
+        </div>
+
+        <!-- Footer -->
+        <div class="footer-links">
+            <a href="#" class="footer-link">Política de Privacidad</a>
+            <a href="#" class="footer-link" onclick="cerrarSesion()" style="color: var(--error)">Cerrar Sesión</a>
+        </div>
+    </div>
+
+    <!-- Menu Overlay -->
+    <div id="menuOverlay" class="menu-overlay">
+        <button class="menu-close-btn" onclick="toggleMenu()">×</button>
+        <ul class="menu-links">
+            <li><a href="../profile/Perfil.html">Perfil</a></li>
+            <li><a href="../settings/Configuracion.html" onclick="toggleMenu()">Configuración</a></li>
+            <li><a href="../plans/Planes.html">Planes</a></li>
+            <li><a href="../info/SobreNosotros.html">Sobre Nosotros</a></li>
+            <li><a href="../info/Contactanos.html">Contacto</a></li>
+            <li><a href="#" onclick="cerrarSesion()" style="color: var(--error)">Cerrar Sesión</a></li>
+        </ul>
+    </div>
+
+    <script src="../../js/../../js/config.js"></script>
+    <script src="../../js/notifications.js"></script>
+    <script>
+        function toggleMenu() {
+            const menu = document.getElementById('menuOverlay');
+            menu.classList.toggle('active');
+        }
+
+        function cerrarSesion() {
+            localStorage.removeItem("user");
+            localStorage.removeItem("isLoggedIn");
+            window.location.href='../../pages/auth/indexInicioDeSesion.html';
+        }
+
+        const themeToggle = document.getElementById('themeToggle');
+        const savedTheme = localStorage.getItem('theme') || 'dark';
+        document.body.dataset.theme = savedTheme;
+        if (savedTheme === 'dark') {
+            themeToggle.classList.add('active');
+        } else {
+            themeToggle.classList.remove('active');
+        }
+
+        themeToggle.addEventListener('click', () => {
+            const nextTheme = document.body.dataset.theme === 'dark' ? 'light' : 'dark';
+            document.body.dataset.theme = nextTheme;
+            localStorage.setItem('theme', nextTheme);
+            themeToggle.classList.toggle('active', nextTheme === 'dark');
+        });
+
+        const notifToggle = document.getElementById('notifToggle');
+        const notifEnabled = localStorage.getItem('notifications_enabled') !== 'false';
+        notifToggle.classList.toggle('active', notifEnabled);
+
+        notifToggle.addEventListener('click', async () => {
+            const next = !notifToggle.classList.contains('active');
+            notifToggle.classList.toggle('active', next);
+            if (window.GoToGymNotifications) {
+                if (next) {
+                    await window.GoToGymNotifications.enable();
+                } else {
+                    await window.GoToGymNotifications.disable();
+                }
+            } else {
+                localStorage.setItem('notifications_enabled', next ? 'true' : 'false');
+            }
+
+            if (window.GoToGymPush) {
+                if (next) {
+                    await window.GoToGymPush.enable();
+                } else {
+                    await window.GoToGymPush.disable();
+                }
+            }
+        });
+
+        if (notifEnabled && window.GoToGymNotifications) {
+            window.GoToGymNotifications.scheduleNext24Hours();
+        }
+    </script>
+</body>
+
+</html>

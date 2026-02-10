@@ -1,0 +1,248 @@
+.chat {
+  background-color: #101012;
+  display: flex;
+  flex-direction: row;
+  justify-content: center;
+  width: 100%;
+}
+
+.chat .overlap-group-wrapper {
+  background-color: #ffffff;
+  overflow: hidden;
+  width: 391px;
+  height: 852px;
+}
+
+.chat .overlap-group {
+  position: relative;
+  width: 395px;
+  height: 852px;
+  left: -2px;
+}
+
+.chat .line {
+  width: 1px;
+  height: 17px;
+  top: 807px;
+  left: 35px;
+  position: absolute;
+  object-fit: cover;
+}
+
+.chat .img {
+  width: 17px;
+  height: 1px;
+  top: 815px;
+  left: 27px;
+  position: absolute;
+  object-fit: cover;
+}
+
+.chat .text-wrapper {
+  position: absolute;
+  top: 369px;
+  left: 87px;
+  font-family: "Poppins", Helvetica;
+  font-weight: 500;
+  color: #e0e3e6;
+  font-size: 16px;
+  letter-spacing: 0;
+  line-height: normal;
+}
+
+.chat .recurso {
+  width: 38px;
+  height: 37px;
+  top: 35px;
+  left: 76px;
+  position: absolute;
+  object-fit: cover;
+}
+
+.chat .rectangle {
+  position: absolute;
+  width: 393px;
+  height: 852px;
+  top: 0;
+  left: 0;
+  background-color: #101012;
+}
+
+.chat .line-2 {
+  width: 393px;
+  height: 1px;
+  top: 780px;
+  left: 2px;
+  position: absolute;
+  object-fit: cover;
+}
+
+.chat .div {
+  position: absolute;
+  top: 803px;
+  left: 61px;
+  font-family: "Poppins", Helvetica;
+  font-weight: 500;
+  color: #0fbfb0;
+  font-size: 13px;
+  letter-spacing: 0;
+  line-height: normal;
+}
+
+.chat .ellipse {
+  position: absolute;
+  width: 38px;
+  height: 37px;
+  top: 797px;
+  left: 16px;
+}
+
+.chat .p {
+  position: absolute;
+  top: 336px;
+  left: 61px;
+  font-family: "Poppins", Helvetica;
+  font-weight: 500;
+  font-style: italic;
+  color: #e0e3e6;
+  font-size: 16px;
+  letter-spacing: 0;
+  line-height: normal;
+}
+
+.chat .rectangle-2 {
+  position: absolute;
+  width: 119px;
+  height: 33px;
+  top: 469px;
+  left: 237px;
+  border-radius: 19px;
+  border: 1px solid;
+  border-color: #0fbfb0;
+  box-shadow: 0px 1px 4px #0fbfb0;
+}
+
+.chat .text-wrapper-2 {
+  position: absolute;
+  top: 474px;
+  left: 248px;
+  font-family: "Poppins", Helvetica;
+  font-weight: 500;
+  color: #0fbfb0;
+  font-size: 14px;
+  letter-spacing: 0;
+  line-height: normal;
+}
+
+.chat .rectangle-3 {
+  position: absolute;
+  width: 188px;
+  height: 33px;
+  top: 429px;
+  left: 45px;
+  border-radius: 19px;
+  border: 1px solid;
+  border-color: #0fbfb0;
+  box-shadow: 0px 1px 4px #0fbfb0;
+}
+
+.chat .text-wrapper-3 {
+  position: absolute;
+  top: 435px;
+  left: 55px;
+  font-family: "Poppins", Helvetica;
+  font-weight: 500;
+  color: #0fbfb0;
+  font-size: 14px;
+  letter-spacing: 0;
+  line-height: normal;
+}
+
+.chat .rectangle-4 {
+  position: absolute;
+  width: 163px;
+  height: 33px;
+  top: 547px;
+  left: 193px;
+  border-radius: 19px;
+  border: 1px solid;
+  border-color: #0fbfb0;
+  box-shadow: 0px 1px 4px #0fbfb0;
+}
+
+.chat .text-wrapper-4 {
+  position: absolute;
+  top: 553px;
+  left: 206px;
+  font-family: "Poppins", Helvetica;
+  font-weight: 500;
+  color: #0fbfb0;
+  font-size: 14px;
+  letter-spacing: 0;
+  line-height: normal;
+}
+
+.chat .rectangle-5 {
+  position: absolute;
+  width: 199px;
+  height: 33px;
+  top: 592px;
+  left: 45px;
+  border-radius: 19px;
+  border: 1px solid;
+  border-color: #0fbfb0;
+  box-shadow: 0px 1px 4px #0fbfb0;
+}
+
+.chat .text-wrapper-5 {
+  position: absolute;
+  top: 597px;
+  left: 59px;
+  font-family: "Poppins", Helvetica;
+  font-weight: 500;
+  color: #0fbfb0;
+  font-size: 14px;
+  letter-spacing: 0;
+  line-height: normal;
+}
+
+.chat .rectangle-6 {
+  position: absolute;
+  width: 200px;
+  height: 32px;
+  top: 503px;
+  left: 45px;
+  border-radius: 19px;
+  border: 1px solid;
+  border-color: #0fbfb0;
+  box-shadow: 0px 1px 4px #0fbfb0;
+}
+
+.chat .text-wrapper-6 {
+  position: absolute;
+  top: 508px;
+  left: 59px;
+  font-family: "Poppins", Helvetica;
+  font-weight: 500;
+  color: #0fbfb0;
+  font-size: 14px;
+  letter-spacing: 0;
+  line-height: normal;
+}
+
+.chat .recurso-2 {
+  width: 107px;
+  height: 104px;
+  top: 198px;
+  left: 143px;
+  position: absolute;
+  object-fit: cover;
+}
+
+.chat .vector {
+  position: absolute;
+  width: 31px;
+  height: 28px;
+  top: 40px;
+  left: 28px;
+}

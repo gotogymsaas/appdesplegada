@@ -1,0 +1,465 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Planes - GoToGym</title>
+    <link rel="stylesheet" href="../../css/theme.css">
+    <style>
+        .plans-container {
+            width: 100%;
+            max-width: 450px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+
+        .header-left {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .back-btn {
+            background: none;
+            border: none;
+            color: var(--text-muted);
+            font-size: 22px;
+            cursor: pointer;
+            padding: 0;
+        }
+
+        .page-title {
+            font-size: 22px;
+            color: var(--secondary);
+        }
+
+        .menu-btn {
+            font-size: 24px;
+            color: var(--primary);
+            background: none;
+            border: none;
+            cursor: pointer;
+        }
+
+        .hero-title {
+            font-size: 22px;
+            color: var(--text-main);
+            margin-bottom: 10px;
+            line-height: 1.3;
+        }
+
+        .hero-subtitle {
+            color: var(--text-muted);
+            margin-bottom: 24px;
+            font-size: 14px;
+            line-height: 1.5;
+        }
+
+        /* Plan Cards */
+        .plan-card {
+            background: var(--card-bg);
+            border-radius: var(--radius-lg);
+            padding: 25px;
+            margin-bottom: 25px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            position: relative;
+            overflow: hidden;
+            transition: 0.3s;
+        }
+
+        .plan-card:hover {
+            border-color: var(--primary);
+            box-shadow: 0 0 20px rgba(15, 191, 176, 0.1);
+        }
+
+        .plan-card.premium {
+            border-color: var(--secondary);
+            background: linear-gradient(135deg, rgba(212, 180, 106, 0.12), transparent);
+        }
+
+        .plan-title {
+            font-size: 20px;
+            color: var(--text-main);
+            margin-bottom: 15px;
+        }
+
+        .plan-price {
+            font-size: 22px;
+            color: var(--primary);
+            font-weight: 600;
+            margin-bottom: 16px;
+        }
+
+        .plan-card.premium .plan-price {
+            color: var(--secondary);
+        }
+
+        .features-list {
+            list-style: none;
+            margin-bottom: 20px;
+        }
+
+        .feature-item {
+            margin-bottom: 10px;
+            font-size: 14px;
+            color: var(--text-muted);
+            display: flex;
+            align-items: flex-start;
+        }
+
+        .feature-icon {
+            color: var(--primary);
+            margin-right: 10px;
+            min-width: 20px;
+        }
+
+        .plan-btn {
+            width: 100%;
+            padding: 12px;
+            border-radius: var(--radius-md);
+            font-weight: 600;
+            cursor: pointer;
+            border: none;
+            transition: 0.2s;
+        }
+
+        .btn-free {
+            background: rgba(255, 255, 255, 0.1);
+            color: var(--text-muted);
+            cursor: not-allowed;
+        }
+
+        .btn-premium {
+            background: var(--secondary);
+            color: black;
+        }
+
+        .support-copy {
+            color: var(--text-muted);
+            font-size: 13px;
+            margin-top: 12px;
+        }
+
+        .separator {
+            text-align: center;
+            color: var(--text-muted);
+            font-size: 12px;
+            line-height: 1.4;
+            margin: 20px 0 24px;
+        }
+
+        .billing-toggle {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+            margin: 14px 0 20px;
+        }
+
+        .billing-option {
+            border: 1px solid rgba(15, 191, 176, 0.3);
+            border-radius: var(--radius-md);
+            padding: 10px 12px;
+            cursor: pointer;
+            background: rgba(15, 191, 176, 0.05);
+            color: var(--text-main);
+            text-align: left;
+            transition: 0.2s;
+        }
+
+        .billing-option.active {
+            border-color: var(--primary);
+            box-shadow: 0 0 15px rgba(15, 191, 176, 0.2);
+        }
+
+        .billing-option small {
+            display: block;
+            color: var(--text-muted);
+            font-size: 12px;
+            margin-top: 4px;
+        }
+
+        .benefits {
+            display: grid;
+            gap: 12px;
+            margin-bottom: 18px;
+        }
+
+        .benefit-item {
+            display: flex;
+            gap: 12px;
+            align-items: flex-start;
+            padding: 12px;
+            border-radius: var(--radius-md);
+            background: rgba(15, 191, 176, 0.05);
+            border: 1px solid rgba(15, 191, 176, 0.15);
+        }
+
+        .benefit-index {
+            width: 26px;
+            height: 26px;
+            border-radius: 50%;
+            background: rgba(15, 191, 176, 0.2);
+            color: var(--primary);
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 600;
+            font-size: 12px;
+            flex-shrink: 0;
+            margin-top: 2px;
+        }
+
+        .benefit-text strong {
+            display: block;
+            color: var(--text-main);
+            font-size: 14px;
+            margin-bottom: 4px;
+        }
+
+        .benefit-text span {
+            color: var(--text-muted);
+            font-size: 13px;
+            line-height: 1.4;
+        }
+
+        .trial-box {
+            background: rgba(212, 180, 106, 0.12);
+            border: 1px solid rgba(212, 180, 106, 0.35);
+            border-radius: var(--radius-md);
+            padding: 16px;
+            margin: 20px 0;
+        }
+
+        .trial-box h4 {
+            color: var(--secondary);
+            font-size: 15px;
+            margin-bottom: 6px;
+        }
+
+        .trial-box p {
+            color: var(--text-muted);
+            font-size: 13px;
+            line-height: 1.5;
+        }
+
+        .cta-note {
+            text-align: center;
+            color: var(--text-muted);
+            font-size: 12px;
+            margin-top: 10px;
+        }
+
+        .brand-footer {
+            text-align: center;
+            color: var(--text-muted);
+            font-size: 12px;
+            margin: 28px 0 10px;
+            line-height: 1.5;
+        }
+
+        .brand-footer strong {
+            color: var(--secondary);
+            display: block;
+            margin-top: 6px;
+            font-size: 13px;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="plans-container">
+        <!-- Header -->
+        <div class="header">
+            <div class="header-left">
+                <button class="back-btn" onclick="goBack()" aria-label="Volver">←</button>
+                <h1 class="page-title">Planes</h1>
+            </div>
+            <button class="menu-btn" onclick="toggleMenu()">☰</button>
+        </div>
+
+        <h2 class="hero-title">Elige cómo quieres acompañar tu bienestar</h2>
+        <p class="hero-subtitle">Empieza observando o activa un sistema que aprende de ti y evoluciona contigo.</p>
+
+        <!-- Plan Gratis -->
+        <div class="plan-card">
+            <h3 class="plan-title">🆓 Plan Gratuito</h3>
+            <div class="plan-price">Coach Virtual Básico</div>
+
+            <ul class="features-list">
+                <li class="feature-item"><span class="feature-icon">✓</span> Coach Virtual Básico</li>
+                <li class="feature-item"><span class="feature-icon">✓</span> Rutinas Estándar</li>
+                <li class="feature-item"><span class="feature-icon">✓</span> Menús Saludables Genéricos</li>
+                <li class="feature-item"><span class="feature-icon">✓</span> Índice de Felicidad manual</li>
+                <li class="feature-item"><span class="feature-icon">✓</span> Notificaciones Motivacionales</li>
+            </ul>
+
+            <p class="support-copy">Ideal para explorar y entender tu estado actual.</p>
+            <button class="plan-btn btn-free" disabled>Conoce tu punto de partida.</button>
+        </div>
+
+        <div class="separator">La diferencia no está en tener más funciones,<br> sino en que tus datos se conecten entre sí.</div>
+
+        <!-- Plan Premium -->
+        <div class="plan-card premium">
+            <h3 class="plan-title" style="color: var(--secondary)">⭐ Plan Premium</h3>
+            <div class="plan-price">Tu bienestar, conectado e inteligente</div>
+
+            <div class="billing-toggle" role="tablist" aria-label="Selector de pago">
+                <button class="billing-option active" type="button" data-plan="monthly" data-link="https://www.mercadopago.com.co/subscriptions/checkout?preapproval_plan_id=7a8af8f8611e4572ae99627c6c5f5e73" role="tab">
+                    Mensual
+                    <small>$20.900 COP / mes</small>
+                </button>
+                <button class="billing-option" type="button" data-plan="annual" data-link="https://www.mercadopago.com.co/subscriptions/checkout?preapproval_plan_id=d332365f2e71465b85cb4b9c963683f2" role="tab">
+                    Anual ⭐ Recomendado
+                    <small>$200.640 COP / año</small>
+                    <small>(Ahorras 20% — 2 meses gratis)</small>
+                </button>
+            </div>
+
+            <div class="benefits">
+                <div class="benefit-item">
+                    <div class="benefit-index">1</div>
+                    <div class="benefit-text">
+                        <strong>Quantum Coach Inteligente</strong>
+                        <span>Un coach que recuerda tu contexto, interpreta tus datos y te acompaña en el tiempo.</span>
+                    </div>
+                </div>
+                <div class="benefit-item">
+                    <div class="benefit-index">2</div>
+                    <div class="benefit-text">
+                        <strong>Índice de Felicidad automático</strong>
+                        <span>El sistema observa patrones reales y calcula tu estado sin que tengas que pensar en ello.</span>
+                    </div>
+                </div>
+                <div class="benefit-item">
+                    <div class="benefit-index">3</div>
+                    <div class="benefit-text">
+                        <strong>Rutinas personalizadas por IA</strong>
+                        <span>Entrenamientos que se adaptan a tu energía, nivel y evolución, programadas en tiempo real.</span>
+                    </div>
+                </div>
+                <div class="benefit-item">
+                    <div class="benefit-index">4</div>
+                    <div class="benefit-text">
+                        <strong>Seguimiento en tiempo real</strong>
+                        <span>Visualiza rachas, tendencias y cambios antes de que se conviertan en bloqueos.</span>
+                    </div>
+                </div>
+                <div class="benefit-item">
+                    <div class="benefit-index">5</div>
+                    <div class="benefit-text">
+                        <strong>Integración con wearables</strong>
+                        <span>Convierte datos de Google Fit, Fitbit, Garmin o Apple Health en información útil.</span>
+                    </div>
+                </div>
+                <div class="benefit-item">
+                    <div class="benefit-index">6</div>
+                    <div class="benefit-text">
+                        <strong>Chat inteligente</strong>
+                        <span>Tu información centralizada para avanzar sin repetir ni empezar de cero.</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="trial-box">
+                <h4>🎁 Incluye tu primer ciclo de claridad</h4>
+                <p>14 días de experiencia Premium completa, para que sientas cómo es tener tus datos conectados. No es una prueba de funciones. Es una experiencia de acompañamiento real.</p>
+            </div>
+
+            <button class="plan-btn btn-premium" id="premiumCta">Activar mi bienestar inteligente</button>
+            <div class="cta-note">Puedes cancelar cuando quieras. Tus datos siempre serán tuyos.</div>
+        </div>
+
+        <div class="brand-footer">
+            Las mejores decisiones no nacen de más disciplina,<br> nacen de más claridad.
+            <strong>GoToGym Quantum Coach</strong>
+            💠 Wear the Intelligence
+        </div>
+
+    </div>
+
+    <!-- Menu Overlay -->
+    <div id="menuOverlay" class="menu-overlay">
+        <button class="menu-close-btn" onclick="toggleMenu()">×</button>
+        <ul class="menu-links">
+            <li><a href="../profile/Perfil.html">Perfil</a></li>
+            <li><a href="../settings/Configuracion.html">Configuración</a></li>
+            <li><a href="../plans/Planes.html" onclick="toggleMenu()">Planes</a></li>
+            <li><a href="../info/SobreNosotros.html">Sobre Nosotros</a></li>
+            <li><a href="../info/Contactanos.html">Contacto</a></li>
+            <li><a href="#" onclick="cerrarSesion()" style="color: var(--error)">Cerrar Sesión</a></li>
+        </ul>
+    </div>
+
+    <!-- Toast Notification -->
+    <div id="toast" class="toast"></div>
+
+    <script src="../../js/config.js"></script>
+    <script>
+        function toggleMenu() {
+            const menu = document.getElementById('menuOverlay');
+            menu.classList.toggle('active');
+        }
+
+        function goBack() {
+            if (window.history.length > 1) {
+                window.history.back();
+            } else {
+                window.location.href = '../profile/Perfil.html';
+            }
+        }
+
+        function cerrarSesion() {
+            localStorage.removeItem("user");
+            localStorage.removeItem("isLoggedIn");
+            window.location.href = '../auth/indexInicioDeSesion.html';
+        }
+
+        function showToast(message, type = "success") {
+            const toast = document.getElementById("toast");
+            toast.textContent = message;
+            toast.className = `toast ${type}`;
+            toast.style.display = "block";
+            setTimeout(() => toast.style.display = "none", 3000);
+        }
+
+        const premiumCta = document.getElementById('premiumCta');
+        const billingOptions = document.querySelectorAll('.billing-option');
+
+        const updateCtaLink = () => {
+            const active = document.querySelector('.billing-option.active');
+            const link = active?.dataset?.link || '';
+            premiumCta.dataset.link = link;
+        };
+
+        billingOptions.forEach(option => {
+            option.addEventListener('click', () => {
+                billingOptions.forEach(btn => btn.classList.remove('active'));
+                option.classList.add('active');
+                updateCtaLink();
+            });
+        });
+
+        updateCtaLink();
+
+        premiumCta.addEventListener('click', () => {
+            const link = premiumCta.dataset.link;
+            if (link) {
+                window.location.href = link;
+            } else {
+                showToast('Selecciona un plan', 'error');
+            }
+        });
+    </script>
+</body>
+
+</html>

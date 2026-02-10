@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">GoToGym</string>
+    <string name="title_activity_main">GoToGym</string>
+    <string name="package_name">com.gotogym.app</string>
+    <string name="custom_url_scheme">com.gotogym.app</string>
+</resources>

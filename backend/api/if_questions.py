@@ -1,0 +1,18 @@
+IF_QUESTIONS = [
+    {"id": "s_steps", "label": "Nivel de actividad física (Pasos)", "order": 1},
+    {"id": "s_sleep", "label": "Horas de sueño promedio", "order": 2},
+    {"id": "s_stress_inv", "label": "Manejo del estrés (10 = Excelente, 1 = Pésimo)", "order": 3},
+    {"id": "s_intensity", "label": "Intensidad de entrenamientos", "order": 4},
+    {"id": "s_emotional", "label": "Estabilidad emocional", "order": 5},
+    {"id": "s_social", "label": "Vida social y conexiones", "order": 6},
+    {"id": "s_hrv", "label": "Variabilidad cardíaca (Sensación de recuperación)", "order": 7},
+    {"id": "s_bio_age", "label": "Edad Biológica (Percepción de vitalidad)", "order": 8},
+    {"id": "s_sleep_quality", "label": "Calidad del sueño", "order": 9},
+    {"id": "s_circadian", "label": "Sincronización ritmo circadiano (Rutina)", "order": 10},
+    {"id": "s_focus", "label": "Capacidad de enfoque", "order": 11},
+    {"id": "s_mood_sust", "label": "Estado de ánimo sostenido", "order": 12},
+    {"id": "s_flow", "label": "Frecuencia de estado de Flow", "order": 13},
+    {"id": "s_purpose", "label": "Sentido de propósito", "order": 14},
+    {"id": "s_hobbies", "label": "Tiempo dedicado a hobbies", "order": 15},
+    {"id": "s_prosocial", "label": "Actitudes prosociales (Ayudar a otros)", "order": 16},
+]

@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Términos y Condiciones — GoToGym</title>
+
+  <!-- Tipografía -->
+  <link
+    href="https://fonts.googleapis.com/css2?family=Poppins:ital,wght@1,600&display=swap"
+    rel="stylesheet"
+  />
+
+  <style>
+    :root {
+      --gtg-bg: #101012;
+      --gtg-teal: #0FBFB0;
+      --gtg-light: #E0E3E6;
+      --gtg-gold: #D4B46A;
+      --gtg-font: 'Poppins', sans-serif;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      background-color: var(--gtg-bg);
+      font-family: var(--gtg-font);
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+      color: var(--gtg-light);
+    }
+
+    .modal-overlay {
+      position: fixed;
+      inset: 0;
+      background-color: rgba(16, 16, 18, 0.85);
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      z-index: 50;
+    }
+
+    .modal-content {
+      background-color: var(--gtg-bg);
+      border: 1px solid var(--gtg-teal);
+      border-radius: 18px;
+      width: 92%;
+      max-width: 720px;
+      padding: 22px;
+      box-shadow: 0 0 18px rgba(15, 191, 176, 0.35);
+      animation: fadeInUp 0.45s ease-out forwards;
+      max-height: 92vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .modal-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 14px;
+    }
+
+    .modal-header h2 {
+      font-size: 20px;
+      color: var(--gtg-gold);
+      margin: 0;
+    }
+
+    .close-button {
+      background: none;
+      border: none;
+      color: var(--gtg-teal);
+      font-size: 22px;
+      cursor: pointer;
+      transition: transform 0.2s ease;
+    }
+
+    .close-button:hover {
+      transform: scale(1.15);
+    }
+
+    .modal-subtitle {
+      font-size: 13px;
+      color: #A9B0B6;
+      margin-bottom: 14px;
+    }
+
+    .pdf-actions {
+      display: flex;
+      justify-content: flex-end;
+      margin-bottom: 10px;
+    }
+
+    .btn-small {
+      padding: 8px 14px;
+      font-size: 12px;
+    }
+
+    .pdf-container {
+      border: 1px solid rgba(255,255,255,0.12);
+      border-radius: 12px;
+      overflow: hidden;
+      height: 420px;
+      margin-bottom: 18px;
+      background-color: #000;
+      flex: 1 1 auto;
+    }
+
+    iframe {
+      width: 100%;
+      height: 100%;
+      border: none;
+    }
+
+    .modal-footer {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .footer-text {
+      font-size: 12px;
+      color: #9AA1A7;
+      line-height: 1.4;
+    }
+
+    .btn {
+      border-radius: 999px;
+      padding: 10px 18px;
+      font-size: 13px;
+      cursor: pointer;
+      border: none;
+      font-family: var(--gtg-font);
+      white-space: nowrap;
+    }
+
+    .btn-secondary {
+      background: transparent;
+      color: var(--gtg-light);
+      border: 1px solid rgba(255,255,255,0.25);
+    }
+
+    .btn-primary {
+      background: linear-gradient(135deg, var(--gtg-gold), #b89a52);
+      color: #101012;
+    }
+
+    @media (max-width: 480px) {
+      body {
+        align-items: flex-end;
+      }
+
+      .modal-content {
+        width: 100%;
+        max-width: 100%;
+        height: 92vh;
+        border-radius: 22px 22px 0 0;
+      }
+
+      .pdf-container {
+        height: 58vh;
+      }
+
+      .modal-footer {
+        flex-direction: column;
+        align-items: stretch;
+      }
+
+      .btn {
+        width: 100%;
+      }
+    }
+
+    @keyframes fadeInUp {
+      from {
+        opacity: 0;
+        transform: translateY(40px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+  </style>
+</head>
+
+<body>
+
+  <div class="modal-overlay">
+    <div class="modal-content">
+
+      <div class="modal-header">
+        <h2>Términos y Condiciones — GoToGym</h2>
+        <button class="close-button" onclick="volverAlRegistro()">×</button>
+      </div>
+
+      <div class="modal-subtitle">
+        Versión: 2025-04-07 · Lee el documento completo antes de continuar.
+      </div>
+
+      <div class="pdf-actions">
+        <a class="btn btn-secondary btn-small" href="./terminos_gotogym_usuarios_2025.pdf" target="_blank" rel="noopener">
+          Abrir en pantalla completa
+        </a>
+      </div>
+
+      <!-- Visor del PDF (SIN descarga) -->
+      <div class="pdf-container">
+        <iframe
+          src="./terminos_gotogym_usuarios_2025.pdf#toolbar=0&navpanes=0&scrollbar=1&zoom=page-width"
+          title="Términos y Condiciones GoToGym">
+        </iframe>
+      </div>
+
+      <div class="modal-footer">
+        <div class="footer-text">
+          Para continuar con el registro debes confirmar que tuviste acceso al documento.
+        </div>
+
+        <div>
+          <button class="btn btn-secondary" onclick="volverAlRegistro()">
+            Volver al registro
+          </button>
+          <button class="btn btn-primary" onclick="confirmarLectura()">
+            He leído — Continuar
+          </button>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <script>
+    function confirmarLectura() {
+      localStorage.setItem("termsRead", "true");
+      localStorage.setItem("termsVersion", "2025-04-07");
+      window.location.href = "../auth/indexRegistrarAutorizacion.html";
+    }
+
+    function volverAlRegistro() {
+      window.location.href = "../auth/indexRegistrar.html";
+    }
+  </script>
+
+</body>
+</html>

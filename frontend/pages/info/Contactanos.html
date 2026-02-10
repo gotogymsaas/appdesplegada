@@ -1,0 +1,354 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Contáctanos - GoToGym</title>
+    <link rel="stylesheet" href="../../css/../../css/theme.css">
+    <style>
+        .page-container {
+            width: 100%;
+            max-width: 450px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 30px;
+        }
+
+        .header-left {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .back-btn {
+            background: none;
+            border: none;
+            color: var(--text-muted);
+            font-size: 22px;
+            cursor: pointer;
+            padding: 0;
+        }
+
+        .page-title {
+            font-size: 24px;
+            color: var(--secondary);
+        }
+
+        .menu-btn {
+            font-size: 24px;
+            color: var(--primary);
+            background: none;
+            border: none;
+            cursor: pointer;
+        }
+
+        .contact-info {
+            background: var(--card-bg);
+            border-radius: var(--radius-lg);
+            padding: 25px;
+            margin-bottom: 30px;
+            text-align: center;
+            border: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        .info-item {
+            margin-bottom: 15px;
+            color: var(--text-muted);
+            font-size: 14px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+        }
+
+        .info-icon {
+            color: var(--primary);
+            font-size: 20px;
+        }
+
+        .form-section {
+            margin-top: 20px;
+        }
+
+        .intro-text {
+            color: var(--text-muted);
+            margin-bottom: 8px;
+            text-align: center;
+        }
+
+        .intro-subtext {
+            color: var(--text-muted);
+            font-size: 12px;
+            text-align: center;
+            margin-bottom: 20px;
+            letter-spacing: 0.2px;
+        }
+
+        .info-note {
+            font-size: 12px;
+            color: var(--text-muted);
+            margin-bottom: 0;
+        }
+
+        .input-label.always-float {
+            top: -10px;
+            font-size: 12px;
+        }
+
+        .fine-print {
+            margin-top: -10px;
+            font-size: 12px;
+            color: var(--text-muted);
+            line-height: 1.4;
+        }
+
+        .success-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.5);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+            z-index: 999;
+        }
+
+        .success-overlay.active {
+            display: flex;
+        }
+
+        .success-card {
+            background: var(--card-bg);
+            border-radius: var(--radius-lg);
+            padding: 24px;
+            max-width: 360px;
+            width: 100%;
+            text-align: center;
+            border: 1px solid rgba(255, 255, 255, 0.06);
+            box-shadow: 0 12px 30px rgba(0, 0, 0, 0.25);
+        }
+
+        .success-icon {
+            width: 44px;
+            height: 44px;
+            margin: 0 auto 12px;
+            border-radius: 50%;
+            background: rgba(212, 180, 106, 0.15);
+            color: var(--secondary);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 22px;
+        }
+
+        .success-title {
+            font-size: 18px;
+            color: var(--text-main);
+            margin-bottom: 8px;
+        }
+
+        .success-text {
+            font-size: 14px;
+            color: var(--text-muted);
+            margin-bottom: 12px;
+        }
+
+        .success-note {
+            font-size: 12px;
+            color: var(--text-muted);
+            margin-bottom: 20px;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="page-container">
+        <!-- Header -->
+        <div class="header">
+            <div class="header-left">
+                <button class="back-btn" onclick="goBack()" aria-label="Volver">←</button>
+                <h1 class="page-title">Contáctanos</h1>
+            </div>
+            <button class="menu-btn" onclick="toggleMenu()">☰</button>
+        </div>
+
+        <p class="intro-text">
+            ¿Tienes una pregunta o necesitas ayuda?<br>
+            Nuestro equipo revisa cada mensaje y te responde lo antes posible.
+        </p>
+        <p class="intro-subtext">Soporte humano · Respuesta por correo · Sin bots automáticos</p>
+
+        <!-- Contact Info -->
+        <div class="contact-info">
+            <div class="info-item">
+                <span class="info-icon">📧</span>
+                <span>contacto@gotogym.com</span>
+            </div>
+            <div class="info-item">
+                <span class="info-icon">📞</span>
+                <span>+57 3122570297</span>
+                <span>Bogota D.C. Colomabia</span>
+            </div>
+            <div class="info-item">
+                <span class="info-icon">💬</span>
+                <span>Equipo de Soporte GoToGym</span>
+            </div>
+            <div class="info-item info-note">
+                <span>Atención en días hábiles · Horario Colombia</span>
+            </div>
+        </div>
+
+        <!-- Form -->
+        <div class="form-section">
+            <form id="contactForm" onsubmit="handleContactSubmit(event);">
+                <div class="form-group">
+                    <input type="text" id="contactName" name="name" class="input-field" placeholder="Ej. Juan Pérez" required>
+                    <label class="input-label always-float">Nombre Completo</label>
+                </div>
+
+                <div class="form-group">
+                    <input type="email" id="contactEmail" name="email" class="input-field" placeholder="Usaremos este correo para responderte" required>
+                    <label class="input-label always-float">Correo Electrónico</label>
+                </div>
+
+                <div class="form-group">
+                    <input type="text" id="contactSubject" name="subject" class="input-field" placeholder="Ej. Problema con mi cuenta / Plan Premium / Dispositivos" required>
+                    <label class="input-label always-float">Asunto</label>
+                </div>
+
+                <div class="form-group">
+                    <textarea id="contactMessage" name="message" class="input-field" placeholder="Cuéntanos qué pasó o qué necesitas. Entre más claro, mejor podremos ayudarte." rows="3"
+                        style="resize: none; border-bottom: 1px solid #333;" required></textarea>
+                    <label class="input-label always-float">Mensaje</label>
+                </div>
+
+                <p class="fine-print">
+                    Al enviar este formulario aceptas que usemos tu información únicamente para responder a tu solicitud.
+                    Respetamos tu privacidad.
+                </p>
+
+                <input type="text" id="contactWebsite" name="website" style="display: none;" tabindex="-1" autocomplete="off">
+
+                <button type="submit" id="contactSubmit" class="btn btn-primary" style="margin-top: 20px;">
+                    Enviar Mensaje
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Menu Overlay -->
+    <div id="menuOverlay" class="menu-overlay">
+        <button class="menu-close-btn" onclick="toggleMenu()">×</button>
+        <ul class="menu-links">
+            <li><a href="../profile/Perfil.html">Perfil</a></li>
+            <li><a href="../settings/Configuracion.html">Configuración</a></li>
+            <li><a href="../plans/Planes.html">Planes</a></li>
+            <li><a href="../info/SobreNosotros.html">Sobre Nosotros</a></li>
+            <li><a href="../info/Contactanos.html" onclick="toggleMenu()">Contacto</a></li>
+            <li><a href="#" onclick="cerrarSesion()" style="color: var(--error)">Cerrar Sesión</a></li>
+        </ul>
+    </div>
+
+    <!-- Toast Notification -->
+    <div id="toast" class="toast"></div>
+
+    <div id="contactSuccess" class="success-overlay" aria-hidden="true">
+        <div class="success-card" role="dialog" aria-modal="true" aria-labelledby="contactSuccessTitle">
+            <div class="success-icon">✔</div>
+            <h2 id="contactSuccessTitle" class="success-title">Mensaje enviado con éxito</h2>
+            <p class="success-text">
+                Gracias por escribirnos. Tu mensaje ya llegó a nuestro equipo de soporte y será revisado por una persona real.
+            </p>
+            <p class="success-note">Te responderemos al correo que nos dejaste.</p>
+            <button type="button" class="btn btn-primary" onclick="closeContactSuccess()">Entendido</button>
+        </div>
+    </div>
+
+    <script src="../../js/../../js/config.js"></script>
+    <script>
+        function toggleMenu() {
+            const menu = document.getElementById('menuOverlay');
+            menu.classList.toggle('active');
+        }
+
+        function goBack() {
+            if (window.history.length > 1) {
+                window.history.back();
+            } else {
+                window.location.href = '../profile/Perfil.html';
+            }
+        }
+
+        function cerrarSesion() {
+            localStorage.removeItem("user");
+            localStorage.removeItem("isLoggedIn");
+            window.location.href='../../auth/indexInicioDeSesion.html';
+        }
+
+        function openContactSuccess() {
+            const overlay = document.getElementById("contactSuccess");
+            overlay.classList.add("active");
+            overlay.setAttribute("aria-hidden", "false");
+        }
+
+        function closeContactSuccess() {
+            const overlay = document.getElementById("contactSuccess");
+            overlay.classList.remove("active");
+            overlay.setAttribute("aria-hidden", "true");
+        }
+
+        async function handleContactSubmit(event) {
+            event.preventDefault();
+
+            const name = document.getElementById("contactName").value.trim();
+            const email = document.getElementById("contactEmail").value.trim();
+            const subject = document.getElementById("contactSubject").value.trim();
+            const message = document.getElementById("contactMessage").value.trim();
+            const website = document.getElementById("contactWebsite").value.trim();
+
+            const submitBtn = document.getElementById("contactSubmit");
+            submitBtn.disabled = true;
+            submitBtn.textContent = "Enviando...";
+
+            try {
+                const res = await fetch(`${window.API_URL}contact/`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ name, email, subject, message, website }),
+                });
+
+                const data = await res.json().catch(() => ({}));
+
+                if (!res.ok) {
+                    showToast(data.error || "No se pudo enviar el mensaje", "error");
+                } else {
+                    openContactSuccess();
+                    document.getElementById("contactForm").reset();
+                }
+            } catch (err) {
+                showToast("Error de conexión. Intenta de nuevo.", "error");
+            } finally {
+                submitBtn.disabled = false;
+                submitBtn.textContent = "Enviar Mensaje";
+            }
+        }
+
+        function showToast(message, type = "success") {
+            const toast = document.getElementById("toast");
+            toast.textContent = message;
+            toast.className = `toast ${type}`;
+            toast.style.display = "block";
+            setTimeout(() => toast.style.display = "none", 3000);
+        }
+    </script>
+</body>
+
+</html>

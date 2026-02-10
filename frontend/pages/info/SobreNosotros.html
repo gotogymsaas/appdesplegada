@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sobre Nosotros - GoToGym</title>
+    <link rel="stylesheet" href="../../css/../../css/theme.css">
+    <style>
+        .page-container {
+            width: 100%;
+            max-width: 450px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 30px;
+        }
+
+        .header-left {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .back-btn {
+            background: none;
+            border: none;
+            color: var(--text-muted);
+            font-size: 22px;
+            cursor: pointer;
+            padding: 0;
+        }
+
+        .page-title {
+            font-size: 24px;
+            color: var(--secondary);
+        }
+
+        .menu-btn {
+            font-size: 24px;
+            color: var(--primary);
+            background: none;
+            border: none;
+            cursor: pointer;
+        }
+
+        .content-section {
+            background: var(--card-bg);
+            border-radius: var(--radius-lg);
+            padding: 25px;
+            margin-bottom: 25px;
+            border: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        .section-title {
+            color: var(--primary);
+            font-size: 18px;
+            margin-bottom: 15px;
+            font-weight: 600;
+        }
+
+        .text-content {
+            color: var(--text-muted);
+            line-height: 1.6;
+            font-size: 14px;
+            margin-bottom: 10px;
+        }
+
+        .text-list {
+            margin: 10px 0 15px;
+            padding-left: 18px;
+            color: var(--text-muted);
+            font-size: 14px;
+            line-height: 1.6;
+        }
+
+        .guide-text {
+            color: var(--text-main);
+            font-size: 14px;
+            line-height: 1.6;
+            margin: 0;
+        }
+
+        .social-list {
+            display: grid;
+            gap: 12px;
+        }
+
+        .social-item {
+            display: flex;
+            align-items: flex-start;
+            gap: 12px;
+            padding: 10px 0;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+            text-decoration: none;
+        }
+
+        .social-item:last-child {
+            border-bottom: none;
+        }
+
+        .social-icon {
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            border: 1px solid var(--primary);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--secondary);
+            font-size: 12px;
+            font-weight: 700;
+            flex-shrink: 0;
+            background: rgba(255, 255, 255, 0.02);
+        }
+
+        .social-icon img {
+            width: 18px;
+            height: 18px;
+        }
+
+        .social-content {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        .social-link {
+            color: var(--text-main);
+            font-size: 14px;
+            text-decoration: none;
+            font-weight: 600;
+        }
+
+        .social-note {
+            font-size: 12px;
+            color: var(--text-muted);
+        }
+
+    </style>
+</head>
+
+<body>
+
+    <div class="page-container">
+        <!-- Header -->
+        <div class="header">
+            <div class="header-left">
+                <button class="back-btn" onclick="goBack()" aria-label="Volver">←</button>
+                <h1 class="page-title">Sobre Nosotros</h1>
+            </div>
+            <button class="menu-btn" onclick="toggleMenu()">☰</button>
+        </div>
+
+        <!-- Story Section -->
+        <div class="content-section">
+            <h2 class="section-title">Nuestra Historia</h2>
+            <p class="text-content">
+                GoToGym nace de una pregunta simple pero profunda: ¿y si la tecnología pudiera ayudarnos a cuidarnos
+                mejor, sin imponernos más presión?
+            </p>
+            <p class="text-content">
+                Somos una plataforma de bienestar inteligente que integra ciencia, diseño y tecnología para acompañar
+                a las personas en su vida diaria — no solo en el entrenamiento, sino también en el descanso, la
+                nutrición y el equilibrio emocional.
+            </p>
+            <p class="text-content">
+                En GoToGym creemos que el verdadero progreso no se mide solo en rendimiento, sino en claridad,
+                constancia y bienestar sostenible.
+            </p>
+            <p class="text-content">
+                Por eso desarrollamos herramientas que entienden tu contexto y te acompañan con criterio, no con
+                exigencia.
+            </p>
+        </div>
+
+        <!-- Vision Section -->
+        <div class="content-section">
+            <h2 class="section-title">Misión</h2>
+            <p class="text-content">
+                Democratizar el acceso al bienestar personalizado mediante el uso de inteligencia artificial y diseño
+                centrado en el usuario.
+            </p>
+        </div>
+
+        <div class="content-section">
+            <h2 class="section-title">Investigación y Tecnología (Quantum Research)</h2>
+            <p class="text-content">
+                En GoToGym contamos con un área de Quantum Research, dedicada al estudio de datos humanos, patrones de
+                bienestar y sistemas de apoyo inteligentes.
+            </p>
+            <p class="text-content">
+                Nuestro enfoque no busca reemplazar profesionales ni tomar decisiones por las personas. Buscamos
+                entender mejor el comportamiento humano para ofrecer orientación responsable, personalizada y ética.
+            </p>
+            <p class="text-content">Cada sistema que desarrollamos prioriza:</p>
+            <ul class="text-list">
+                <li>la privacidad de los datos</li>
+                <li>la seguridad de la información</li>
+                <li>el acompañamiento humano</li>
+            </ul>
+            <p class="text-content">
+                La tecnología es una herramienta. El bienestar, siempre, es la prioridad.
+            </p>
+        </div>
+
+        <div class="content-section">
+            <h2 class="section-title">Conecta con GoToGym</h2>
+            <p class="text-content">Investigación, diseño y bienestar en distintos formatos.</p>
+
+            <div class="social-list">
+                <a class="social-item" href="https://www.linkedin.com/company/33262154/" target="_blank" rel="noopener">
+                    <span class="social-icon"><img src="../../assets/images/Linkedin.svg" alt="LinkedIn"></span>
+                    <span class="social-content">
+                        <span class="social-link">LinkedIn</span>
+                        <span class="social-note">credibilidad, alianzas, B2B</span>
+                    </span>
+                </a>
+                <a class="social-item" href="https://www.instagram.com/gotogym.sportwear" target="_blank" rel="noopener">
+                    <span class="social-icon">IG</span>
+                    <span class="social-content">
+                        <span class="social-link">Instagram (Sportwear)</span>
+                        <span class="social-note">marca, producto, lifestyle</span>
+                    </span>
+                </a>
+                <a class="social-item" href="https://www.youtube.com/channel/UCXRp8PgcE7L75jEewIixeXg" target="_blank" rel="noopener">
+                    <span class="social-icon">YT</span>
+                    <span class="social-content">
+                        <span class="social-link">YouTube</span>
+                        <span class="social-note">contenido profundo, explicativo, largo plazo</span>
+                    </span>
+                </a>
+                <a class="social-item" href="https://www.tiktok.com/@gotogym.sportwear" target="_blank" rel="noopener">
+                    <span class="social-icon"><img src="../../assets/images/TikTok.svg" alt="TikTok"></span>
+                    <span class="social-content">
+                        <span class="social-link">TikTok</span>
+                        <span class="social-note">alcance, awareness</span>
+                    </span>
+                </a>
+                <a class="social-item" href="https://twitter.com/GOTOGYM6" target="_blank" rel="noopener">
+                    <span class="social-icon"><img src="../../assets/images/X Twiter.svg" alt="X"></span>
+                    <span class="social-content">
+                        <span class="social-link">Twitter / X</span>
+                        <span class="social-note">opinión, pensamiento, tecnología</span>
+                    </span>
+                </a>
+                <a class="social-item" href="https://co.pinterest.com/gotogym_/" target="_blank" rel="noopener">
+                    <span class="social-icon">P</span>
+                    <span class="social-content">
+                        <span class="social-link">Pinterest</span>
+                        <span class="social-note">inspiración visual, moda, diseño</span>
+                    </span>
+                </a>
+                <a class="social-item" href="https://soundcloud.com/go-to-gym-sportswear-as-a-service" target="_blank" rel="noopener">
+                    <span class="social-icon">SC</span>
+                    <span class="social-content">
+                        <span class="social-link">SoundCloud</span>
+                        <span class="social-note">identidad sonora / experimental</span>
+                    </span>
+                </a>
+                <a class="social-item" href="https://www.crunchbase.com/organization/go-to-gym" target="_blank" rel="noopener">
+                    <span class="social-icon">CB</span>
+                    <span class="social-content">
+                        <span class="social-link">Crunchbase</span>
+                        <span class="social-note">validación institucional</span>
+                    </span>
+                </a>
+                <div class="social-item">
+                    <span class="social-icon"><img src="../../assets/images/Facebook.svg" alt="Facebook"></span>
+                    <span class="social-content">
+                        <span class="social-link">Facebook (Sportwear)</span>
+                        <span class="social-note">soporte y presencia básica</span>
+                    </span>
+                </div>
+            </div>
+        </div>
+
+        <div class="content-section">
+            <p class="guide-text">
+                GoToGym no promete atajos. Diseña sistemas para acompañarte mejor.
+            </p>
+        </div>
+    </div>
+
+    <!-- Menu Overlay -->
+    <div id="menuOverlay" class="menu-overlay">
+        <button class="menu-close-btn" onclick="toggleMenu()">×</button>
+        <ul class="menu-links">
+            <li><a href="../profile/Perfil.html">Perfil</a></li>
+            <li><a href="../settings/Configuracion.html">Configuración</a></li>
+            <li><a href="../plans/Planes.html">Planes</a></li>
+            <li><a href="../info/SobreNosotros.html" onclick="toggleMenu()">Sobre Nosotros</a></li>
+            <li><a href="../info/Contactanos.html">Contacto</a></li>
+            <li><a href="#" onclick="cerrarSesion()" style="color: var(--error)">Cerrar Sesión</a></li>
+        </ul>
+    </div>
+
+    <script src="../../js/../../js/config.js"></script>
+    <script>
+        function toggleMenu() {
+            const menu = document.getElementById('menuOverlay');
+            menu.classList.toggle('active');
+        }
+
+        function goBack() {
+            if (window.history.length > 1) {
+                window.history.back();
+            } else {
+                window.location.href = '../profile/Perfil.html';
+            }
+        }
+
+        function cerrarSesion() {
+            localStorage.removeItem("user");
+            localStorage.removeItem("isLoggedIn");
+            window.location.href='../../auth/indexInicioDeSesion.html';
+        }
+    </script>
+</body>
+
+</html>

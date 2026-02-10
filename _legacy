@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta charset="utf-8" />
+    <link rel="stylesheet" href="../../css/globals.css" />
+    <link rel="stylesheet" href="../../css/estilos29.css" />
+  </head>
+  <body>
+    <div class="notificaciones">
+      <div class="overlap-group">
+        <div class="overlap">
+          <div class="text-wrapper">Notificaciones</div>
+          <p class="activa-las">Activa las notificaciones para<br />estar al tanto de tu bienestar</p>
+          <img class="vector" src="https://c.animaapp.com/md7naqf7J52HCI/img/vector-3.svg" />
+          <div class="rectangle"></div>
+          <div class="div"></div>
+          <div class="text-wrapper-2">Notificaciones</div>
+          <div class="ellipse"></div>
+          <div class="ellipse-2"></div>
+          <div class="text-wrapper-3">+57-telefono de contacto</div>
+          <img class="img" src="https://c.animaapp.com/md7naqf7J52HCI/img/vector-2.svg" />
+          <img class="recurso" src="https://c.animaapp.com/md7naqf7J52HCI/img/recurso-26.png" />
+          <img class="vector-2" src="https://c.animaapp.com/md7naqf7J52HCI/img/vector.svg" />
+          <div class="rectangle-2"></div>
+          <img class="recurso-2" src="https://c.animaapp.com/md7naqf7J52HCI/img/recurso-26.png" />
+          <div class="rectangle-3"></div>
+          <div class="text-wrapper-4">Perfil</div>
+          <div class="text-wrapper-5">Ver colecciones</div>
+          <div class="text-wrapper-6">Sobre Nosotros</div>
+          <div class="text-wrapper-7">Contacto</div>
+          <div class="text-wrapper-8">Configuracion</div>
+        </div>
+        <div class="vector-wrapper">
+          <img class="vector-3" src="https://c.animaapp.com/md7naqf7J52HCI/img/vector-1.svg" />
+        </div>
+        <div class="text-wrapper-9">Correo Electronico</div>
+      </div>
+      <img class="recurso-3" src="https://c.animaapp.com/md7naqf7J52HCI/img/recurso-26.png" />
+      <div class="text-wrapper-10">Perfil</div>
+      <div class="text-wrapper-11">Sobre Nosotros</div>
+      <div class="text-wrapper-12">Contacto</div>
+      <div class="text-wrapper-13">Configuracion</div>
+    </div>
+  </body>
+</html>

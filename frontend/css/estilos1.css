@@ -1,0 +1,53 @@
+body {
+  margin: 0;
+  padding: 0;
+  background-color: #101012;
+  font-family: 'Poppins', sans-serif;
+  overflow: hidden;
+  transition: opacity 0.8s ease-in-out;
+}
+
+.fade-out {
+  opacity: 0;
+}
+
+.pantalla-inicio {
+  height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.logo-circular {
+  width: 200px;
+  height: 200px;
+  border-radius: 50%;
+  background-color: #101012;
+  border: 2px solid #0FBFB0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: zoomIn 1s ease-out forwards;
+}
+
+.logo-circular img {
+  width: 120px;
+  height: auto;
+}
+
+/* Efecto resplandor turquesa */
+.glow {
+  box-shadow: 0 0 20px #0FBFB0, 0 0 40px #0FBFB0;
+}
+
+/* Animación de entrada */
+@keyframes zoomIn {
+  0% {
+    transform: scale(0.6);
+    opacity: 0;
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}

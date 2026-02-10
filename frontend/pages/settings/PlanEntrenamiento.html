@@ -1,0 +1,396 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Plan de Entrenamiento - GoToGym</title>
+    <link rel="stylesheet" href="../../css/../../css/theme.css">
+    <style>
+        .page-container {
+            width: 100%;
+            max-width: 450px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+
+        .header-left {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .back-btn {
+            background: none;
+            border: none;
+            color: var(--text-muted);
+            font-size: 22px;
+            cursor: pointer;
+            padding: 0;
+        }
+
+        .page-title {
+            font-size: 24px;
+            color: var(--secondary);
+        }
+
+        .menu-btn {
+            font-size: 24px;
+            color: var(--primary);
+            background: none;
+            border: none;
+            cursor: pointer;
+        }
+
+        .subtitle {
+            color: var(--text-muted);
+            margin-bottom: 16px;
+        }
+
+        .section-card {
+            background: var(--card-bg);
+            border-radius: var(--radius-lg);
+            padding: 20px;
+            margin-bottom: 16px;
+            border: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        .section-title {
+            font-size: 16px;
+            color: var(--secondary);
+            margin-bottom: 10px;
+        }
+
+        .text {
+            color: var(--text-muted);
+            font-size: 14px;
+            line-height: 1.5;
+        }
+
+        .bullet-list {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            margin-top: 8px;
+        }
+
+        .bullet-item {
+            display: flex;
+            gap: 10px;
+            color: var(--text-muted);
+            font-size: 14px;
+            align-items: flex-start;
+        }
+
+        .checkbox-line {
+            display: flex;
+            gap: 10px;
+            align-items: flex-start;
+            margin-top: 12px;
+            color: var(--text-main);
+            font-size: 14px;
+        }
+
+        .checkbox-line input {
+            margin-top: 3px;
+            width: 16px;
+            height: 16px;
+            accent-color: var(--primary);
+        }
+
+        .fine-print {
+            color: var(--text-muted);
+            font-size: 12px;
+            margin-top: 8px;
+            text-align: center;
+        }
+
+        .file-status {
+            color: var(--text-muted);
+            font-size: 12px;
+            margin-top: 8px;
+            text-align: center;
+        }
+
+        .document-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 8px;
+            margin-top: 10px;
+            flex-wrap: wrap;
+        }
+
+        .document-name {
+            color: var(--text-main);
+            font-size: 13px;
+            word-break: break-word;
+        }
+
+        .doc-actions {
+            display: flex;
+            gap: 8px;
+        }
+
+        .btn[disabled] {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="page-container">
+        <!-- Header -->
+        <div class="header">
+            <div class="header-left">
+                <button class="back-btn" onclick="goBack()" aria-label="Volver">←</button>
+                <h1 class="page-title">Plan de Entrenamiento</h1>
+            </div>
+            <button class="menu-btn" onclick="toggleMenu()">☰</button>
+        </div>
+
+        <p class="subtitle">Tu entrenamiento, integrado a tu bienestar</p>
+
+        <div class="section-card">
+            <p class="text">
+                Sube una foto o un PDF del plan de entrenamiento que te haya entregado tu especialista
+                (entrenador, fisioterapeuta o preparador físico). Esta información será tenida en cuenta
+                por tu Quantum Coach para acompañarte con sugerencias alineadas a tu rutina, tu carga y tu evolución.
+            </p>
+        </div>
+
+        <div class="section-card">
+            <div class="section-title">¿Qué puedes subir?</div>
+            <div class="bullet-list">
+                <div class="bullet-item">✅ Foto (JPG / PNG)</div>
+                <div class="bullet-item">✅ PDF</div>
+                <div class="bullet-item">
+                    Ejemplos: rutinas semanales, series y repeticiones, cargas, días de descanso, trabajo de movilidad,
+                    indicaciones de rehabilitación o restricciones de ejercicio.
+                </div>
+            </div>
+        </div>
+
+        <div class="section-card">
+            <div class="section-title">Importante antes de subirlo</div>
+            <p class="text">
+                El contenido que compartas puede influir en las recomendaciones del Quantum Coach.
+                Por eso, necesitamos que confirmes que la información es real y corresponde a tu entrenamiento actual.
+            </p>
+            <label class="checkbox-line">
+                <input type="checkbox" id="authCheck">
+                <span>Declaro que el documento o imagen que estoy subiendo es información real y auténtica, y que corresponde a mi plan de entrenamiento.</span>
+            </label>
+            <p class="text" style="margin-top: 10px;">
+                (Si tu plan está incompleto, es antiguo o estás en proceso de cambio, puedes subirlo igualmente. El coach lo tendrá en cuenta con prudencia.)
+            </p>
+        </div>
+
+        <div class="section-card">
+            <div class="section-title">Seguridad y cuidado</div>
+            <div class="bullet-list">
+                <div class="bullet-item">El Quantum Coach no reemplaza a tu entrenador o profesional de la salud.</div>
+                <div class="bullet-item">Las sugerencias se adaptan a lo que compartes, priorizando seguridad y coherencia.</div>
+                <div class="bullet-item">Puedes actualizar o eliminar este documento en cualquier momento.</div>
+            </div>
+        </div>
+
+        <div class="section-card">
+            <div class="section-title">Último documento subido</div>
+            <div id="lastDoc" class="text">No hay documento guardado.</div>
+            <div id="docActions" class="document-row" style="display:none;">
+                <div id="docName" class="document-name"></div>
+                <div class="doc-actions">
+                    <button id="viewDocBtn" class="btn btn-secondary" style="width:auto; padding:10px 14px;">Ver</button>
+                    <button id="deleteDocBtn" class="btn btn-primary" style="width:auto; padding:10px 14px;">Eliminar</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="section-card">
+            <input type="file" id="trainingFile" accept="image/*,.pdf" style="display: none;">
+            <button id="selectBtn" class="btn btn-secondary">Seleccionar foto o PDF</button>
+            <button id="uploadBtn" class="btn btn-primary" disabled>Guardar documento</button>
+            <div id="fileStatus" class="file-status"></div>
+            <div class="fine-print">
+                Los consejos que te ofrezco son orientativos y buscan apoyar tu bienestar general. No sustituyen la consulta, diagnóstico o tratamiento de un profesional de la salud.
+            </div>
+        </div>
+    </div>
+
+    <!-- Menu Overlay -->
+    <div id="menuOverlay" class="menu-overlay">
+        <button class="menu-close-btn" onclick="toggleMenu()">×</button>
+        <ul class="menu-links">
+            <li><a href="../profile/Perfil.html">Perfil</a></li>
+            <li><a href="../settings/Configuracion.html">Configuración</a></li>
+            <li><a href="../plans/Planes.html">Planes</a></li>
+            <li><a href="../info/SobreNosotros.html">Sobre Nosotros</a></li>
+            <li><a href="../info/Contactanos.html">Contacto</a></li>
+            <li><a href="#" onclick="cerrarSesion()" style="color: var(--error)">Cerrar Sesión</a></li>
+        </ul>
+    </div>
+
+    <!-- Toast Notification -->
+    <div id="toast" class="toast"></div>
+
+    <script src="../../js/../../js/config.js"></script>
+    <script>
+        function toggleMenu() {
+            const menu = document.getElementById('menuOverlay');
+            menu.classList.toggle('active');
+        }
+
+        function goBack() {
+            if (window.history.length > 1) {
+                window.history.back();
+            } else {
+                window.location.href = '../settings/Configuracion.html';
+            }
+        }
+
+        function cerrarSesion() {
+            localStorage.removeItem("user");
+            localStorage.removeItem("isLoggedIn");
+            window.location.href = '../../pages/auth/indexInicioDeSesion.html';
+        }
+
+        function showToast(message, type = "success") {
+            const toast = document.getElementById("toast");
+            toast.textContent = message;
+            toast.className = `toast ${type}`;
+            toast.style.display = "block";
+            setTimeout(() => toast.style.display = "none", 3000);
+        }
+
+        const authCheck = document.getElementById('authCheck');
+        const selectBtn = document.getElementById('selectBtn');
+        const uploadBtn = document.getElementById('uploadBtn');
+        const trainingFile = document.getElementById('trainingFile');
+        const fileStatus = document.getElementById('fileStatus');
+        const lastDoc = document.getElementById('lastDoc');
+        const docActions = document.getElementById('docActions');
+        const docName = document.getElementById('docName');
+        const viewDocBtn = document.getElementById('viewDocBtn');
+        const deleteDocBtn = document.getElementById('deleteDocBtn');
+
+        const DOC_TYPE = 'training_plan';
+
+        function getUsername() {
+            const user = JSON.parse(localStorage.getItem('user') || '{}');
+            return user.username || localStorage.getItem('username');
+        }
+
+        async function loadLastDocument() {
+            const username = getUsername();
+            if (!username) return;
+            try {
+                const authFetch = window.authFetch || fetch;
+                const res = await authFetch(`${API_URL}user_documents/?username=${encodeURIComponent(username)}&doc_type=${DOC_TYPE}`);
+                const data = await res.json();
+                if (!res.ok || !data.success || !data.document) {
+                    lastDoc.textContent = 'No hay documento guardado.';
+                    docActions.style.display = 'none';
+                    return;
+                }
+                lastDoc.textContent = 'Documento encontrado.';
+                docName.textContent = data.document.file_name || 'Documento';
+                docActions.style.display = 'flex';
+                viewDocBtn.onclick = () => window.open(data.document.file_url, '_blank');
+                deleteDocBtn.onclick = () => deleteDocument(data.document.doc_type);
+            } catch (err) {
+                lastDoc.textContent = 'No se pudo cargar el documento.';
+                docActions.style.display = 'none';
+            }
+        }
+
+        async function deleteDocument(docType) {
+            if (!confirm('¿Quieres eliminar este documento?')) return;
+            try {
+                const username = getUsername();
+                const authFetch = window.authFetch || fetch;
+                const res = await authFetch(`${API_URL}user_documents/delete/`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username, doc_type: docType })
+                });
+                const data = await res.json();
+                if (!res.ok || !data.success) throw new Error(data.error || 'No se pudo eliminar');
+                showToast('Documento eliminado', 'success');
+                loadLastDocument();
+            } catch (err) {
+                showToast(err.message || 'Error al eliminar', 'error');
+            }
+        }
+
+        selectBtn.addEventListener('click', () => {
+            if (!authCheck.checked) {
+                showToast('Confirma la declaración antes de subir el archivo.', 'error');
+                return;
+            }
+            trainingFile.click();
+        });
+
+        trainingFile.addEventListener('change', async () => {
+            const file = trainingFile.files[0];
+            if (!file) return;
+            fileStatus.textContent = `Archivo seleccionado: ${file.name}`;
+            uploadBtn.disabled = false;
+        });
+
+        uploadBtn.addEventListener('click', async () => {
+            const file = trainingFile.files[0];
+            if (!file) {
+                showToast('Selecciona un archivo primero.', 'error');
+                return;
+            }
+
+            uploadBtn.disabled = true;
+            uploadBtn.textContent = 'Guardando...';
+
+            try {
+                const username = getUsername();
+                if (!username) throw new Error('Debes iniciar sesión para subir el documento.');
+
+                const formData = new FormData();
+                formData.append('username', username);
+                formData.append('file', file);
+                formData.append('doc_type', DOC_TYPE);
+
+                const authFetch = window.authFetch || fetch;
+                const resp = await authFetch(API_URL + 'upload_medical/', {
+                    method: 'POST',
+                    body: formData
+                });
+                const data = await resp.json();
+                if (!resp.ok || !data.success) {
+                    throw new Error(data.error || 'No se pudo subir el archivo.');
+                }
+
+                fileStatus.textContent = 'Documento guardado en tu perfil.';
+                showToast('Documento guardado correctamente', 'success');
+                loadLastDocument();
+            } catch (err) {
+                fileStatus.textContent = '';
+                showToast(err.message || 'Error al subir el archivo', 'error');
+            } finally {
+                uploadBtn.disabled = false;
+                uploadBtn.textContent = 'Guardar documento';
+                trainingFile.value = '';
+            }
+        });
+
+        loadLastDocument();
+    </script>
+</body>
+
+</html>

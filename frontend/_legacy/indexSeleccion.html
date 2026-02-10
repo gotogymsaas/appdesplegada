@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Seleccionar Acción - GoToGym</title>
+
+    <!-- CSS -->
+    <link rel="stylesheet" href="../../css/estilos2.css" />
+    <link rel="stylesheet" href="../../css/globals1.css" />
+
+    <!-- Fuente -->
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:ital,wght@0,600;0,700;1,600;1,700&display=swap" rel="stylesheet" />
+
+    <!-- Manifest para PWA -->
+    <link rel="manifest" href="manifest.json" />
+    <meta name="theme-color" content="#000000" />
+
+    <!-- Icono de la app -->
+    <link rel="icon" href="public/images/recurso-14.png" type="image/png" />
+  </head>
+  <body>
+    <div class="pantalla-seleccion">
+      <div class="logo-container">
+        <div class="logo-circular">
+          <img src="../../assets/images/recurso-14.png" alt="Logo GoToGym" class="logo-img" />
+        </div>
+      </div>
+
+      <div class="botones">
+        <a href="../splash/PantallaDeCarga.html" class="btn btn-dorado">Iniciar Sesión</a>
+        <a href="../splash/PantallaDeCarga2.html" class="btn btn-turquesa">Registrar</a>
+      </div>
+    </div>
+
+    <!-- Registro del Service Worker -->
+    <script>
+      if ("serviceWorker" in navigator) {
+        navigator.serviceWorker
+          .register("service-worker.js")
+          .then((reg) => console.log("✅ Service Worker registrado:", reg))
+          .catch((err) => console.error("❌ Error al registrar SW:", err));
+      }
+    </script>
+  </body>
+</html>

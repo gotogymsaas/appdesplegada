@@ -1,0 +1,22 @@
+{
+  "name": "GoToGym",
+  "short_name": "GoToGym",
+  "start_url": "/pages/auth/indexInicioDeSesion.html",
+  "display": "standalone",
+  "background_color": "#121212",
+  "theme_color": "#0FBFB0",
+  "orientation": "portrait",
+  "scope": "/",
+  "icons": [
+    {
+      "src": "/assets/images/logo-gotogym-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/assets/images/logo-gotogym-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}

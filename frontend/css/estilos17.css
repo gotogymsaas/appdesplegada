@@ -1,0 +1,151 @@
+.gestin-de-datos {
+    position: relative;
+    width: 393px;
+    height: 852px;
+    background-color: #101012;
+}
+
+.gestin-de-datos .overlap {
+    width: 319px;
+    height: 78px;
+    top: 281px;
+    left: 37px;
+    border-color: #0fbfb0;
+    box-shadow: 0px 0px 4px #0fbfb0;
+    position: absolute;
+    border-radius: 20px;
+    border: 1px solid;
+}
+
+.gestin-de-datos .polygon {
+    position: absolute;
+    width: 20px;
+    height: 17px;
+    top: 35px;
+    left: 281px;
+}
+
+.gestin-de-datos .ellipse {
+    position: absolute;
+    width: 54px;
+    height: 53px;
+    top: 11px;
+    left: 27px;
+    background-color: #ffffff;
+    border-radius: 27px / 26.5px;
+}
+
+.gestin-de-datos .text-wrapper {
+    position: absolute;
+    top: 25px;
+    left: 91px;
+    font-family: "Poppins-SemiBoldItalic", Helvetica;
+    font-weight: 600;
+    font-style: italic;
+    color: #0fbfb0;
+    font-size: 15px;
+    letter-spacing: 0;
+    line-height: normal;
+}
+
+.gestin-de-datos .div {
+    position: absolute;
+    width: 80px;
+    height: 78px;
+    top: 139px;
+    left: 52px;
+    background-color: #ffffff;
+    border-radius: 40px / 39px;
+}
+
+.gestin-de-datos .overlap-group {
+    width: 280px;
+    height: 43px;
+    top: 383px;
+    left: 57px;
+    border-color: #d4b46a;
+    box-shadow: 0px 0px 4px #d4b46a;
+    position: absolute;
+    border-radius: 20px;
+    border: 1px solid;
+}
+
+.gestin-de-datos .text-wrapper-2 {
+    position: absolute;
+    top: 8px;
+    left: 81px;
+    font-family: "Poppins-SemiBoldItalic", Helvetica;
+    font-weight: 600;
+    font-style: italic;
+    color: #d4b46a;
+    font-size: 15px;
+    letter-spacing: 0;
+    line-height: normal;
+}
+
+.gestin-de-datos .gesti-n-de-datos {
+    position: absolute;
+    top: 144px;
+    left: 143px;
+    font-family: "Poppins-MediumItalic", Helvetica;
+    font-weight: 500;
+    font-style: italic;
+    color: #e0e3e6;
+    font-size: 24px;
+    letter-spacing: 0;
+    line-height: normal;
+}
+
+.gestin-de-datos .overlap-group-2 {
+    width: 319px;
+    height: 78px;
+    top: 515px;
+    left: 37px;
+    border-color: #0fbfb0;
+    box-shadow: 0px 0px 4px #0fbfb0;
+    position: absolute;
+    border-radius: 20px;
+    border: 1px solid;
+}
+
+.gestin-de-datos .div-wrapper {
+    width: 280px;
+    height: 43px;
+    top: 617px;
+    left: 57px;
+    border-color: #d4b46a;
+    box-shadow: 0px 0px 4px #d4b46a;
+    position: absolute;
+    border-radius: 20px;
+    border: 1px solid;
+}
+
+.gestin-de-datos .text-wrapper-3 {
+    position: absolute;
+    top: 785px;
+    left: 57px;
+    font-family: "Poppins-MediumItalic", Helvetica;
+    font-weight: 500;
+    font-style: italic;
+    color: #101012;
+    font-size: 14px;
+    letter-spacing: 0;
+    line-height: normal;
+}
+
+.gestin-de-datos .recurso {
+    position: absolute;
+    width: 38px;
+    height: 37px;
+    top: 35px;
+    left: 73px;
+    object-fit: cover;
+}
+
+.gestin-de-datos .vector {
+    position: absolute;
+    width: 31px;
+    height: 28px;
+    top: 40px;
+    left: 26px;
+}
