@@ -12,6 +12,7 @@ backend/.env
 *.pfx
 backend/devices/oauth/*.json
 AGENTE-GENERAL 2.json
+infra/publish_profile.xml
 
 # Python
 __pycache__/
