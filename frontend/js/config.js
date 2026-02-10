@@ -2,7 +2,7 @@
 // config.js — fuente única de verdad (compatible con código antiguo y nuevo)
 (function () {
   const host = window.location.hostname;
-  const DEFAULT_PROD_API = "https://api.gotogym.com/api/";
+  const DEFAULT_PROD_API = "https://api.gotogym.store/api/";
   const LOCAL_API = "http://127.0.0.1:8000/api/";
   const LAN_API = "http://192.168.20.218:8000/api/";
 
