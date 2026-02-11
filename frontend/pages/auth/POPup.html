@@ -103,10 +103,20 @@
       overscroll-behavior: contain;
     }
 
-    iframe {
+    .pdf-viewer {
       width: 100%;
-      height: 100%;
-      border: none;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 12px;
+      padding: 12px;
+    }
+
+    .pdf-canvas {
+      width: 100%;
+      height: auto;
+      border-radius: 10px;
+      background: #111;
     }
 
     .modal-footer {
@@ -198,12 +208,11 @@
         Versión: 2025-04-07 · Lee el documento completo antes de continuar.
       </div>
 
-      <!-- Visor del PDF (SIN descarga) -->
+      <!-- Visor del PDF -->
       <div class="pdf-container">
-        <iframe
-          src="./terminos_gotogym_usuarios_2025.pdf#toolbar=0&navpanes=0&scrollbar=1&zoom=page-width"
-          title="Términos y Condiciones GoToGym">
-        </iframe>
+        <div id="pdfViewer" class="pdf-viewer" data-pdf="./terminos_gotogym_usuarios_2025.pdf">
+          Cargando documento...
+        </div>
       </div>
 
       <div class="modal-footer">
@@ -224,7 +233,36 @@
     </div>
   </div>
 
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
   <script>
+    function renderPdfPages(container, pdf) {
+      container.textContent = "";
+
+      const renderPage = (pageNum) =>
+        pdf.getPage(pageNum).then((page) => {
+          const viewport = page.getViewport({ scale: 1 });
+          const scale = (container.clientWidth - 24) / viewport.width;
+          const scaledViewport = page.getViewport({ scale });
+
+          const canvas = document.createElement("canvas");
+          canvas.className = "pdf-canvas";
+          const context = canvas.getContext("2d");
+          canvas.width = scaledViewport.width;
+          canvas.height = scaledViewport.height;
+          container.appendChild(canvas);
+
+          return page.render({ canvasContext: context, viewport: scaledViewport }).promise;
+        });
+
+      const renderAll = async () => {
+        for (let i = 1; i <= pdf.numPages; i += 1) {
+          await renderPage(i);
+        }
+      };
+
+      return renderAll();
+    }
+
     function confirmarLectura() {
       localStorage.setItem("termsRead", "true");
       localStorage.setItem("termsVersion", "2025-04-07");
@@ -234,6 +272,23 @@
     function volverAlRegistro() {
       window.location.href = "../auth/indexRegistrar.html";
     }
+
+    (function initPdf() {
+      const container = document.getElementById("pdfViewer");
+      if (!container || !window.pdfjsLib) return;
+
+      const url = container.getAttribute("data-pdf");
+      window.pdfjsLib.GlobalWorkerOptions.workerSrc =
+        "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+
+      window.pdfjsLib
+        .getDocument(url)
+        .promise
+        .then((pdf) => renderPdfPages(container, pdf))
+        .catch(() => {
+          container.textContent = "No se pudo cargar el documento.";
+        });
+    })();
   </script>
 
 </body>
