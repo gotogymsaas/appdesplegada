@@ -243,12 +243,16 @@
           const viewport = page.getViewport({ scale: 1 });
           const scale = (container.clientWidth - 24) / viewport.width;
           const scaledViewport = page.getViewport({ scale });
+          const dpr = Math.max(window.devicePixelRatio || 1, 1);
 
           const canvas = document.createElement("canvas");
           canvas.className = "pdf-canvas";
           const context = canvas.getContext("2d");
-          canvas.width = scaledViewport.width;
-          canvas.height = scaledViewport.height;
+          canvas.width = Math.floor(scaledViewport.width * dpr);
+          canvas.height = Math.floor(scaledViewport.height * dpr);
+          canvas.style.width = `${Math.floor(scaledViewport.width)}px`;
+          canvas.style.height = `${Math.floor(scaledViewport.height)}px`;
+          context.setTransform(dpr, 0, 0, dpr, 0, 0);
           container.appendChild(canvas);
 
           return page.render({ canvasContext: context, viewport: scaledViewport }).promise;
