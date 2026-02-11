@@ -88,6 +88,9 @@ INSTALLED_APPS = [
     'rest_framework_simplejwt',
     'corsheaders',
 
+    # Storage
+    'storages',
+
     # Tu app
     'api',
     'devices',
@@ -278,6 +281,29 @@ if not ENABLE_PASSWORD_VALIDATORS:
 # MEDIA FILES
 MEDIA_URL = '/media/'
 MEDIA_ROOT = BASE_DIR / 'media'
+
+AZURE_STORAGE_ACCOUNT_NAME = os.getenv("AZURE_STORAGE_ACCOUNT_NAME", "").strip()
+AZURE_STORAGE_ACCOUNT_KEY = os.getenv("AZURE_STORAGE_ACCOUNT_KEY", "").strip()
+AZURE_STORAGE_CONTAINER = os.getenv("AZURE_STORAGE_CONTAINER", "media").strip()
+AZURE_STORAGE_CUSTOM_DOMAIN = os.getenv("AZURE_STORAGE_CUSTOM_DOMAIN", "").strip()
+
+if AZURE_STORAGE_ACCOUNT_NAME and AZURE_STORAGE_ACCOUNT_KEY:
+    STORAGES = {
+        "default": {
+            "BACKEND": "storages.backends.azure_storage.AzureStorage",
+            "OPTIONS": {
+                "account_name": AZURE_STORAGE_ACCOUNT_NAME,
+                "account_key": AZURE_STORAGE_ACCOUNT_KEY,
+                "azure_container": AZURE_STORAGE_CONTAINER,
+            },
+        }
+    }
+    DEFAULT_FILE_STORAGE = "storages.backends.azure_storage.AzureStorage"
+    AZURE_QUERYSTRING_AUTH = False
+    if AZURE_STORAGE_CUSTOM_DOMAIN:
+        MEDIA_URL = f"https://{AZURE_STORAGE_CUSTOM_DOMAIN}/{AZURE_STORAGE_CONTAINER}/"
+    else:
+        MEDIA_URL = f"https://{AZURE_STORAGE_ACCOUNT_NAME}.blob.core.windows.net/{AZURE_STORAGE_CONTAINER}/"
 
 
 # ============================

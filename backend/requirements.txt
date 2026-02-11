@@ -2,6 +2,7 @@ Django>=4.0
 djangorestframework
 django-cors-headers
 djangorestframework-simplejwt
+django-storages
 gunicorn
 psycopg2-binary
 numpy
@@ -16,5 +17,6 @@ pdf2image
 pillow-heif
 
 azure-communication-email
+azure-storage-blob
 
 python-dotenv
