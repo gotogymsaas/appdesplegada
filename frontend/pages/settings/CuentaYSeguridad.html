@@ -222,9 +222,23 @@
                 // Show avatar or Initial
                 const preview = document.getElementById('avatarPreview');
                 if (user.profile_picture) {
-                    // Construct full URL. user.profile_picture might be "/media/..."
                     const baseUrl = API_URL.replace('/api/', '');
-                    preview.innerHTML = `<img src="${baseUrl}${user.profile_picture}" style="width:100%; height:100%; object-fit:cover;">`;
+                    const rawUrl = user.profile_picture;
+                    const imageUrl = /^https?:\/\//i.test(rawUrl)
+                        ? rawUrl
+                        : `${baseUrl}${rawUrl.startsWith('/') ? '' : '/'}${rawUrl}`;
+                    const previewImg = new Image();
+                    previewImg.src = imageUrl;
+                    previewImg.style.width = '100%';
+                    previewImg.style.height = '100%';
+                    previewImg.style.objectFit = 'cover';
+                    previewImg.onload = () => {
+                        preview.innerHTML = '';
+                        preview.appendChild(previewImg);
+                    };
+                    previewImg.onerror = () => {
+                        preview.textContent = (user.username || "U").charAt(0).toUpperCase();
+                    };
                 } else {
                     preview.textContent = (user.username || "U").charAt(0).toUpperCase();
                 }

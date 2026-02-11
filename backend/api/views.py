@@ -1083,8 +1083,19 @@ def mercadopago_webhook(request):
 @authentication_classes([JWTAuthentication])
 @permission_classes([IsAuthenticatedOrOptions])
 def update_profile_settings(request):
+    if request.method == 'OPTIONS':
+        response = Response()
+        response['Access-Control-Allow-Origin'] = '*'
+        response['Access-Control-Allow-Methods'] = 'POST, PUT, OPTIONS'
+        response['Access-Control-Allow-Headers'] = 'Content-Type, Authorization'
+        return response
+
     try:
         username = request.data.get('username')
+        if not username and getattr(request, "user", None) and request.user.is_authenticated:
+            username = request.user.username
+        if not username:
+            return Response({'error': 'Usuario no identificado'}, status=400)
         user = User.objects.get(username=username)
         
         # Handle text fields

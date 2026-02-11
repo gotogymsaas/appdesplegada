@@ -426,8 +426,24 @@
                 const avatarEl = document.getElementById('userAvatar');
                 if (user.profile_picture) {
                     const baseUrl = API_URL.replace('/api/', '');
-                    avatarEl.innerHTML = `<img src="${baseUrl}${user.profile_picture}" style="width:100%; height:100%; object-fit:cover;">`;
-                    avatarEl.style.background = 'transparent';
+                    const rawUrl = user.profile_picture;
+                    const imageUrl = /^https?:\/\//i.test(rawUrl)
+                        ? rawUrl
+                        : `${baseUrl}${rawUrl.startsWith('/') ? '' : '/'}${rawUrl}`;
+                    const avatarImg = new Image();
+                    avatarImg.src = imageUrl;
+                    avatarImg.style.width = '100%';
+                    avatarImg.style.height = '100%';
+                    avatarImg.style.objectFit = 'cover';
+                    avatarImg.onload = () => {
+                        avatarEl.innerHTML = '';
+                        avatarEl.appendChild(avatarImg);
+                        avatarEl.style.background = 'transparent';
+                    };
+                    avatarImg.onerror = () => {
+                        avatarEl.textContent = (user.username || "U").charAt(0).toUpperCase();
+                        avatarEl.style.background = '';
+                    };
                 } else {
                     avatarEl.textContent = (user.username || "U").charAt(0).toUpperCase();
                 }
