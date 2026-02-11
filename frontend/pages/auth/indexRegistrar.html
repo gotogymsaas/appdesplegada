@@ -196,7 +196,7 @@ const data = await res.json();
 if (res.ok) {
 showToast("¡Registro exitoso! Redirigiendo...", "success");
 setTimeout(() => {
-window.location.href='../../pages/auth/indexInicioDeSesion.html';
+window.location.href = '/pages/auth/indexInicioDeSesion.html';
 }, 2000);
 } else {
 showToast(data.error || "No se pudo registrar", "error");

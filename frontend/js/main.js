@@ -66,5 +66,5 @@ function cerrarSesion() {
   }
 
   // 3. Redirigir al login
-  window.location.href = "../pages/auth/indexInicioDeSesion.html";
+  window.location.href = "/pages/auth/indexInicioDeSesion.html";
 }
