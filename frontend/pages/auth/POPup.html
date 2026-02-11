@@ -31,7 +31,7 @@
       display: flex;
       justify-content: center;
       align-items: center;
-      height: 100vh;
+      height: 100dvh;
       color: var(--gtg-light);
     }
 
@@ -54,7 +54,7 @@
       padding: 22px;
       box-shadow: 0 0 18px rgba(15, 191, 176, 0.35);
       animation: fadeInUp 0.45s ease-out forwards;
-      max-height: 92vh;
+      max-height: 92dvh;
       display: flex;
       flex-direction: column;
     }
@@ -91,25 +91,16 @@
       margin-bottom: 14px;
     }
 
-    .pdf-actions {
-      display: flex;
-      justify-content: flex-end;
-      margin-bottom: 10px;
-    }
-
-    .btn-small {
-      padding: 8px 14px;
-      font-size: 12px;
-    }
-
     .pdf-container {
       border: 1px solid rgba(255,255,255,0.12);
       border-radius: 12px;
-      overflow: hidden;
+      overflow: auto;
       height: 420px;
       margin-bottom: 18px;
       background-color: #000;
       flex: 1 1 auto;
+      -webkit-overflow-scrolling: touch;
+      overscroll-behavior: contain;
     }
 
     iframe {
@@ -160,12 +151,14 @@
       .modal-content {
         width: 100%;
         max-width: 100%;
-        height: 92vh;
+        height: 100dvh;
+        max-height: 100dvh;
         border-radius: 22px 22px 0 0;
+        overflow-y: auto;
       }
 
       .pdf-container {
-        height: 58vh;
+        height: 60dvh;
       }
 
       .modal-footer {
@@ -203,12 +196,6 @@
 
       <div class="modal-subtitle">
         Versión: 2025-04-07 · Lee el documento completo antes de continuar.
-      </div>
-
-      <div class="pdf-actions">
-        <a class="btn btn-secondary btn-small" href="./terminos_gotogym_usuarios_2025.pdf" target="_blank" rel="noopener">
-          Abrir en pantalla completa
-        </a>
       </div>
 
       <!-- Visor del PDF (SIN descarga) -->
