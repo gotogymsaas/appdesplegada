@@ -55,7 +55,7 @@ required>
   Mínimo 8 caracteres, 1 mayúscula y 1 número.
 </div>
 <div style="display:flex; align-items:center; gap:10px; margin-bottom: 10px;">
-  <button type="button" class="btn btn-outline-teal" style="width:auto; margin-bottom:0;" onclick="togglePassword()">Ver / Ocultar</button>
+  <button type="button" id="togglePasswordBtn" class="btn btn-outline-teal" style="width:auto; margin-bottom:0;" onclick="togglePassword()">Ver / Ocultar</button>
   <span id="passwordStrength" style="color: var(--text-muted); font-size: 12px;">Fortaleza: —</span>
 </div>
 
@@ -152,6 +152,7 @@ Sesión</a>
 <script>
 document.addEventListener("DOMContentLoaded", () => {
 const btnRegister = document.getElementById("btnRegister");
+const toggleBtn = document.getElementById("togglePasswordBtn");
 const termsCheckbox = document.getElementById("termsAccepted");
 const savedDraft = JSON.parse(localStorage.getItem("registerDraft") || "{}");
 
@@ -178,6 +179,17 @@ document.getElementById("email").addEventListener("input", saveDraft);
 document.querySelectorAll('input[name="plan"]').forEach((el) => {
 el.addEventListener("change", saveDraft);
 });
+
+if (toggleBtn) {
+toggleBtn.addEventListener("click", (event) => {
+event.preventDefault();
+togglePassword();
+});
+toggleBtn.addEventListener("touchstart", (event) => {
+event.preventDefault();
+togglePassword();
+}, { passive: false });
+}
 async function handleRegister() {
     const fullName = document.getElementById("username").value.trim(); // Nombre y Apellido (visible)
     const email = document.getElementById("email").value.trim().toLowerCase(); // Email (visible)
