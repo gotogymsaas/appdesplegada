@@ -152,6 +152,32 @@ Sesión</a>
 <script>
 document.addEventListener("DOMContentLoaded", () => {
 const btnRegister = document.getElementById("btnRegister");
+const termsCheckbox = document.getElementById("termsAccepted");
+const savedDraft = JSON.parse(localStorage.getItem("registerDraft") || "{}");
+
+if (savedDraft.fullName) document.getElementById("username").value = savedDraft.fullName;
+if (savedDraft.email) document.getElementById("email").value = savedDraft.email;
+if (savedDraft.plan) {
+const planInput = document.querySelector(`input[name="plan"][value="${savedDraft.plan}"]`);
+if (planInput) planInput.checked = true;
+}
+if (termsCheckbox) {
+const accepted = localStorage.getItem("termsAccepted") === "true" || localStorage.getItem("termsRead") === "true";
+termsCheckbox.checked = accepted;
+}
+
+function saveDraft() {
+const fullName = document.getElementById("username").value.trim();
+const email = document.getElementById("email").value.trim().toLowerCase();
+const plan = document.querySelector('input[name="plan"]:checked')?.value || "Gratis";
+localStorage.setItem("registerDraft", JSON.stringify({ fullName, email, plan }));
+}
+
+document.getElementById("username").addEventListener("input", saveDraft);
+document.getElementById("email").addEventListener("input", saveDraft);
+document.querySelectorAll('input[name="plan"]').forEach((el) => {
+el.addEventListener("change", saveDraft);
+});
 async function handleRegister() {
     const fullName = document.getElementById("username").value.trim(); // Nombre y Apellido (visible)
     const email = document.getElementById("email").value.trim().toLowerCase(); // Email (visible)
@@ -190,6 +216,7 @@ body: JSON.stringify({ username, email, password, plan, fullName, termsAccepted,
 const data = await res.json();
 if (res.ok) {
 showToast("¡Registro exitoso! Redirigiendo...", "success");
+localStorage.removeItem("registerDraft");
 setTimeout(() => {
 window.location.href = '/pages/auth/indexInicioDeSesion.html';
 }, 2000);
