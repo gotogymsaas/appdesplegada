@@ -209,6 +209,7 @@
 
 #chat-input {
   flex: 1;
+  min-width: 0;
   background: rgba(255, 255, 255, 0.05);
   border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 20px;
@@ -326,8 +327,22 @@
     width: 100% !important;
     background: #1e1e1e;
     border-top: 1px solid #333;
-    padding: 10px 15px;
+    padding: 8px 10px;
+    gap: 8px;
     z-index: 100000;
+  }
+
+  #chat-input-area label[for="chat-file-input"] {
+    padding: 6px;
+  }
+
+  #chat-send-btn {
+    width: 44px;
+    height: 44px;
+  }
+
+  #chat-input {
+    font-size: 15px;
   }
 
   #chat-toggle-btn {
