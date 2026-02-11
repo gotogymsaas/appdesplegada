@@ -140,6 +140,19 @@
             const usernameInput = document.getElementById("username");
             const passwordInput = document.getElementById("password");
 
+            const revealPassword = () => {
+                passwordInput.type = "text";
+            };
+
+            const hidePassword = () => {
+                passwordInput.type = "password";
+            };
+
+            passwordInput.addEventListener("pointerdown", revealPassword);
+            passwordInput.addEventListener("pointerup", hidePassword);
+            passwordInput.addEventListener("pointercancel", hidePassword);
+            passwordInput.addEventListener("blur", hidePassword);
+
             async function handleLogin() {
                 const username = usernameInput.value.trim();
                 const password = passwordInput.value.trim();
