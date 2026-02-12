@@ -4,14 +4,16 @@ set -e
 # App Service zip deploy path
 if [ -d "/home/site/wwwroot/backend" ]; then
 	APP_ROOT="/home/site/wwwroot"
-	cd /home/site/wwwroot/backend
+	BACKEND_DIR="/home/site/wwwroot/backend"
 elif [ -d "/app/backend" ]; then
 	APP_ROOT="/app"
-	cd /app/backend
+	BACKEND_DIR="/app/backend"
 else
 	echo "Backend directory not found."
 	exit 1
 fi
+
+cd "$BACKEND_DIR"
 
 # Prefer App Service venv if present
 PYTHON_BIN="python"
@@ -33,7 +35,20 @@ import importlib.util
 raise SystemExit(0 if importlib.util.find_spec("django") else 1)
 PY
 then
-	"$PYTHON_BIN" -m pip install -r "$APP_ROOT/requirements.txt"
+	REQ_FILE=""
+	if [ -f "$BACKEND_DIR/requirements.txt" ]; then
+		REQ_FILE="$BACKEND_DIR/requirements.txt"
+	elif [ -f "$APP_ROOT/requirements.txt" ]; then
+		REQ_FILE="$APP_ROOT/requirements.txt"
+	fi
+
+	if [ -z "$REQ_FILE" ]; then
+		echo "requirements.txt not found in expected paths."
+		exit 1
+	fi
+
+	echo "Installing dependencies from: $REQ_FILE"
+	"$PYTHON_BIN" -m pip install -r "$REQ_FILE"
 fi
 
 "$PYTHON_BIN" manage.py migrate --noinput
