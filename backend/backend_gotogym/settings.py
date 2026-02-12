@@ -290,15 +290,10 @@ AZURE_STORAGE_CUSTOM_DOMAIN = os.getenv("AZURE_STORAGE_CUSTOM_DOMAIN", "").strip
 if AZURE_STORAGE_ACCOUNT_NAME and AZURE_STORAGE_ACCOUNT_KEY:
     STORAGES = {
         "default": {
-            "BACKEND": "storages.backends.azure_storage.AzureStorage",
-            "OPTIONS": {
-                "account_name": AZURE_STORAGE_ACCOUNT_NAME,
-                "account_key": AZURE_STORAGE_ACCOUNT_KEY,
-                "azure_container": AZURE_STORAGE_CONTAINER,
-            },
+            "BACKEND": "backend_gotogym.storage.MediaAzureStorage",
         }
     }
-    DEFAULT_FILE_STORAGE = "storages.backends.azure_storage.AzureStorage"
+    DEFAULT_FILE_STORAGE = "backend_gotogym.storage.MediaAzureStorage"
     AZURE_QUERYSTRING_AUTH = False
     if AZURE_STORAGE_CUSTOM_DOMAIN:
         MEDIA_URL = f"https://{AZURE_STORAGE_CUSTOM_DOMAIN}/{AZURE_STORAGE_CONTAINER}/"
