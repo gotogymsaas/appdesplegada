@@ -21,6 +21,7 @@ from .serializers import UserSerializer
 from datetime import date, datetime, timedelta
 from django.utils import timezone
 from django.db.models import Avg
+from django.db import IntegrityError
 from django.db.models.functions import TruncDate
 import sys
 from PIL import Image
@@ -199,12 +200,15 @@ def register(request):
         if len(password) < 8 or not re.search(r'[A-Z]', password) or not re.search(r'[0-9]', password):
             return Response({'error': 'La contraseña no cumple los requisitos'}, status=status.HTTP_400_BAD_REQUEST)
 
-        user = User.objects.create_user(
-            username=username,
-            email=email,
-            password=password,
-            plan=plan
-        )
+        try:
+            user = User.objects.create_user(
+                username=username,
+                email=email,
+                password=password,
+                plan=plan
+            )
+        except IntegrityError:
+            return Response({'error': 'Usuario o email ya existe'}, status=status.HTTP_400_BAD_REQUEST)
         if plan == "Premium":
             now = timezone.now()
             user.trial_active = True
@@ -222,13 +226,16 @@ def register(request):
         user.terms_accepted_source = terms_source[:30]
         user.save()
 
-        TermsAcceptance.objects.create(
-            user=user,
-            version=terms_version,
-            ip_address=user.terms_accepted_ip,
-            user_agent=user.terms_accepted_user_agent,
-            source=user.terms_accepted_source,
-        )
+        try:
+            TermsAcceptance.objects.create(
+                user=user,
+                version=terms_version,
+                ip_address=user.terms_accepted_ip,
+                user_agent=user.terms_accepted_user_agent,
+                source=user.terms_accepted_source,
+            )
+        except Exception as e:
+            print("Error guardando TermsAcceptance:", str(e))
         
         serializer = UserSerializer(user)
         response = Response({
