@@ -80,6 +80,13 @@
       text-decoration: underline;
     }
 
+        .save-photo-btn {
+            margin-top: 8px;
+            font-size: 12px;
+            padding: 6px 12px;
+            border-radius: 999px;
+        }
+
     .section-label {
       color: var(--text-muted);
       font-size: 14px;
@@ -114,6 +121,7 @@
             <!-- Image or Default Initials -->
             <div class="avatar-preview" id="avatarPreview" style="overflow: hidden;">U</div>
             <button class="change-photo-btn" onclick="document.getElementById('fileInput').click()">Cambiar Foto</button>
+            <button type="button" class="btn btn-outline-teal save-photo-btn" onclick="savePhoto()">Guardar Foto</button>
             <input type="file" id="fileInput" accept="image/*" style="display: none;" onchange="previewImage(event)">
         </div>
         
@@ -268,7 +276,6 @@
         async function saveChanges() {
             const username = document.getElementById('username').value;
             const email = document.getElementById('email').value;
-            const fileInput = document.getElementById('fileInput');
             const fullName = document.getElementById('full_name').value;
             const profession = document.getElementById('profession').value;
             const favoriteExerciseTime = document.getElementById('favorite_exercise_time').value;
@@ -309,10 +316,7 @@
                 formData.append('password', password);
                 formData.append('password_confirm', passwordConfirm);
             }
-            
-            if (fileInput.files.length > 0) {
-                formData.append('profile_picture', fileInput.files[0]);
-            }
+
             
             try {
                 const response = await authFetch(`${API_URL}users/update_profile/`, {
@@ -336,6 +340,45 @@
                         // Optional: Redirect or refresh
                     }, 1000);
                     
+                } else {
+                    const err = await response.json();
+                    showToast("Error: " + (err.error || "Desconocido"), "error");
+                }
+            } catch (error) {
+                console.error(error);
+                showToast("Error de conexión", "error");
+            }
+        }
+
+        async function savePhoto() {
+            const username = document.getElementById('username').value;
+            const fileInput = document.getElementById('fileInput');
+
+            if (!username) {
+                showToast("Usuario no identificado", "error");
+                return;
+            }
+            if (!fileInput.files.length) {
+                showToast("Selecciona una foto primero", "error");
+                return;
+            }
+
+            const formData = new FormData();
+            formData.append('username', username);
+            formData.append('profile_picture', fileInput.files[0]);
+
+            try {
+                const response = await authFetch(`${API_URL}users/update_profile/`, {
+                    method: 'POST',
+                    body: formData
+                });
+
+                if (response.ok) {
+                    const updatedUser = await response.json();
+                    const current = JSON.parse(localStorage.getItem("user") || "{}");
+                    const finalUser = { ...current, ...updatedUser };
+                    localStorage.setItem("user", JSON.stringify(finalUser));
+                    showToast("Foto guardada correctamente", "success");
                 } else {
                     const err = await response.json();
                     showToast("Error: " + (err.error || "Desconocido"), "error");
