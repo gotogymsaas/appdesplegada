@@ -425,11 +425,9 @@
                 
                 const avatarEl = document.getElementById('userAvatar');
                 if (user.profile_picture) {
-                    const baseUrl = API_URL.replace('/api/', '');
-                    const rawUrl = user.profile_picture;
-                    const imageUrl = /^https?:\/\//i.test(rawUrl)
-                        ? rawUrl
-                        : `${baseUrl}${rawUrl.startsWith('/') ? '' : '/'}${rawUrl}`;
+                    const imageUrl = window.resolveMediaUrl
+                        ? window.resolveMediaUrl(user.profile_picture)
+                        : user.profile_picture;
                     const avatarImg = new Image();
                     avatarImg.src = imageUrl;
                     avatarImg.style.width = '100%';

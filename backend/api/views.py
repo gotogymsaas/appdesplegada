@@ -690,41 +690,64 @@ def update_profile(request):
         response = Response()
         response['Access-Control-Allow-Origin'] = '*'
         response['Access-Control-Allow-Methods'] = 'PUT, OPTIONS'
-        response['Access-Control-Allow-Headers'] = 'Content-Type'
+        response['Access-Control-Allow-Headers'] = 'Content-Type, Authorization'
         return response
 
     try:
-        username = request.data.get('username')
-        if not username:
-            return Response({'error': 'Usuario no identificado'}, status=status.HTTP_400_BAD_REQUEST)
+        if not getattr(request, "user", None) or not request.user.is_authenticated:
+            return Response({'success': False, 'error': 'Autenticacion requerida'}, status=status.HTTP_401_UNAUTHORIZED)
 
-        try:
-            user = User.objects.get(username=username)
-        except User.DoesNotExist:
-             return Response({'error': 'Usuario no encontrado'}, status=status.HTTP_404_NOT_FOUND)
+        user = request.user
+
+        email = request.data.get('email')
+        if email:
+            exists = User.objects.filter(email=email).exclude(id=user.id).exists()
+            if exists:
+                return Response({'success': False, 'error': 'El email ya esta registrado'}, status=status.HTTP_400_BAD_REQUEST)
+            user.email = email
 
         # Update fields
         if 'age' in request.data:
-            user.age = request.data['age']
+            try:
+                user.age = int(request.data['age']) if str(request.data['age']).strip() != '' else None
+            except Exception:
+                pass
         if 'weight' in request.data:
-            user.weight = request.data['weight']
+            try:
+                user.weight = float(request.data['weight']) if str(request.data['weight']).strip() != '' else None
+            except Exception:
+                pass
         if 'height' in request.data:
-            user.height = request.data['height']
+            try:
+                user.height = float(request.data['height']) if str(request.data['height']).strip() != '' else None
+            except Exception:
+                pass
+
+        if 'profile_picture' in request.FILES:
+            upload = request.FILES['profile_picture']
+            max_size_bytes = 8 * 1024 * 1024
+            content_type = (upload.content_type or '').lower()
+            if not content_type.startswith('image/'):
+                return Response({'success': False, 'error': 'Formato de imagen no permitido'}, status=status.HTTP_400_BAD_REQUEST)
+            if upload.size and upload.size > max_size_bytes:
+                return Response({'success': False, 'error': 'La imagen supera el maximo permitido (8MB)'}, status=status.HTTP_400_BAD_REQUEST)
+            base, ext = os.path.splitext(upload.name)
+            ext = ext.lower() if ext else '.jpg'
+            upload.name = f"profile_{user.id}_{uuid.uuid4().hex}{ext}"
+            user.profile_picture = upload
         
         user.save()
         
         serializer = UserSerializer(user, context={"request": request})
-        response = Response({
+        return Response({
             'success': True,
             'message': 'Perfil actualizado correctamente',
             'user': serializer.data
         })
-        response['Access-Control-Allow-Origin'] = '*'
-        return response
 
     except Exception as e:
         print("Error updating profile:", str(e))
-        return Response({'error': 'Error interno'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        return Response({'success': False, 'error': 'Error interno'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 @api_view(['GET', 'OPTIONS'])
 @authentication_classes([JWTAuthentication])
@@ -1099,15 +1122,19 @@ def update_profile_settings(request):
         return response
 
     try:
-        username = request.data.get('username')
-        if not username and getattr(request, "user", None) and request.user.is_authenticated:
-            username = request.user.username
-        if not username:
-            return Response({'error': 'Usuario no identificado'}, status=400)
-        user = User.objects.get(username=username)
+        if not getattr(request, "user", None) or not request.user.is_authenticated:
+            return Response({'success': False, 'error': 'Autenticacion requerida'}, status=401)
+
+        user = request.user
         
         # Handle text fields
-        if 'email' in request.data: user.email = request.data['email']
+        if 'email' in request.data:
+            email = request.data['email']
+            if email:
+                exists = User.objects.filter(email=email).exclude(id=user.id).exists()
+                if exists:
+                    return Response({'success': False, 'error': 'El email ya esta registrado'}, status=400)
+                user.email = email
         if 'profession' in request.data: user.profession = request.data['profession']
         if 'full_name' in request.data: user.full_name = request.data['full_name']
         if 'favorite_exercise_time' in request.data: user.favorite_exercise_time = request.data['favorite_exercise_time']
@@ -1141,21 +1168,12 @@ def update_profile_settings(request):
         # Handle Image
         if 'profile_picture' in request.FILES:
             upload = request.FILES['profile_picture']
-            max_size_bytes = 5 * 1024 * 1024
-            allowed_types = {
-                "image/jpeg",
-                "image/jpg",
-                "image/png",
-                "image/webp",
-                "image/heic",
-                "image/heif",
-            }
-
-            if upload.size and upload.size > max_size_bytes:
-                return Response({'error': 'La imagen supera el maximo permitido (5MB)'}, status=400)
             content_type = (upload.content_type or '').lower()
-            if content_type not in allowed_types:
-                return Response({'error': 'Formato de imagen no permitido'}, status=400)
+            if not content_type.startswith('image/'):
+                return Response({'success': False, 'error': 'Formato de imagen no permitido'}, status=400)
+            max_size_bytes = 8 * 1024 * 1024
+            if upload.size and upload.size > max_size_bytes:
+                return Response({'success': False, 'error': 'La imagen supera el maximo permitido (8MB)'}, status=400)
 
             base, ext = os.path.splitext(upload.name)
             ext = ext.lower() if ext else '.jpg'
@@ -1165,11 +1183,15 @@ def update_profile_settings(request):
         user.save()
         
         serializer = UserSerializer(user, context={"request": request})
-        return Response(serializer.data)
+        return Response({
+            'success': True,
+            'message': 'Perfil actualizado correctamente',
+            'user': serializer.data
+        })
     except User.DoesNotExist:
-        return Response({'error': 'User not found'}, status=404)
+        return Response({'success': False, 'error': 'User not found'}, status=404)
     except Exception as e:
-        return Response({'error': str(e)}, status=500)
+        return Response({'success': False, 'error': str(e)}, status=500)
 
 @api_view(['POST', 'OPTIONS'])
 def update_single_score(request):

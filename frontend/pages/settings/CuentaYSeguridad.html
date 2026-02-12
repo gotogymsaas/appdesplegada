@@ -230,11 +230,9 @@
                 // Show avatar or Initial
                 const preview = document.getElementById('avatarPreview');
                 if (user.profile_picture) {
-                    const baseUrl = API_URL.replace('/api/', '');
-                    const rawUrl = user.profile_picture;
-                    const imageUrl = /^https?:\/\//i.test(rawUrl)
-                        ? rawUrl
-                        : `${baseUrl}${rawUrl.startsWith('/') ? '' : '/'}${rawUrl}`;
+                    const imageUrl = window.resolveMediaUrl
+                        ? window.resolveMediaUrl(user.profile_picture)
+                        : user.profile_picture;
                     const previewImg = new Image();
                     previewImg.src = imageUrl;
                     previewImg.style.width = '100%';
@@ -271,6 +269,83 @@
             } else {
                 window.location.href = '../profile/Perfil.html';
             }
+        }
+
+        async function readResponseData(response) {
+            const text = await response.text();
+            try {
+                return { data: JSON.parse(text), text };
+            } catch (err) {
+                return { data: null, text };
+            }
+        }
+
+        function getErrorMessage(response, data, text) {
+            if ([502, 503, 504].includes(response.status)) {
+                return "Servidor temporalmente no disponible";
+            }
+            if (data && data.error) return data.error;
+            if (data && data.message) return data.message;
+            if (text) return text.slice(0, 200);
+            return "Error desconocido";
+        }
+
+        function isImageFile(file) {
+            return !!(file && file.type && file.type.startsWith('image/'));
+        }
+
+        function loadImageFromFile(file) {
+            return new Promise((resolve, reject) => {
+                const img = new Image();
+                const url = URL.createObjectURL(file);
+                img.onload = () => {
+                    URL.revokeObjectURL(url);
+                    resolve(img);
+                };
+                img.onerror = () => {
+                    URL.revokeObjectURL(url);
+                    reject(new Error("No se pudo cargar la imagen"));
+                };
+                img.src = url;
+            });
+        }
+
+        async function compressImageIfNeeded(file, maxBytes) {
+            if (!file || file.size <= maxBytes) return file;
+            if (!isImageFile(file)) return null;
+
+            const img = await loadImageFromFile(file);
+            let quality = 0.9;
+            let scale = 1;
+            const maxAttempts = 6;
+
+            for (let i = 0; i < maxAttempts; i += 1) {
+                const canvas = document.createElement('canvas');
+                const targetW = Math.max(1, Math.floor(img.width * scale));
+                const targetH = Math.max(1, Math.floor(img.height * scale));
+                canvas.width = targetW;
+                canvas.height = targetH;
+                const ctx = canvas.getContext('2d');
+                ctx.drawImage(img, 0, 0, targetW, targetH);
+
+                const blob = await new Promise((resolve) =>
+                    canvas.toBlob(resolve, 'image/jpeg', quality)
+                );
+
+                if (!blob) return null;
+                if (blob.size <= maxBytes) {
+                    const name = file.name.replace(/\.[^/.]+$/, '') + '.jpg';
+                    return new File([blob], name, { type: 'image/jpeg' });
+                }
+
+                quality -= 0.15;
+                if (quality < 0.4) {
+                    quality = 0.85;
+                    scale *= 0.8;
+                }
+            }
+
+            return null;
         }
         
         async function saveChanges() {
@@ -323,26 +398,17 @@
                     method: 'POST',
                     body: formData // No headers needed for FormData
                 });
-                
+
+                const { data, text } = await readResponseData(response);
+
                 if (response.ok) {
-                    const updatedUser = await response.json();
-                    
-                    // Update LocalStorage
-                    // Merge with existing to keep other fields (like token if separate)
+                    const updatedUser = data && data.user ? data.user : data;
                     const current = JSON.parse(localStorage.getItem("user") || "{}");
-                    const finalUser = { ...current, ...updatedUser };
-                    
+                    const finalUser = { ...current, ...(updatedUser || {}) };
                     localStorage.setItem("user", JSON.stringify(finalUser));
-                    
                     showToast("Perfil actualizado correctamente", "success");
-                    
-                    setTimeout(() => {
-                        // Optional: Redirect or refresh
-                    }, 1000);
-                    
                 } else {
-                    const err = await response.json();
-                    showToast("Error: " + (err.error || "Desconocido"), "error");
+                    showToast("Error: " + getErrorMessage(response, data, text), "error");
                 }
             } catch (error) {
                 console.error(error);
@@ -363,9 +429,25 @@
                 return;
             }
 
+            const rawFile = fileInput.files[0];
+            if (!isImageFile(rawFile)) {
+                showToast("El archivo seleccionado no es una imagen", "error");
+                return;
+            }
+
+            const maxBytes = 2 * 1024 * 1024;
+            let finalFile = rawFile;
+            if (rawFile.size > maxBytes) {
+                finalFile = await compressImageIfNeeded(rawFile, maxBytes);
+                if (!finalFile) {
+                    showToast("No se pudo comprimir la imagen", "error");
+                    return;
+                }
+            }
+
             const formData = new FormData();
             formData.append('username', username);
-            formData.append('profile_picture', fileInput.files[0]);
+            formData.append('profile_picture', finalFile);
 
             try {
                 const response = await authFetch(`${API_URL}users/update_profile/`, {
@@ -373,15 +455,16 @@
                     body: formData
                 });
 
+                const { data, text } = await readResponseData(response);
+
                 if (response.ok) {
-                    const updatedUser = await response.json();
+                    const updatedUser = data && data.user ? data.user : data;
                     const current = JSON.parse(localStorage.getItem("user") || "{}");
-                    const finalUser = { ...current, ...updatedUser };
+                    const finalUser = { ...current, ...(updatedUser || {}) };
                     localStorage.setItem("user", JSON.stringify(finalUser));
                     showToast("Foto guardada correctamente", "success");
                 } else {
-                    const err = await response.json();
-                    showToast("Error: " + (err.error || "Desconocido"), "error");
+                    showToast("Error: " + getErrorMessage(response, data, text), "error");
                 }
             } catch (error) {
                 console.error(error);
@@ -392,6 +475,11 @@
         function previewImage(event) {
             const file = event.target.files[0];
             if (file) {
+                if (!isImageFile(file)) {
+                    showToast("El archivo seleccionado no es una imagen", "error");
+                    event.target.value = "";
+                    return;
+                }
                 const reader = new FileReader();
                 reader.onload = function (e) {
                     const preview = document.getElementById('avatarPreview');

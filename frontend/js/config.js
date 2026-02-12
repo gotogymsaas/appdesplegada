@@ -41,6 +41,20 @@
 
   console.log("⚙️ API_URL =", window.API_URL);
 
+  function getApiBase() {
+    const api = window.API_URL || DEFAULT_PROD_API;
+    return api.replace(/\/api\/?$/, "/");
+  }
+
+  function resolveMediaUrl(value) {
+    if (!value || typeof value !== "string") return "";
+    if (/^https?:\/\//i.test(value)) return value;
+    if (value.startsWith("blob:") || value.startsWith("data:")) return value;
+    const base = getApiBase();
+    const cleaned = value.startsWith("/") ? value.slice(1) : value;
+    return base + cleaned;
+  }
+
   // --- AUTH HELPERS ---
   const ACCESS_KEY = "access";
   const REFRESH_KEY = "refresh";
@@ -132,6 +146,7 @@
   window.setRefreshToken = setRefreshToken;
   window.refreshAccessToken = refreshAccessToken;
   window.authFetch = authFetch;
+  window.resolveMediaUrl = resolveMediaUrl;
 
   // --- THEME INIT ---
   if (typeof document !== 'undefined') {
