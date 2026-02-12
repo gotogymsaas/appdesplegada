@@ -135,7 +135,7 @@
         <div class="avatar-edit-section">
             <!-- Image or Default Initials -->
             <div class="avatar-preview" id="avatarPreview" style="overflow: hidden;">U</div>
-            <button class="change-photo-btn" onclick="document.getElementById('fileInput').click()">Cambiar Foto</button>
+            <button class="change-photo-btn" onclick="openPhotoPicker()">Cambiar Foto</button>
             <button type="button" class="btn btn-outline-teal save-photo-btn" onclick="savePhoto()">Guardar Foto</button>
             <input type="file" id="fileInput" accept="image/*" style="display: none;" onchange="previewImage(event)">
         </div>
@@ -234,9 +234,24 @@
     
     <script src="../../js/../../js/config.js"></script>
     <script>
+        let isPhotoSaving = false;
+        let lastPreviewSignature = "";
+        let lastPreviewAt = 0;
+        let lastPickerOpenAt = 0;
+
         function logAvatarLoadFailure(scope, finalUrl, errorEvent) {
             if (!window.GTG_DEBUG) return;
             console.debug(`[Avatar][${scope}] load failed:`, finalUrl, errorEvent);
+        }
+
+        function openPhotoPicker() {
+            const now = Date.now();
+            if (now - lastPickerOpenAt < 700) return;
+            lastPickerOpenAt = now;
+
+            const fileInput = document.getElementById('fileInput');
+            if (!fileInput) return;
+            fileInput.click();
         }
 
         function renderAvatarFromUser(user) {
@@ -499,6 +514,8 @@
         }
 
         async function savePhoto() {
+            if (isPhotoSaving) return;
+
             const username = document.getElementById('username').value;
             const fileInput = document.getElementById('fileInput');
 
@@ -524,6 +541,9 @@
                 showToast("La imagen supera el máximo permitido (8MB)", "error");
                 return;
             }
+
+            isPhotoSaving = true;
+            setPhotoSavingState(true);
 
             if (rawFile.size > maxBytes) {
                 try {
@@ -552,11 +572,19 @@
             formData.append('photo_only', '1');
 
             try {
-                setPhotoSavingState(true);
-                const response = await authFetch(`${API_URL}users/update_profile/`, {
-                    method: 'POST',
-                    body: formData
-                });
+                let response;
+                try {
+                    response = await authFetch(`${API_URL}users/update_profile/`, {
+                        method: 'POST',
+                        body: formData
+                    });
+                } catch (networkError) {
+                    await new Promise(resolve => setTimeout(resolve, 700));
+                    response = await authFetch(`${API_URL}users/update_profile/`, {
+                        method: 'POST',
+                        body: formData
+                    });
+                }
 
                 const { data, text } = await readResponseData(response);
 
@@ -579,15 +607,24 @@
                 }
             } catch (error) {
                 console.error(error);
-                showToast("Error de conexión", "error");
+                showToast("No se pudo conectar con el servidor", "error");
             } finally {
                 setPhotoSavingState(false);
+                isPhotoSaving = false;
             }
         }
         
         function previewImage(event) {
             const file = event.target.files[0];
             if (file) {
+                const now = Date.now();
+                const signature = `${file.name}-${file.size}-${file.lastModified}`;
+                if (signature === lastPreviewSignature && now - lastPreviewAt < 1200) {
+                    return;
+                }
+                lastPreviewSignature = signature;
+                lastPreviewAt = now;
+
                 if (!isImageFile(file)) {
                     showToast("El archivo seleccionado no es una imagen", "error");
                     event.target.value = "";
