@@ -424,10 +424,14 @@
                 document.getElementById('userName').textContent = user.full_name || user.username || "Nombres y apellidos";
                 
                 const avatarEl = document.getElementById('userAvatar');
-                if (user.profile_picture) {
-                    const imageUrl = window.resolveMediaUrl
-                        ? window.resolveMediaUrl(user.profile_picture)
-                        : user.profile_picture;
+                const originalAvatarValue = user.profile_picture || "";
+                const imageUrl = window.resolveMediaUrl
+                    ? window.resolveMediaUrl(originalAvatarValue)
+                    : originalAvatarValue;
+                console.debug('[Avatar][Perfil] profile_picture original:', originalAvatarValue);
+                console.debug('[Avatar][Perfil] profile_picture resolved:', imageUrl);
+
+                if (imageUrl) {
                     const avatarImg = new Image();
                     avatarImg.src = imageUrl;
                     avatarImg.style.width = '100%';
@@ -439,6 +443,7 @@
                         avatarEl.style.background = 'transparent';
                     };
                     avatarImg.onerror = () => {
+                        console.debug('[Avatar][Perfil] image load failed:', imageUrl);
                         avatarEl.textContent = (user.username || "U").charAt(0).toUpperCase();
                         avatarEl.style.background = '';
                     };

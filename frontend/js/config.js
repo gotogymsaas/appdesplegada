@@ -3,6 +3,7 @@
 (function () {
   const host = window.location.hostname;
   const DEFAULT_PROD_API = "https://api.gotogym.store/api/";
+  const DEFAULT_MEDIA_PUBLIC_BASE = "https://gotogymweb3755.blob.core.windows.net/media/";
   const LOCAL_API = "http://127.0.0.1:8000/api/";
   const LAN_API = "http://192.168.20.218:8000/api/";
 
@@ -41,18 +42,24 @@
 
   console.log("⚙️ API_URL =", window.API_URL);
 
-  function getApiBase() {
-    const api = window.API_URL || DEFAULT_PROD_API;
-    return api.replace(/\/api\/?$/, "/");
-  }
+  const mediaBaseOverride =
+    window.GTG_MEDIA_PUBLIC_BASE || localStorage.getItem("media_public_base_override");
+  const MEDIA_PUBLIC_BASE = (mediaBaseOverride || DEFAULT_MEDIA_PUBLIC_BASE).endsWith("/")
+    ? (mediaBaseOverride || DEFAULT_MEDIA_PUBLIC_BASE)
+    : `${mediaBaseOverride || DEFAULT_MEDIA_PUBLIC_BASE}/`;
 
   function resolveMediaUrl(value) {
     if (!value || typeof value !== "string") return "";
     if (/^https?:\/\//i.test(value)) return value;
     if (value.startsWith("blob:") || value.startsWith("data:")) return value;
-    const base = getApiBase();
-    const cleaned = value.startsWith("/") ? value.slice(1) : value;
-    return base + cleaned;
+
+    let cleaned = value.trim();
+    if (!cleaned) return "";
+
+    cleaned = cleaned.replace(/^\/+/, "");
+    cleaned = cleaned.replace(/^media\//i, "");
+
+    return encodeURI(`${MEDIA_PUBLIC_BASE}${cleaned}`);
   }
 
   // --- AUTH HELPERS ---
@@ -147,6 +154,7 @@
   window.refreshAccessToken = refreshAccessToken;
   window.authFetch = authFetch;
   window.resolveMediaUrl = resolveMediaUrl;
+  window.MEDIA_PUBLIC_BASE = MEDIA_PUBLIC_BASE;
 
   // --- THEME INIT ---
   if (typeof document !== 'undefined') {

@@ -219,6 +219,38 @@
     
     <script src="../../js/../../js/config.js"></script>
     <script>
+        function renderAvatarFromUser(user) {
+            const preview = document.getElementById('avatarPreview');
+            if (!preview) return;
+
+            const usernameInitial = (user?.username || "U").charAt(0).toUpperCase();
+            const originalValue = user?.profile_picture || "";
+            const imageUrl = window.resolveMediaUrl
+                ? window.resolveMediaUrl(originalValue)
+                : originalValue;
+
+            console.debug('[Avatar][Cuenta] profile_picture original:', originalValue);
+            console.debug('[Avatar][Cuenta] profile_picture resolved:', imageUrl);
+
+            if (!imageUrl) {
+                preview.textContent = usernameInitial;
+                return;
+            }
+
+            const previewImg = new Image();
+            previewImg.src = imageUrl;
+            previewImg.style.width = '100%';
+            previewImg.style.height = '100%';
+            previewImg.style.objectFit = 'cover';
+            previewImg.onload = () => {
+                preview.innerHTML = '';
+                preview.appendChild(previewImg);
+            };
+            previewImg.onerror = () => {
+                preview.textContent = usernameInitial;
+            };
+        }
+
         document.addEventListener('DOMContentLoaded', () => {
             const userData = localStorage.getItem("user");
             if (userData) {
@@ -226,28 +258,7 @@
                 document.getElementById('username').value = user.username || "";
                 document.getElementById('email').value = user.email || "";
                 document.getElementById('full_name').value = user.full_name || "";
-                
-                // Show avatar or Initial
-                const preview = document.getElementById('avatarPreview');
-                if (user.profile_picture) {
-                    const imageUrl = window.resolveMediaUrl
-                        ? window.resolveMediaUrl(user.profile_picture)
-                        : user.profile_picture;
-                    const previewImg = new Image();
-                    previewImg.src = imageUrl;
-                    previewImg.style.width = '100%';
-                    previewImg.style.height = '100%';
-                    previewImg.style.objectFit = 'cover';
-                    previewImg.onload = () => {
-                        preview.innerHTML = '';
-                        preview.appendChild(previewImg);
-                    };
-                    previewImg.onerror = () => {
-                        preview.textContent = (user.username || "U").charAt(0).toUpperCase();
-                    };
-                } else {
-                    preview.textContent = (user.username || "U").charAt(0).toUpperCase();
-                }
+                renderAvatarFromUser(user);
                 
                 document.getElementById('profession').value = user.profession || "";
                 document.getElementById('weight').value = user.weight ?? "";
@@ -406,6 +417,7 @@
                     const current = JSON.parse(localStorage.getItem("user") || "{}");
                     const finalUser = { ...current, ...(updatedUser || {}) };
                     localStorage.setItem("user", JSON.stringify(finalUser));
+                    renderAvatarFromUser(finalUser);
                     showToast("Perfil actualizado correctamente", "success");
                 } else {
                     showToast("Error: " + getErrorMessage(response, data, text), "error");
@@ -462,6 +474,7 @@
                     const current = JSON.parse(localStorage.getItem("user") || "{}");
                     const finalUser = { ...current, ...(updatedUser || {}) };
                     localStorage.setItem("user", JSON.stringify(finalUser));
+                    renderAvatarFromUser(finalUser);
                     showToast("Foto guardada correctamente", "success");
                 } else {
                     showToast("Error: " + getErrorMessage(response, data, text), "error");
