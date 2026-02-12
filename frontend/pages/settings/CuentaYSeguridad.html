@@ -219,26 +219,44 @@
     
     <script src="../../js/../../js/config.js"></script>
     <script>
+        function withCacheBuster(url) {
+            if (!url || /^blob:|^data:/i.test(url)) return url;
+            const separator = url.includes('?') ? '&' : '?';
+            return `${url}${separator}v=${Date.now()}`;
+        }
+
+        async function logAvatarLoadFailure(scope, finalUrl, errorEvent) {
+            try {
+                const head = await fetch(finalUrl, { method: 'HEAD', cache: 'no-store' });
+                console.debug(`[Avatar][${scope}] load failed status:`, head.status, finalUrl, errorEvent);
+            } catch (error) {
+                console.debug(`[Avatar][${scope}] load failed network error:`, finalUrl, error, errorEvent);
+            }
+        }
+
         function renderAvatarFromUser(user) {
             const preview = document.getElementById('avatarPreview');
             if (!preview) return;
 
             const usernameInitial = (user?.username || "U").charAt(0).toUpperCase();
             const originalValue = user?.profile_picture || "";
-            const imageUrl = window.resolveMediaUrl
+            const profilePictureUrl = user?.profile_picture_url || "";
+            const resolvedFallbackUrl = window.resolveMediaUrl
                 ? window.resolveMediaUrl(originalValue)
                 : originalValue;
+            const finalUrl = withCacheBuster(profilePictureUrl || resolvedFallbackUrl);
 
             console.debug('[Avatar][Cuenta] profile_picture original:', originalValue);
-            console.debug('[Avatar][Cuenta] profile_picture resolved:', imageUrl);
+            console.debug('[Avatar][Cuenta] profile_picture_url:', profilePictureUrl);
+            console.debug('[Avatar][Cuenta] profile_picture final URL:', finalUrl);
 
-            if (!imageUrl) {
+            if (!finalUrl) {
                 preview.textContent = usernameInitial;
                 return;
             }
 
             const previewImg = new Image();
-            previewImg.src = imageUrl;
+            previewImg.src = finalUrl;
             previewImg.style.width = '100%';
             previewImg.style.height = '100%';
             previewImg.style.objectFit = 'cover';
@@ -246,7 +264,8 @@
                 preview.innerHTML = '';
                 preview.appendChild(previewImg);
             };
-            previewImg.onerror = () => {
+            previewImg.onerror = (errorEvent) => {
+                logAvatarLoadFailure('Cuenta', finalUrl, errorEvent);
                 preview.textContent = usernameInitial;
             };
         }

@@ -49,6 +49,7 @@ except Exception:
 import os
 import uuid
 from pathlib import Path
+from urllib.parse import quote
 from django.conf import settings
 from django.core.mail import EmailMessage
 
@@ -130,6 +131,56 @@ def _as_bool(value):
         return False
     return str(value).strip().lower() in ("1", "true", "yes", "y", "on")
 
+
+def _get_media_public_base():
+    base = (
+        os.getenv("MEDIA_PUBLIC_BASE", "").strip()
+        or getattr(settings, "MEDIA_PUBLIC_BASE", "").strip()
+        or "https://gotogymweb3755.blob.core.windows.net/media/"
+    )
+    if not base.endswith("/"):
+        base = f"{base}/"
+    return base
+
+
+def _canonical_profile_picture_url(request, user):
+    if not getattr(user, "profile_picture", None):
+        return ""
+
+    try:
+        candidate = (user.profile_picture.url or "").strip()
+    except Exception:
+        candidate = ""
+
+    if not candidate:
+        candidate = (getattr(user.profile_picture, "name", "") or "").strip()
+
+    if not candidate:
+        return ""
+
+    if candidate.startswith("blob:") or candidate.startswith("data:"):
+        return candidate
+
+    if candidate.lower().startswith("http://") or candidate.lower().startswith("https://"):
+        return quote(candidate, safe=":/?&=#%")
+
+    cleaned = candidate.lstrip("/")
+    if cleaned.lower().startswith("media/"):
+        cleaned = cleaned[6:]
+
+    if cleaned.startswith("/"):
+        absolute = request.build_absolute_uri(cleaned) if request else cleaned
+        return quote(absolute, safe=":/?&=#%")
+
+    absolute = f"{_get_media_public_base()}{cleaned}"
+    return quote(absolute, safe=":/?&=#%")
+
+
+def _profile_picture_db_value(user):
+    if not getattr(user, "profile_picture", None):
+        return ""
+    return (getattr(user.profile_picture, "name", "") or "").strip()
+
 @api_view(['GET', 'OPTIONS'])
 @authentication_classes([JWTAuthentication])
 @permission_classes([IsAuthenticatedOrOptions])
@@ -144,6 +195,8 @@ def get_user_profile(request):
     
     try:
         user = User.objects.get(username=username)
+        profile_picture = _profile_picture_db_value(user)
+        profile_picture_url = _canonical_profile_picture_url(request, user)
         return Response({
             'username': user.username,
             'age': user.age,
@@ -159,6 +212,8 @@ def get_user_profile(request):
             'badges': user.badges,
             'happiness_scores': user.scores or {},
             'has_happiness_scores': bool(user.scores),
+            'profile_picture': profile_picture,
+            'profile_picture_url': profile_picture_url,
         })
     except User.DoesNotExist:
         return Response({'error': 'User not found'}, status=status.HTTP_404_NOT_FOUND)
@@ -1183,10 +1238,17 @@ def update_profile_settings(request):
         user.save()
         
         serializer = UserSerializer(user, context={"request": request})
+        user_data = serializer.data
+        profile_picture = _profile_picture_db_value(user)
+        profile_picture_url = _canonical_profile_picture_url(request, user)
+        user_data['profile_picture'] = profile_picture
+        user_data['profile_picture_url'] = profile_picture_url
         return Response({
             'success': True,
             'message': 'Perfil actualizado correctamente',
-            'user': serializer.data
+            'user': user_data,
+            'profile_picture': profile_picture,
+            'profile_picture_url': profile_picture_url,
         })
     except User.DoesNotExist:
         return Response({'success': False, 'error': 'User not found'}, status=404)

@@ -425,15 +425,18 @@
                 
                 const avatarEl = document.getElementById('userAvatar');
                 const originalAvatarValue = user.profile_picture || "";
-                const imageUrl = window.resolveMediaUrl
+                const profilePictureUrl = user.profile_picture_url || "";
+                const resolvedFallbackUrl = window.resolveMediaUrl
                     ? window.resolveMediaUrl(originalAvatarValue)
                     : originalAvatarValue;
+                const finalUrl = withCacheBuster(profilePictureUrl || resolvedFallbackUrl);
                 console.debug('[Avatar][Perfil] profile_picture original:', originalAvatarValue);
-                console.debug('[Avatar][Perfil] profile_picture resolved:', imageUrl);
+                console.debug('[Avatar][Perfil] profile_picture_url:', profilePictureUrl);
+                console.debug('[Avatar][Perfil] profile_picture final URL:', finalUrl);
 
-                if (imageUrl) {
+                if (finalUrl) {
                     const avatarImg = new Image();
-                    avatarImg.src = imageUrl;
+                    avatarImg.src = finalUrl;
                     avatarImg.style.width = '100%';
                     avatarImg.style.height = '100%';
                     avatarImg.style.objectFit = 'cover';
@@ -442,8 +445,8 @@
                         avatarEl.appendChild(avatarImg);
                         avatarEl.style.background = 'transparent';
                     };
-                    avatarImg.onerror = () => {
-                        console.debug('[Avatar][Perfil] image load failed:', imageUrl);
+                    avatarImg.onerror = (errorEvent) => {
+                        logAvatarLoadFailure('Perfil', finalUrl, errorEvent);
                         avatarEl.textContent = (user.username || "U").charAt(0).toUpperCase();
                         avatarEl.style.background = '';
                     };
@@ -521,6 +524,21 @@
             toast.className = `toast ${type}`;
             toast.style.display = "block";
             setTimeout(() => toast.style.display = "none", 3000);
+        }
+
+        function withCacheBuster(url) {
+            if (!url || /^blob:|^data:/i.test(url)) return url;
+            const separator = url.includes('?') ? '&' : '?';
+            return `${url}${separator}v=${Date.now()}`;
+        }
+
+        async function logAvatarLoadFailure(scope, finalUrl, errorEvent) {
+            try {
+                const head = await fetch(finalUrl, { method: 'HEAD', cache: 'no-store' });
+                console.debug(`[Avatar][${scope}] load failed status:`, head.status, finalUrl, errorEvent);
+            } catch (error) {
+                console.debug(`[Avatar][${scope}] load failed network error:`, finalUrl, error, errorEvent);
+            }
         }
     </script>
     <script>
