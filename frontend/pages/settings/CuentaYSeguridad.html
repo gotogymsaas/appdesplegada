@@ -71,6 +71,16 @@
       position: relative;
     }
 
+        .avatar-preview.loading {
+            animation: avatarPulse 1s ease-in-out infinite;
+            filter: saturate(0.9);
+        }
+
+        @keyframes avatarPulse {
+            0%, 100% { transform: scale(1); opacity: 1; }
+            50% { transform: scale(0.97); opacity: 0.75; }
+        }
+
     .change-photo-btn {
       color: var(--primary);
       font-size: 14px;
@@ -85,6 +95,11 @@
             font-size: 12px;
             padding: 6px 12px;
             border-radius: 999px;
+        }
+
+        .save-photo-btn[disabled] {
+            opacity: 0.6;
+            cursor: not-allowed;
         }
 
     .section-label {
@@ -326,14 +341,38 @@
             if ([502, 503, 504].includes(response.status)) {
                 return "Servidor temporalmente no disponible";
             }
+            if (response.status === 401) {
+                return "Sesión expirada. Inicia sesión nuevamente";
+            }
             if (data && data.error) return data.error;
             if (data && data.message) return data.message;
             if (text) return text.slice(0, 200);
             return "Error desconocido";
         }
 
+        function isImageByExtension(fileName) {
+            return /\.(jpe?g|png|gif|webp|heic|heif)$/i.test(fileName || "");
+        }
+
         function isImageFile(file) {
-            return !!(file && file.type && file.type.startsWith('image/'));
+            return !!(
+                file && (
+                    (file.type && file.type.startsWith('image/')) ||
+                    isImageByExtension(file.name)
+                )
+            );
+        }
+
+        function setPhotoSavingState(isSaving) {
+            const saveButton = document.querySelector('.save-photo-btn');
+            const avatarPreview = document.getElementById('avatarPreview');
+            if (saveButton) {
+                saveButton.disabled = isSaving;
+                saveButton.textContent = isSaving ? 'Guardando...' : 'Guardar Foto';
+            }
+            if (avatarPreview) {
+                avatarPreview.classList.toggle('loading', !!isSaving);
+            }
         }
 
         function loadImageFromFile(file) {
@@ -479,11 +518,30 @@
             }
 
             const maxBytes = 2 * 1024 * 1024;
+            const backendMaxBytes = 8 * 1024 * 1024;
             let finalFile = rawFile;
+            if (rawFile.size > backendMaxBytes) {
+                showToast("La imagen supera el máximo permitido (8MB)", "error");
+                return;
+            }
+
             if (rawFile.size > maxBytes) {
-                finalFile = await compressImageIfNeeded(rawFile, maxBytes);
+                try {
+                    const compressed = await compressImageIfNeeded(rawFile, maxBytes);
+                    if (compressed) {
+                        finalFile = compressed;
+                    } else {
+                        finalFile = rawFile;
+                    }
+                } catch (compressionError) {
+                    if (window.GTG_DEBUG) {
+                        console.warn('[avatar] compresión no disponible, subiendo original', compressionError);
+                    }
+                    finalFile = rawFile;
+                }
+
                 if (!finalFile) {
-                    showToast("No se pudo comprimir la imagen", "error");
+                    showToast("No se pudo procesar la imagen", "error");
                     return;
                 }
             }
@@ -494,6 +552,7 @@
             formData.append('photo_only', '1');
 
             try {
+                setPhotoSavingState(true);
                 const response = await authFetch(`${API_URL}users/update_profile/`, {
                     method: 'POST',
                     body: formData
@@ -513,6 +572,7 @@
                     const finalUser = { ...current, ...(updatedUser || {}) };
                     localStorage.setItem("user", JSON.stringify(finalUser));
                     renderAvatarFromUser(finalUser);
+                    fileInput.value = "";
                     showToast("Foto guardada correctamente", "success");
                 } else {
                     showToast("Error: " + getErrorMessage(response, data, text), "error");
@@ -520,6 +580,8 @@
             } catch (error) {
                 console.error(error);
                 showToast("Error de conexión", "error");
+            } finally {
+                setPhotoSavingState(false);
             }
         }
         
