@@ -10,7 +10,7 @@ class MediaAzureStorage(AzureStorage):
     azure_container = settings.AZURE_STORAGE_CONTAINER
     custom_domain = settings.AZURE_STORAGE_CUSTOM_DOMAIN or None
     overwrite_files = False
-    expiration_secs = None
+    expiration_secs = getattr(settings, "AZURE_SAS_EXPIRATION", 3600)
     cache_control = "public, max-age=31536000"
     default_content_type = "application/octet-stream"
 

@@ -47,6 +47,7 @@ except Exception:
     AzureKeyCredential = None
     HttpResponseError = None
 import os
+import uuid
 from pathlib import Path
 from django.conf import settings
 from django.core.mail import EmailMessage
@@ -237,7 +238,7 @@ def register(request):
         except Exception as e:
             print("Error guardando TermsAcceptance:", str(e))
         
-        serializer = UserSerializer(user)
+        serializer = UserSerializer(user, context={"request": request})
         response = Response({
             'success': True,
             'message': 'Usuario registrado exitosamente',
@@ -270,7 +271,7 @@ def login(request):
         user = authenticate(request, username=username, password=password)
         if user is not None:
             _apply_trial_status(user)
-            serializer = UserSerializer(user)
+            serializer = UserSerializer(user, context={"request": request})
             refresh = RefreshToken.for_user(user)
             access = refresh.access_token
             response = Response({
@@ -712,7 +713,7 @@ def update_profile(request):
         
         user.save()
         
-        serializer = UserSerializer(user)
+        serializer = UserSerializer(user, context={"request": request})
         response = Response({
             'success': True,
             'message': 'Perfil actualizado correctamente',
@@ -731,7 +732,7 @@ def update_profile(request):
 def get_users(request):
     try:
         users = User.objects.all().order_by('-date_joined')
-        serializer = UserSerializer(users, many=True)
+        serializer = UserSerializer(users, many=True, context={"request": request})
         return Response(serializer.data)
     except Exception as e:
         print("Error fetching users:", str(e))
@@ -1139,11 +1140,31 @@ def update_profile_settings(request):
         
         # Handle Image
         if 'profile_picture' in request.FILES:
-            user.profile_picture = request.FILES['profile_picture']
+            upload = request.FILES['profile_picture']
+            max_size_bytes = 5 * 1024 * 1024
+            allowed_types = {
+                "image/jpeg",
+                "image/jpg",
+                "image/png",
+                "image/webp",
+                "image/heic",
+                "image/heif",
+            }
+
+            if upload.size and upload.size > max_size_bytes:
+                return Response({'error': 'La imagen supera el maximo permitido (5MB)'}, status=400)
+            content_type = (upload.content_type or '').lower()
+            if content_type not in allowed_types:
+                return Response({'error': 'Formato de imagen no permitido'}, status=400)
+
+            base, ext = os.path.splitext(upload.name)
+            ext = ext.lower() if ext else '.jpg'
+            upload.name = f"profile_{user.id}_{uuid.uuid4().hex}{ext}"
+            user.profile_picture = upload
             
         user.save()
         
-        serializer = UserSerializer(user)
+        serializer = UserSerializer(user, context={"request": request})
         return Response(serializer.data)
     except User.DoesNotExist:
         return Response({'error': 'User not found'}, status=404)
