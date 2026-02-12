@@ -244,10 +244,13 @@
             const resolvedFallbackUrl = window.resolveMediaUrl
                 ? window.resolveMediaUrl(originalValue)
                 : originalValue;
-            const finalUrl = withCacheBuster(profilePictureUrl || resolvedFallbackUrl);
+            const defaultAvatarUrl = window.DEFAULT_AVATAR_URL || "";
+            const preferredUrl = profilePictureUrl || resolvedFallbackUrl;
+            const finalUrl = withCacheBuster(preferredUrl || defaultAvatarUrl);
 
             console.debug('[Avatar][Cuenta] profile_picture original:', originalValue);
             console.debug('[Avatar][Cuenta] profile_picture_url:', profilePictureUrl);
+            console.debug('[Avatar][Cuenta] default avatar URL:', defaultAvatarUrl);
             console.debug('[Avatar][Cuenta] profile_picture final URL:', finalUrl);
 
             if (!finalUrl) {
@@ -266,6 +269,23 @@
             };
             previewImg.onerror = (errorEvent) => {
                 logAvatarLoadFailure('Cuenta', finalUrl, errorEvent);
+                if (defaultAvatarUrl && preferredUrl && preferredUrl !== defaultAvatarUrl) {
+                    const fallbackImg = new Image();
+                    const fallbackUrl = withCacheBuster(defaultAvatarUrl);
+                    fallbackImg.src = fallbackUrl;
+                    fallbackImg.style.width = '100%';
+                    fallbackImg.style.height = '100%';
+                    fallbackImg.style.objectFit = 'cover';
+                    fallbackImg.onload = () => {
+                        preview.innerHTML = '';
+                        preview.appendChild(fallbackImg);
+                    };
+                    fallbackImg.onerror = (fallbackErrorEvent) => {
+                        logAvatarLoadFailure('Cuenta', fallbackUrl, fallbackErrorEvent);
+                        preview.textContent = usernameInitial;
+                    };
+                    return;
+                }
                 preview.textContent = usernameInitial;
             };
         }

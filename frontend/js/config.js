@@ -4,6 +4,7 @@
   const host = window.location.hostname;
   const DEFAULT_PROD_API = "https://api.gotogym.store/api/";
   const DEFAULT_MEDIA_PUBLIC_BASE = "https://gotogymweb3755.blob.core.windows.net/media/";
+  const DEFAULT_AVATAR_URL = "https://gotogymweb3755.blob.core.windows.net/media/Foto%20Juan%20Manuel%20.png";
   const LOCAL_API = "http://127.0.0.1:8000/api/";
   const LAN_API = "http://192.168.20.218:8000/api/";
 
@@ -155,6 +156,7 @@
   window.authFetch = authFetch;
   window.resolveMediaUrl = resolveMediaUrl;
   window.MEDIA_PUBLIC_BASE = MEDIA_PUBLIC_BASE;
+  window.DEFAULT_AVATAR_URL = DEFAULT_AVATAR_URL;
 
   // --- THEME INIT ---
   if (typeof document !== 'undefined') {
