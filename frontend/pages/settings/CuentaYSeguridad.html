@@ -219,19 +219,9 @@
     
     <script src="../../js/../../js/config.js"></script>
     <script>
-        function withCacheBuster(url) {
-            if (!url || /^blob:|^data:/i.test(url)) return url;
-            const separator = url.includes('?') ? '&' : '?';
-            return `${url}${separator}v=${Date.now()}`;
-        }
-
-        async function logAvatarLoadFailure(scope, finalUrl, errorEvent) {
-            try {
-                const head = await fetch(finalUrl, { method: 'HEAD', cache: 'no-store' });
-                console.debug(`[Avatar][${scope}] load failed status:`, head.status, finalUrl, errorEvent);
-            } catch (error) {
-                console.debug(`[Avatar][${scope}] load failed network error:`, finalUrl, error, errorEvent);
-            }
+        function logAvatarLoadFailure(scope, finalUrl, errorEvent) {
+            if (!window.GTG_DEBUG) return;
+            console.debug(`[Avatar][${scope}] load failed:`, finalUrl, errorEvent);
         }
 
         function renderAvatarFromUser(user) {
@@ -246,12 +236,14 @@
                 : originalValue;
             const defaultAvatarUrl = window.DEFAULT_AVATAR_URL || "";
             const preferredUrl = profilePictureUrl || resolvedFallbackUrl;
-            const finalUrl = withCacheBuster(preferredUrl || defaultAvatarUrl);
+            const finalUrl = preferredUrl || defaultAvatarUrl;
 
-            console.debug('[Avatar][Cuenta] profile_picture original:', originalValue);
-            console.debug('[Avatar][Cuenta] profile_picture_url:', profilePictureUrl);
-            console.debug('[Avatar][Cuenta] default avatar URL:', defaultAvatarUrl);
-            console.debug('[Avatar][Cuenta] profile_picture final URL:', finalUrl);
+            if (window.GTG_DEBUG) {
+                console.debug('[Avatar][Cuenta] profile_picture original:', originalValue);
+                console.debug('[Avatar][Cuenta] profile_picture_url:', profilePictureUrl);
+                console.debug('[Avatar][Cuenta] default avatar URL:', defaultAvatarUrl);
+                console.debug('[Avatar][Cuenta] profile_picture final URL:', finalUrl);
+            }
 
             if (!finalUrl) {
                 preview.textContent = usernameInitial;
@@ -271,7 +263,7 @@
                 logAvatarLoadFailure('Cuenta', finalUrl, errorEvent);
                 if (defaultAvatarUrl && preferredUrl && preferredUrl !== defaultAvatarUrl) {
                     const fallbackImg = new Image();
-                    const fallbackUrl = withCacheBuster(defaultAvatarUrl);
+                    const fallbackUrl = defaultAvatarUrl;
                     fallbackImg.src = fallbackUrl;
                     fallbackImg.style.width = '100%';
                     fallbackImg.style.height = '100%';

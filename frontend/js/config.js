@@ -13,6 +13,9 @@
       ? window.Capacitor.isNativePlatform()
       : false;
 
+  const DEBUG =
+    window.GTG_DEBUG === true || localStorage.getItem("gtg_debug") === "1";
+
   const overrideApi =
     window.GTG_API_URL || localStorage.getItem("api_url_override");
 
@@ -41,7 +44,9 @@
     API_URL = window.API_URL; // crea global si no existe
   }
 
-  console.log("⚙️ API_URL =", window.API_URL);
+  if (DEBUG) {
+    console.log("⚙️ API_URL =", window.API_URL);
+  }
 
   const mediaBaseOverride =
     window.GTG_MEDIA_PUBLIC_BASE || localStorage.getItem("media_public_base_override");
@@ -157,6 +162,7 @@
   window.resolveMediaUrl = resolveMediaUrl;
   window.MEDIA_PUBLIC_BASE = MEDIA_PUBLIC_BASE;
   window.DEFAULT_AVATAR_URL = DEFAULT_AVATAR_URL;
+  window.GTG_DEBUG = DEBUG;
 
   // --- THEME INIT ---
   if (typeof document !== 'undefined') {
