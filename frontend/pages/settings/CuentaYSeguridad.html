@@ -499,6 +499,7 @@
             const formData = new FormData();
             formData.append('username', username);
             formData.append('profile_picture', finalFile);
+            formData.append('photo_only', '1');
 
             try {
                 const response = await authFetch(`${API_URL}users/update_profile/`, {
@@ -510,6 +511,12 @@
 
                 if (response.ok) {
                     const updatedUser = data && data.user ? data.user : data;
+                    if (data && (data.storage_container || data.storage_backend)) {
+                        console.info('[avatar] destino upload', {
+                            storage_backend: data.storage_backend || null,
+                            storage_container: data.storage_container || null,
+                        });
+                    }
                     const current = JSON.parse(localStorage.getItem("user") || "{}");
                     const finalUser = { ...current, ...(updatedUser || {}) };
                     localStorage.setItem("user", JSON.stringify(finalUser));

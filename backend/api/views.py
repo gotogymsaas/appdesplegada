@@ -181,6 +181,19 @@ def _profile_picture_db_value(user):
         return ""
     return (getattr(user.profile_picture, "name", "") or "").strip()
 
+
+def _storage_target_info():
+    container = (
+        os.getenv("AZURE_STORAGE_CONTAINER", "").strip()
+        or getattr(settings, "AZURE_STORAGE_CONTAINER", "").strip()
+        or "media"
+    )
+    backend_name = "azure" if os.getenv("AZURE_STORAGE_ACCOUNT_NAME", "").strip() else "local"
+    return {
+        "storage_backend": backend_name,
+        "storage_container": container,
+    }
+
 @api_view(['GET', 'OPTIONS'])
 @authentication_classes([JWTAuthentication])
 @permission_classes([IsAuthenticatedOrOptions])
@@ -1181,39 +1194,42 @@ def update_profile_settings(request):
             return Response({'success': False, 'error': 'Autenticacion requerida'}, status=401)
 
         user = request.user
+        photo_only = str(request.data.get('photo_only', '')).strip().lower() in ('1', 'true', 'yes', 'on')
+        if photo_only and 'profile_picture' not in request.FILES:
+            return Response({'success': False, 'error': 'No se recibió archivo de foto'}, status=400)
         
         # Handle text fields
-        if 'email' in request.data:
+        if not photo_only and 'email' in request.data:
             email = request.data['email']
             if email:
                 exists = User.objects.filter(email=email).exclude(id=user.id).exists()
                 if exists:
                     return Response({'success': False, 'error': 'El email ya esta registrado'}, status=400)
                 user.email = email
-        if 'profession' in request.data: user.profession = request.data['profession']
-        if 'full_name' in request.data: user.full_name = request.data['full_name']
-        if 'favorite_exercise_time' in request.data: user.favorite_exercise_time = request.data['favorite_exercise_time']
-        if 'favorite_sport' in request.data: user.favorite_sport = request.data['favorite_sport']
-        if 'age' in request.data:
+        if not photo_only and 'profession' in request.data: user.profession = request.data['profession']
+        if not photo_only and 'full_name' in request.data: user.full_name = request.data['full_name']
+        if not photo_only and 'favorite_exercise_time' in request.data: user.favorite_exercise_time = request.data['favorite_exercise_time']
+        if not photo_only and 'favorite_sport' in request.data: user.favorite_sport = request.data['favorite_sport']
+        if not photo_only and 'age' in request.data:
             try:
                 user.age = int(request.data['age']) if str(request.data['age']).strip() != '' else None
             except Exception:
                 pass
-        if 'weight' in request.data:
+        if not photo_only and 'weight' in request.data:
             try:
                 user.weight = float(request.data['weight']) if str(request.data['weight']).strip() != '' else None
             except Exception:
                 pass
-        if 'height' in request.data:
+        if not photo_only and 'height' in request.data:
             try:
                 user.height = float(request.data['height']) if str(request.data['height']).strip() != '' else None
             except Exception:
                 pass
         # Add other fields as needed
 
-        password = request.data.get('password')
-        password_confirm = request.data.get('password_confirm')
-        if password or password_confirm:
+        password = request.data.get('password') if not photo_only else None
+        password_confirm = request.data.get('password_confirm') if not photo_only else None
+        if (not photo_only) and (password or password_confirm):
             if password != password_confirm:
                 return Response({'error': 'Las contraseñas no coinciden'}, status=400)
             if len(password) < 8 or not re.search(r'[A-Z]', password) or not re.search(r'[0-9]', password):
@@ -1241,14 +1257,17 @@ def update_profile_settings(request):
         user_data = serializer.data
         profile_picture = _profile_picture_db_value(user)
         profile_picture_url = _canonical_profile_picture_url(request, user)
+        target_info = _storage_target_info()
         user_data['profile_picture'] = profile_picture
         user_data['profile_picture_url'] = profile_picture_url
+        user_data.update(target_info)
         return Response({
             'success': True,
             'message': 'Perfil actualizado correctamente',
             'user': user_data,
             'profile_picture': profile_picture,
             'profile_picture_url': profile_picture_url,
+            **target_info,
         })
     except User.DoesNotExist:
         return Response({'success': False, 'error': 'User not found'}, status=404)
