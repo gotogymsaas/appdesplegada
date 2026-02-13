@@ -194,6 +194,50 @@ def _storage_target_info():
         "storage_container": container,
     }
 
+
+def _resolve_request_user(request):
+    token_user_id = None
+    try:
+        auth_token = getattr(request, "auth", None)
+        if auth_token is not None:
+            if isinstance(auth_token, dict):
+                token_user_id = auth_token.get("user_id")
+            else:
+                token_user_id = auth_token.get("user_id")
+    except Exception:
+        token_user_id = None
+
+    try:
+        user = getattr(request, "user", None)
+        if user is not None and getattr(user, "is_authenticated", False):
+            _ = user.pk
+            return user
+    except Exception:
+        pass
+
+    if token_user_id is not None:
+        try:
+            user = User.objects.filter(id=int(token_user_id)).first()
+            if user:
+                return user
+        except Exception:
+            pass
+
+    username = (request.data.get("username") or "").strip()
+    if username:
+        user = User.objects.filter(username=username).first()
+        if not user:
+            return None
+        if token_user_id is not None:
+            try:
+                if int(token_user_id) != int(user.id):
+                    return None
+            except Exception:
+                return None
+        return user
+
+    return None
+
 @api_view(['GET', 'OPTIONS'])
 @authentication_classes([JWTAuthentication])
 @permission_classes([IsAuthenticatedOrOptions])
@@ -1190,10 +1234,10 @@ def update_profile_settings(request):
         return response
 
     try:
-        if not getattr(request, "user", None) or not request.user.is_authenticated:
+        user = _resolve_request_user(request)
+        if not user:
             return Response({'success': False, 'error': 'Autenticacion requerida'}, status=401)
 
-        user = request.user
         photo_only = str(request.data.get('photo_only', '')).strip().lower() in ('1', 'true', 'yes', 'on')
         if photo_only and 'profile_picture' not in request.FILES:
             return Response({'success': False, 'error': 'No se recibió archivo de foto'}, status=400)
