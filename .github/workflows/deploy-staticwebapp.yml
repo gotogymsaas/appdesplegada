@@ -1,19 +1,6 @@
 name: Deploy GoToGym Frontend
 
 on:
-  push:
-    branches:
-      - main
-    paths:
-      - ".github/workflows/deploy-staticwebapp.yml"
-      - "frontend/**"
-      - "assets/**"
-      - "css/**"
-      - "js/**"
-      - "index.html"
-      - "sw.js"
-      - "manifest.json"
-      - "qr.html"
   workflow_dispatch:
 
 jobs:
