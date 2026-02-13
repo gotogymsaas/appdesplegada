@@ -1,0 +1,10 @@
+Django>=4.0
+djangorestframework
+django-cors-headers
+djangorestframework-simplejwt
+django-storages
+azure-storage-blob
+gunicorn
+psycopg2-binary
+python-dotenv
+azure-communication-email

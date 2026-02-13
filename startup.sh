@@ -36,7 +36,9 @@ raise SystemExit(0 if importlib.util.find_spec("django") else 1)
 PY
 then
 	REQ_FILE=""
-	if [ -f "$BACKEND_DIR/requirements.txt" ]; then
+	if [ -f "$BACKEND_DIR/requirements.runtime.txt" ]; then
+		REQ_FILE="$BACKEND_DIR/requirements.runtime.txt"
+	elif [ -f "$BACKEND_DIR/requirements.txt" ]; then
 		REQ_FILE="$BACKEND_DIR/requirements.txt"
 	elif [ -f "$APP_ROOT/requirements.txt" ]; then
 		REQ_FILE="$APP_ROOT/requirements.txt"
@@ -49,6 +51,15 @@ then
 
 	echo "Installing dependencies from: $REQ_FILE"
 	"$PYTHON_BIN" -m pip install -r "$REQ_FILE"
+fi
+
+if ! "$PYTHON_BIN" - <<'PY'
+import importlib.util
+raise SystemExit(0 if importlib.util.find_spec("storages") else 1)
+PY
+then
+	echo "Installing missing runtime storage dependency: django-storages"
+	"$PYTHON_BIN" -m pip install django-storages azure-storage-blob
 fi
 
 "$PYTHON_BIN" manage.py migrate --noinput
