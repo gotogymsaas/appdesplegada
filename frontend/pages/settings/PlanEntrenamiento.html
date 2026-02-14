@@ -361,12 +361,17 @@
         const DOC_TYPE = 'training_plan';
         const DOC_CONTAINER = 'entrenamiento';
 
-        const resolveUsername = () => {
+        function getUsername() {
+            if (typeof window.getUsername === 'function') {
+                try {
+                    const candidate = window.getUsername();
+                    if (candidate) return candidate;
+                } catch (_) {}
+            }
             const user = JSON.parse(localStorage.getItem('user') || '{}');
             return user.username || localStorage.getItem('username');
-        };
-        window.getUsername = window.getUsername || resolveUsername;
-        const getUsername = window.getUsername;
+        }
+        window.getUsername = window.getUsername || getUsername;
 
         function normalizeDocumentUrl(rawUrl, fileName, username) {
             const candidates = [];
