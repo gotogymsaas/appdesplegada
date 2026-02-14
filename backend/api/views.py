@@ -24,7 +24,10 @@ from django.db.models import Avg
 from django.db import IntegrityError
 from django.db.models.functions import TruncDate
 import sys
-from PIL import Image
+try:
+    from PIL import Image
+except Exception:
+    Image = None
 try:
     from pillow_heif import register_heif_opener
     register_heif_opener()
@@ -1685,7 +1688,7 @@ def upload_medical_record(request):
                         except Exception:
                             extracted_text = "[OCR no disponible: instala pdf2image y poppler]"
             elif lower_name.endswith(('.png', '.jpg', '.jpeg', '.webp', '.heic', '.heif')):
-                if pytesseract:
+                if pytesseract and Image is not None:
                     img = Image.open(file_path)
                     extracted_text = pytesseract.image_to_string(img)
                 else:
