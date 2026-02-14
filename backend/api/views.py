@@ -12,6 +12,7 @@ from devices.models import DeviceConnection, FitnessSync
 import requests
 import json
 import traceback
+import ipaddress
 from django.contrib.auth import authenticate
 from .models import User, HappinessRecord, IFQuestion, IFAnswer, UserDocument, ContactMessage, PushToken, TermsAcceptance
 from .if_questions import IF_QUESTIONS
@@ -133,10 +134,34 @@ def _compute_final_score(scores: dict):
 
 
 def _get_client_ip(request):
+    def _normalize_ip(value):
+        if not value:
+            return None
+        candidate = str(value).strip()
+        if not candidate:
+            return None
+
+        if candidate.startswith("[") and "]" in candidate:
+            candidate = candidate[1:candidate.index("]")]
+
+        if ":" in candidate and "." in candidate and candidate.count(":") == 1:
+            host, _port = candidate.rsplit(":", 1)
+            if host:
+                candidate = host
+
+        try:
+            ipaddress.ip_address(candidate)
+            return candidate
+        except Exception:
+            return None
+
     forwarded = request.META.get("HTTP_X_FORWARDED_FOR")
     if forwarded:
-        return forwarded.split(",")[0].strip()
-    return request.META.get("REMOTE_ADDR")
+        normalized = _normalize_ip(forwarded.split(",")[0].strip())
+        if normalized:
+            return normalized
+
+    return _normalize_ip(request.META.get("REMOTE_ADDR"))
 
 
 def _as_bool(value):
