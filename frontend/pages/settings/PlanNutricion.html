@@ -357,6 +357,15 @@
         const viewDocBtn = document.getElementById('viewDocBtn');
         const deleteDocBtn = document.getElementById('deleteDocBtn');
 
+
+        // Definición segura de getUsername al inicio
+        const resolveUsername = () => {
+            const user = JSON.parse(localStorage.getItem('user') || '{}');
+            return user.username || localStorage.getItem('username');
+        };
+        window.getUsername = window.getUsername || resolveUsername;
+        const getUsername = window.getUsername;
+
         const DOC_TYPE = 'nutrition_plan';
         const DOC_CONTAINER = 'nutricion';
 
