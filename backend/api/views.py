@@ -11,6 +11,7 @@ from devices.models import DeviceConnection, FitnessSync
 
 import requests
 import json
+import traceback
 from django.contrib.auth import authenticate
 from .models import User, HappinessRecord, IFQuestion, IFAnswer, UserDocument, ContactMessage, PushToken, TermsAcceptance
 from .if_questions import IF_QUESTIONS
@@ -483,11 +484,26 @@ def register(request):
         except Exception as e:
             print("Error guardando TermsAcceptance:", str(e))
         
-        serializer = UserSerializer(user, context={"request": request})
+        try:
+            serializer = UserSerializer(user, context={"request": request})
+            user_payload = serializer.data
+        except Exception as e:
+            print("Error serializando usuario en registro:", str(e))
+            traceback.print_exc()
+            user_payload = {
+                "id": user.id,
+                "username": user.username,
+                "email": user.email,
+                "plan": user.plan,
+                "trial_active": user.trial_active,
+                "trial_ends_at": user.trial_ends_at,
+                "billing_status": user.billing_status,
+            }
+
         response = Response({
             'success': True,
             'message': 'Usuario registrado exitosamente',
-            'user': serializer.data
+            'user': user_payload
         }, status=status.HTTP_201_CREATED)
         
         response['Access-Control-Allow-Origin'] = '*'
@@ -495,6 +511,7 @@ def register(request):
         
     except Exception as e:
         print("Error en registro:", str(e))
+        traceback.print_exc()
         return Response({'error': 'Error interno del servidor'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 @api_view(['POST', 'OPTIONS'])
