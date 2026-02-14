@@ -31,6 +31,10 @@ SQLite in dev]
 - Backend Django en `backend/` con API REST (DRF) y JWT.
 - Base de datos SQLite en desarrollo y PostgreSQL en producción.
 - Almacenamiento de archivos (media/docs) que en producción debe ser Blob Storage o similar.
+- Estrategia actual de documentos sensibles en Blob por contenedor:
+  - `nutricion` para plan de nutrición.
+  - `entrenamiento` para plan de entrenamiento.
+  - `historiaclinica` para historia clínica.
 - Servicios externos.
 - Email via Azure Communication Services.
 - Push notifications via Firebase Cloud Messaging.

@@ -143,6 +143,71 @@
             opacity: 0.6;
             cursor: not-allowed;
         }
+
+        .doc-viewer-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.78);
+            display: none;
+            z-index: 1200;
+            align-items: center;
+            justify-content: center;
+            padding: 14px;
+        }
+
+        .doc-viewer-overlay.active {
+            display: flex;
+        }
+
+        .doc-viewer-modal {
+            width: 100%;
+            max-width: 900px;
+            height: min(85vh, 820px);
+            background: var(--card-bg);
+            border-radius: var(--radius-lg);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .doc-viewer-head {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 10px 12px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+        }
+
+        .doc-viewer-title {
+            color: var(--text-main);
+            font-size: 14px;
+            max-width: 70%;
+            white-space: nowrap;
+            text-overflow: ellipsis;
+            overflow: hidden;
+        }
+
+        .doc-viewer-close {
+            width: auto;
+            margin-bottom: 0;
+            padding: 8px 12px;
+            font-size: 13px;
+        }
+
+        .doc-viewer-body {
+            flex: 1;
+            background: #0b0f12;
+        }
+
+        .doc-viewer-body iframe,
+        .doc-viewer-body img {
+            width: 100%;
+            height: 100%;
+            border: 0;
+            object-fit: contain;
+            background: #0b0f12;
+        }
     </style>
 </head>
 
@@ -226,6 +291,16 @@
         </div>
     </div>
 
+    <div id="docViewerOverlay" class="doc-viewer-overlay" role="dialog" aria-modal="true" aria-label="Visor de documento">
+        <div class="doc-viewer-modal">
+            <div class="doc-viewer-head">
+                <div id="docViewerTitle" class="doc-viewer-title">Documento</div>
+                <button id="docViewerClose" class="btn btn-secondary doc-viewer-close">Cerrar</button>
+            </div>
+            <div id="docViewerBody" class="doc-viewer-body"></div>
+        </div>
+    </div>
+
     <!-- Menu Overlay -->
     <div id="menuOverlay" class="menu-overlay">
         <button class="menu-close-btn" onclick="toggleMenu()">×</button>
@@ -283,10 +358,97 @@
         const deleteDocBtn = document.getElementById('deleteDocBtn');
 
         const DOC_TYPE = 'nutrition_plan';
+        const DOC_CONTAINER = 'nutricion';
 
-        function getUsername() {
+        const resolveUsername = () => {
             const user = JSON.parse(localStorage.getItem('user') || '{}');
             return user.username || localStorage.getItem('username');
+        };
+        window.getUsername = window.getUsername || resolveUsername;
+        const getUsername = window.getUsername;
+
+        function normalizeDocumentUrl(rawUrl, fileName, username) {
+            const candidates = [];
+            if (rawUrl && typeof rawUrl === 'string') {
+                let candidate = rawUrl.trim();
+                const first = candidate.indexOf('https://');
+                const second = candidate.indexOf('https://', first + 1);
+                if (second > 0) candidate = candidate.slice(second);
+                candidates.push(candidate);
+            }
+
+            if (fileName && username) {
+                const encodedName = encodeURIComponent(fileName);
+                const encodedUser = encodeURIComponent(username);
+                candidates.push(`https://gotogymweb3755.blob.core.windows.net/${DOC_CONTAINER}/${encodedUser}/${encodedName}`);
+            }
+
+            const allowedHosts = ['www.gotogym.store', 'api.gotogym.store', 'gotogymweb3755.blob.core.windows.net'];
+            const unique = [];
+            for (const urlValue of candidates) {
+                try {
+                    const parsed = new URL(urlValue);
+                    if (!allowedHosts.includes(parsed.hostname)) continue;
+                    const value = parsed.toString();
+                    if (!unique.includes(value)) unique.push(value);
+                } catch (_) {}
+            }
+
+            return unique;
+        }
+
+        function closeDocumentViewer() {
+            const overlay = document.getElementById('docViewerOverlay');
+            const body = document.getElementById('docViewerBody');
+            if (overlay) overlay.classList.remove('active');
+            if (body) body.innerHTML = '';
+        }
+
+        function openDocumentViewer(url, fileName) {
+            const overlay = document.getElementById('docViewerOverlay');
+            const body = document.getElementById('docViewerBody');
+            const title = document.getElementById('docViewerTitle');
+            if (!overlay || !body) return;
+
+            body.innerHTML = '';
+            if (title) title.textContent = fileName || 'Documento';
+
+            const lower = (url || '').toLowerCase();
+            if (lower.endsWith('.png') || lower.endsWith('.jpg') || lower.endsWith('.jpeg') || lower.endsWith('.webp') || lower.includes('.png?') || lower.includes('.jpg?') || lower.includes('.jpeg?') || lower.includes('.webp?')) {
+                const img = document.createElement('img');
+                img.src = url;
+                img.alt = fileName || 'Documento';
+                body.appendChild(img);
+            } else {
+                const frame = document.createElement('iframe');
+                frame.src = url;
+                frame.title = fileName || 'Documento';
+                frame.setAttribute('referrerpolicy', 'no-referrer');
+                body.appendChild(frame);
+            }
+
+            overlay.classList.add('active');
+        }
+
+        async function openTrustedDocument(rawUrl, fileName) {
+            const username = getUsername();
+            const candidates = normalizeDocumentUrl(rawUrl, fileName, username);
+            if (!candidates.length) {
+                showToast('Documento no disponible en un dominio seguro. Súbelo nuevamente.', 'error');
+                return;
+            }
+
+            for (const safeUrl of candidates) {
+                try {
+                    const headResp = await fetch(safeUrl, { method: 'HEAD' });
+                    if (headResp.ok) {
+                        openDocumentViewer(safeUrl, fileName);
+                        return;
+                    }
+                } catch (_) {}
+            }
+
+            showToast('El archivo no está disponible en Storage. Súbelo nuevamente para regenerarlo.', 'error');
         }
 
         async function loadLastDocument() {
@@ -304,13 +466,20 @@
                 lastDoc.textContent = 'Documento encontrado.';
                 docName.textContent = data.document.file_name || 'Documento';
                 docActions.style.display = 'flex';
-                viewDocBtn.onclick = () => window.open(data.document.file_url, '_blank');
+                viewDocBtn.onclick = () => openTrustedDocument(data.document.file_url || data.document.file_url_raw, data.document.file_name);
                 deleteDocBtn.onclick = () => deleteDocument(data.document.doc_type);
             } catch (err) {
                 lastDoc.textContent = 'No se pudo cargar el documento.';
                 docActions.style.display = 'none';
             }
         }
+
+        const viewerCloseBtn = document.getElementById('docViewerClose');
+        const viewerOverlay = document.getElementById('docViewerOverlay');
+        viewerCloseBtn?.addEventListener('click', closeDocumentViewer);
+        viewerOverlay?.addEventListener('click', (e) => {
+            if (e.target === viewerOverlay) closeDocumentViewer();
+        });
 
         async function deleteDocument(docType) {
             if (!confirm('¿Quieres eliminar este documento?')) return;

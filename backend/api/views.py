@@ -48,10 +48,21 @@ except Exception:
     HttpResponseError = None
 import os
 import uuid
+import tempfile
 from pathlib import Path
-from urllib.parse import quote
+from urllib.parse import quote, urlparse
 from django.conf import settings
 from django.core.mail import EmailMessage
+from django.utils.text import get_valid_filename
+
+try:
+    from azure.storage.blob import BlobServiceClient, ContentSettings
+    from azure.storage.blob import generate_blob_sas, BlobSasPermissions
+except Exception:
+    BlobServiceClient = None
+    ContentSettings = None
+    generate_blob_sas = None
+    BlobSasPermissions = None
 
 
 class IsAuthenticatedOrOptions(IsAuthenticated):
@@ -193,6 +204,125 @@ def _storage_target_info():
         "storage_backend": backend_name,
         "storage_container": container,
     }
+
+
+def _doc_container_map():
+    return {
+        "nutrition_plan": os.getenv("AZURE_CONTAINER_NUTRITION", "nutricion").strip() or "nutricion",
+        "training_plan": os.getenv("AZURE_CONTAINER_TRAINING", "entrenamiento").strip() or "entrenamiento",
+        "medical_history": os.getenv("AZURE_CONTAINER_MEDICAL", "historiaclinica").strip() or "historiaclinica",
+    }
+
+
+def _is_azure_blob_enabled():
+    return (
+        bool(getattr(settings, "AZURE_STORAGE_ACCOUNT_NAME", "").strip())
+        and bool(getattr(settings, "AZURE_STORAGE_ACCOUNT_KEY", "").strip())
+        and BlobServiceClient is not None
+    )
+
+
+def _build_blob_url(container, blob_name):
+    account_name = getattr(settings, "AZURE_STORAGE_ACCOUNT_NAME", "").strip()
+    encoded_parts = [quote(p, safe="") for p in blob_name.split("/")]
+    encoded_blob_name = "/".join(encoded_parts)
+    return f"https://{account_name}.blob.core.windows.net/{container}/{encoded_blob_name}"
+
+
+def _extract_blob_ref_from_url(file_url):
+    if not file_url:
+        return None, None
+    try:
+        parsed = urlparse(file_url)
+        path = (parsed.path or "").strip("/")
+        if not path:
+            return None, None
+        parts = path.split("/", 1)
+        if len(parts) < 2:
+            return None, None
+        return parts[0], parts[1]
+    except Exception:
+        return None, None
+
+
+def _build_signed_blob_url(file_url):
+    if not file_url or not _is_azure_blob_enabled() or generate_blob_sas is None or BlobSasPermissions is None:
+        return file_url
+
+    account_name = getattr(settings, "AZURE_STORAGE_ACCOUNT_NAME", "").strip()
+    account_key = getattr(settings, "AZURE_STORAGE_ACCOUNT_KEY", "").strip()
+    container_name, blob_name = _extract_blob_ref_from_url(file_url)
+    if not container_name or not blob_name:
+        return file_url
+
+    try:
+        expiry = timezone.now() + timedelta(seconds=getattr(settings, "AZURE_SAS_EXPIRATION", 3600))
+        sas_token = generate_blob_sas(
+            account_name=account_name,
+            account_key=account_key,
+            container_name=container_name,
+            blob_name=blob_name,
+            permission=BlobSasPermissions(read=True),
+            expiry=expiry,
+        )
+        if not sas_token:
+            return file_url
+        separator = "&" if "?" in file_url else "?"
+        return f"{file_url}{separator}{sas_token}"
+    except Exception:
+        return file_url
+
+
+def _upload_file_to_blob(container_name, blob_name, file_bytes, content_type):
+    account_name = getattr(settings, "AZURE_STORAGE_ACCOUNT_NAME", "").strip()
+    account_key = getattr(settings, "AZURE_STORAGE_ACCOUNT_KEY", "").strip()
+    account_url = f"https://{account_name}.blob.core.windows.net"
+    blob_service = BlobServiceClient(account_url=account_url, credential=account_key)
+    blob_client = blob_service.get_blob_client(container=container_name, blob=blob_name)
+
+    kwargs = {"overwrite": True}
+    if ContentSettings is not None:
+        kwargs["content_settings"] = ContentSettings(content_type=content_type or "application/octet-stream")
+    blob_client.upload_blob(file_bytes, **kwargs)
+    return _build_blob_url(container_name, blob_name)
+
+
+def _delete_blob_if_exists(file_url):
+    if not _is_azure_blob_enabled() or not file_url:
+        return
+    container_name, blob_name = _extract_blob_ref_from_url(file_url)
+    if not container_name or not blob_name:
+        return
+    try:
+        account_name = getattr(settings, "AZURE_STORAGE_ACCOUNT_NAME", "").strip()
+        account_key = getattr(settings, "AZURE_STORAGE_ACCOUNT_KEY", "").strip()
+        account_url = f"https://{account_name}.blob.core.windows.net"
+        blob_service = BlobServiceClient(account_url=account_url, credential=account_key)
+        blob_client = blob_service.get_blob_client(container=container_name, blob=blob_name)
+        blob_client.delete_blob(delete_snapshots="include")
+    except Exception:
+        pass
+
+
+def _save_local_document(doc_type, username, safe_name, file_bytes):
+    folder_map = {
+        "nutrition_plan": "nutrition_plans",
+        "training_plan": "training_plans",
+        "medical_history": "medical_records",
+    }
+    folder_name = folder_map.get(doc_type, "medical_records")
+    user_folder = os.path.join(settings.MEDIA_ROOT, folder_name, username)
+    os.makedirs(user_folder, exist_ok=True)
+    file_path = os.path.join(user_folder, safe_name)
+    with open(file_path, "wb") as destination:
+        destination.write(file_bytes)
+
+    media_url = str(getattr(settings, "MEDIA_URL", "/media/") or "/media/")
+    if not media_url.endswith("/"):
+        media_url += "/"
+    relative_url = f"{media_url}{folder_name}/{username}/{safe_name}".replace("//", "/")
+    local_url = relative_url if relative_url.startswith("http") else f"https://api.gotogym.store{relative_url}"
+    return file_path, local_url
 
 
 def _resolve_request_user(request):
@@ -1493,44 +1623,45 @@ def get_global_history(request):
 @api_view(['POST'])
 def upload_medical_record(request):
     try:
-        username = request.data.get('username')
+        username = (request.data.get('username') or '').strip()
         file_obj = request.FILES.get('file')
-        doc_type = request.data.get('doc_type') or request.POST.get('doc_type')
+        doc_type = (request.data.get('doc_type') or request.POST.get('doc_type') or '').strip()
         
         if not username or not file_obj:
             return Response({'error': 'Username and File required'}, status=400)
+
+        if doc_type not in ('nutrition_plan', 'training_plan', 'medical_history'):
+            return Response({'error': 'doc_type inválido'}, status=400)
 
         try:
             user = User.objects.get(username=username)
         except User.DoesNotExist:
             return Response({'error': 'User not found'}, status=404)
             
-        # Carpeta según tipo de documento
-        doc_map = {
-            "nutrition_plan": "nutrition_plans",
-            "training_plan": "training_plans",
-            "medical_history": "medical_records",
-        }
-        folder_name = doc_map.get(doc_type, "medical_records")
+        original_name = file_obj.name or "documento"
+        extension = os.path.splitext(original_name)[1].lower()
+        safe_base = get_valid_filename(os.path.splitext(original_name)[0]) or "documento"
+        safe_name = f"{safe_base}_{uuid.uuid4().hex[:8]}{extension}"
 
-        # Crear directorio si no existe
-        user_folder = os.path.join(settings.MEDIA_ROOT, folder_name, username)
-        os.makedirs(user_folder, exist_ok=True)
-        
-        # Guardar archivo
-        file_path = os.path.join(user_folder, file_obj.name)
-        with open(file_path, 'wb+') as destination:
-            for chunk in file_obj.chunks():
-                destination.write(chunk)
-                
-        # Construir URL pública (FIX: Usar dominio del túnel para que n8n lo vea)
-        tunnel_host = "https://gotogym-debug.loca.lt" 
-        file_url = f"{tunnel_host}{settings.MEDIA_URL}{folder_name}/{username}/{file_obj.name}"
+        file_bytes = file_obj.read()
+        content_type = (file_obj.content_type or 'application/octet-stream').strip() or 'application/octet-stream'
+        blob_path = f"{quote(username, safe='')}/{quote(safe_name, safe='')}"
+
+        with tempfile.NamedTemporaryFile(delete=False, suffix=extension or "") as tmp_file:
+            tmp_file.write(file_bytes)
+            temp_path = tmp_file.name
+
+        if _is_azure_blob_enabled():
+            container_name = _doc_container_map().get(doc_type, 'historiaclinica')
+            file_url = _upload_file_to_blob(container_name, blob_path, file_bytes, content_type)
+            file_path = temp_path
+        else:
+            file_path, file_url = _save_local_document(doc_type, username, safe_name, file_bytes)
         
         # EXTRACT TEXT (PDF + OCR para imágenes)
         extracted_text = ""
         try:
-            lower_name = file_obj.name.lower()
+            lower_name = original_name.lower()
             if lower_name.endswith('.pdf'):
                 from pypdf import PdfReader
                 reader = PdfReader(file_path)
@@ -1564,21 +1695,37 @@ def upload_medical_record(request):
             if not extracted_text:
                 extracted_text = "[No se pudo extraer texto automáticamente]"
 
+        finally:
+            if temp_path and os.path.exists(temp_path):
+                try:
+                    os.remove(temp_path)
+                except Exception:
+                    pass
+
         # Guardar/actualizar documento en perfil
         doc_key = doc_type or 'medical_history'
+        existing = UserDocument.objects.filter(user=user, doc_type=doc_key).first()
+        previous_file_url = existing.file_url if existing else ""
+
         UserDocument.objects.update_or_create(
             user=user,
             doc_type=doc_key,
             defaults={
-                "file_name": file_obj.name,
+                "file_name": original_name,
                 "file_url": file_url,
                 "extracted_text": extracted_text,
             }
         )
 
+        if previous_file_url and previous_file_url != file_url:
+            _delete_blob_if_exists(previous_file_url)
+
+        signed_url = _build_signed_blob_url(file_url)
+
         return Response({
             'success': True,
-            'file_url': file_url,
+            'file_url': signed_url,
+            'file_url_raw': file_url,
             'extracted_text': extracted_text,
             'doc_type': doc_key
         })
@@ -1608,12 +1755,15 @@ def user_documents(request):
     if not doc:
         return Response({'success': True, 'document': None})
 
+    signed_url = _build_signed_blob_url(doc.file_url)
+
     return Response({
         'success': True,
         'document': {
             'doc_type': doc.doc_type,
             'file_name': doc.file_name,
-            'file_url': doc.file_url,
+            'file_url': signed_url,
+            'file_url_raw': doc.file_url,
             'extracted_text': doc.extracted_text,
             'updated_at': doc.updated_at.isoformat(),
         }
@@ -1637,6 +1787,9 @@ def user_documents_delete(request):
     if not qs.exists():
         return Response({'success': True, 'message': 'No document found'})
 
+    docs = list(qs)
+    for doc in docs:
+        _delete_blob_if_exists(doc.file_url)
     qs.delete()
     return Response({'success': True})
 
