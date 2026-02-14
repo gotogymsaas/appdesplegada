@@ -289,11 +289,23 @@ AZURE_STORAGE_CUSTOM_DOMAIN = os.getenv("AZURE_STORAGE_CUSTOM_DOMAIN", "").strip
 AZURE_QUERYSTRING_AUTH = _env_bool("AZURE_QUERYSTRING_AUTH", True)
 AZURE_SAS_EXPIRATION = int(os.getenv("AZURE_SAS_EXPIRATION", "3600"))
 
+STORAGES = {
+    "default": {
+        "BACKEND": "django.core.files.storage.FileSystemStorage",
+    },
+    "staticfiles": {
+        "BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage",
+    },
+}
+
 if AZURE_STORAGE_ACCOUNT_NAME and AZURE_STORAGE_ACCOUNT_KEY:
     STORAGES = {
         "default": {
             "BACKEND": "backend_gotogym.storage.MediaAzureStorage",
-        }
+        },
+        "staticfiles": {
+            "BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage",
+        },
     }
     DEFAULT_FILE_STORAGE = "backend_gotogym.storage.MediaAzureStorage"
     if AZURE_STORAGE_CUSTOM_DOMAIN:
