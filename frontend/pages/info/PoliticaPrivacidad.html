@@ -14,6 +14,10 @@
             padding: 20px;
         }
 
+        .anchor-offset {
+            scroll-margin-top: 24px;
+        }
+
         .header {
             display: flex;
             justify-content: space-between;
@@ -57,10 +61,56 @@
             border: 1px solid rgba(255, 255, 255, 0.05);
         }
 
+        .toc {
+            background: rgba(255, 255, 255, 0.02);
+            border-radius: var(--radius-lg);
+            padding: 18px;
+            margin-bottom: 18px;
+            border: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        .toc-title {
+            color: var(--text-main);
+            font-size: 14px;
+            margin-bottom: 10px;
+            font-weight: 600;
+        }
+
+        .toc-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 8px 12px;
+        }
+
+        .toc-link {
+            color: var(--text-muted);
+            text-decoration: none;
+            font-size: 12px;
+        }
+
+        .toc-link:hover {
+            color: var(--primary);
+        }
+
+        .highlight-card {
+            background: rgba(15, 191, 176, 0.08);
+            border-radius: var(--radius-lg);
+            padding: 16px;
+            border: 1px solid rgba(15, 191, 176, 0.2);
+            margin-bottom: 18px;
+        }
+
         .section-title {
             color: var(--primary);
             font-size: 16px;
             margin-bottom: 12px;
+            font-weight: 600;
+        }
+
+        .subsection-title {
+            color: var(--secondary);
+            font-size: 14px;
+            margin: 12px 0 8px;
             font-weight: 600;
         }
 
@@ -84,12 +134,27 @@
             font-size: 11px;
             margin-top: 12px;
         }
+
+        .back-to-top {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            color: var(--text-muted);
+            text-decoration: none;
+            font-size: 12px;
+            margin: 8px 0 24px;
+        }
+
+        .back-to-top:hover {
+            color: var(--primary);
+        }
     </style>
 </head>
 
 <body>
 
     <div class="page-container">
+        <a id="top"></a>
         <div class="header">
             <div class="header-left">
                 <button class="back-btn" onclick="goBack()" aria-label="Volver">←</button>
@@ -98,14 +163,47 @@
             <button class="menu-btn" onclick="toggleMenu()">☰</button>
         </div>
 
-        <div class="content-section">
+        <div class="content-section anchor-offset" id="resumen">
             <h2 class="section-title">POLÍTICA DE PRIVACIDAD</h2>
             <p class="text-content">GoToGym Quantum Coach</p>
             <p class="text-content">Dominio: https://www.gotogym.store</p>
             <p class="meta-note">Última actualización: 13 de febrero de 2026</p>
         </div>
 
-        <div class="content-section">
+        <div class="highlight-card">
+            <p class="text-content" style="margin-bottom: 6px;">Resumen rápido</p>
+            <ul class="text-list" style="margin-top: 6px;">
+                <li>No vendemos tus datos.</li>
+                <li>Usamos información para prestar y mejorar el servicio.</li>
+                <li>Puedes revocar tu consentimiento cuando quieras.</li>
+            </ul>
+        </div>
+
+        <div class="toc">
+            <div class="toc-title">Ir a sección</div>
+            <div class="toc-grid">
+                <a class="toc-link" href="#intro">1. Introducción</a>
+                <a class="toc-link" href="#responsable">2. Responsable</a>
+                <a class="toc-link" href="#definiciones">3. Definiciones</a>
+                <a class="toc-link" href="#datos">4. Datos tratados</a>
+                <a class="toc-link" href="#sensibles">5. Datos sensibles</a>
+                <a class="toc-link" href="#finalidades">6. Finalidades</a>
+                <a class="toc-link" href="#consentimiento">7. Consentimiento</a>
+                <a class="toc-link" href="#comparticion">8. Compartición</a>
+                <a class="toc-link" href="#transferencias">9. Transferencias</a>
+                <a class="toc-link" href="#retencion">10. Retención</a>
+                <a class="toc-link" href="#seguridad">11. Seguridad</a>
+                <a class="toc-link" href="#derechos">12. Derechos</a>
+                <a class="toc-link" href="#procedimiento">13. Procedimiento</a>
+                <a class="toc-link" href="#menores">14. Menores</a>
+                <a class="toc-link" href="#cookies">15. Cookies</a>
+                <a class="toc-link" href="#incidentes">16. Incidentes</a>
+                <a class="toc-link" href="#cambios">17. Cambios</a>
+                <a class="toc-link" href="#contacto">18. Contacto</a>
+            </div>
+        </div>
+
+        <div class="content-section anchor-offset" id="intro">
             <h2 class="section-title">1. Introducción</h2>
             <p class="text-content">GoToGym respeta la privacidad y la protección de los datos personales de sus usuarios.</p>
             <p class="text-content">
@@ -127,19 +225,19 @@
             </p>
         </div>
 
-        <div class="content-section">
+        <div class="content-section anchor-offset" id="responsable">
             <h2 class="section-title">2. Responsable del Tratamiento</h2>
             <p class="text-content">De conformidad con la legislación colombiana:</p>
             <ul class="text-list">
-                <li>Responsable: GoToGym</li>
+                <li>Responsable: Friends N Gifts S.A.S</li>
                 <li>Correo de privacidad: privacy@gotogym.store</li>
                 <li>Correo de soporte: support@gotogym.store</li>
                 <li>Domicilio: Bogotá D.C., Colombia</li>
-                <li>Sitio web: https://quantum.gotogym.store</li>
+                <li>Sitio web: https://www.gotogym.store</li>
             </ul>
         </div>
 
-        <div class="content-section">
+        <div class="content-section anchor-offset" id="definiciones">
             <h2 class="section-title">3. Definiciones Relevantes</h2>
             <ul class="text-list">
                 <li>Dato personal: Información que identifica o puede identificar a una persona natural.</li>
@@ -148,9 +246,9 @@
             </ul>
         </div>
 
-        <div class="content-section">
+        <div class="content-section anchor-offset" id="datos">
             <h2 class="section-title">4. Datos Personales que Tratamos</h2>
-            <h3 class="section-title">4.1 Datos de identificación y cuenta</h3>
+            <h3 class="subsection-title">4.1 Datos de identificación y cuenta</h3>
             <ul class="text-list">
                 <li>Nombre</li>
                 <li>Correo electrónico</li>
@@ -159,7 +257,7 @@
                 <li>Estado de plan o suscripción</li>
             </ul>
 
-            <h3 class="section-title">4.2 Datos técnicos y de seguridad</h3>
+            <h3 class="subsection-title">4.2 Datos técnicos y de seguridad</h3>
             <ul class="text-list">
                 <li>Dirección IP</li>
                 <li>Tipo de dispositivo</li>
@@ -168,7 +266,7 @@
                 <li>Tokens de notificación push</li>
             </ul>
 
-            <h3 class="section-title">4.3 Datos de perfil y bienestar</h3>
+            <h3 class="subsection-title">4.3 Datos de perfil y bienestar</h3>
             <ul class="text-list">
                 <li>Edad</li>
                 <li>Altura</li>
@@ -179,7 +277,7 @@
                 <li>Indicadores de entrenamiento y progreso</li>
             </ul>
 
-            <h3 class="section-title">4.4 Datos provenientes de integraciones externas (opcional)</h3>
+            <h3 class="subsection-title">4.4 Datos provenientes de integraciones externas (opcional)</h3>
             <p class="text-content">Si autorizas la conexión con dispositivos o plataformas externas (ej. wearables), podremos recibir:</p>
             <ul class="text-list">
                 <li>Ritmo cardíaco</li>
@@ -189,7 +287,7 @@
             </ul>
             <p class="text-content">Estos datos pueden ser considerados datos sensibles según la ley colombiana.</p>
 
-            <h3 class="section-title">4.5 Documentos y archivos cargados por el usuario</h3>
+            <h3 class="subsection-title">4.5 Documentos y archivos cargados por el usuario</h3>
             <ul class="text-list">
                 <li>Imagen de perfil</li>
                 <li>Archivos subidos voluntariamente</li>
@@ -197,7 +295,7 @@
             </ul>
         </div>
 
-        <div class="content-section">
+        <div class="content-section anchor-offset" id="sensibles">
             <h2 class="section-title">5. Naturaleza de Datos Sensibles</h2>
             <p class="text-content">
                 Algunos datos tratados pueden ser considerados datos sensibles, especialmente aquellos relacionados con salud o métricas fisiológicas.
@@ -210,7 +308,7 @@
             </ul>
         </div>
 
-        <div class="content-section">
+        <div class="content-section anchor-offset" id="finalidades">
             <h2 class="section-title">6. Finalidades del Tratamiento</h2>
             <p class="text-content">Tratamos tus datos para:</p>
             <ul class="text-list">
@@ -226,7 +324,7 @@
             <p class="text-content">No utilizamos los datos para decisiones médicas automatizadas ni para diagnósticos clínicos.</p>
         </div>
 
-        <div class="content-section">
+        <div class="content-section anchor-offset" id="consentimiento">
             <h2 class="section-title">7. Autorización y Consentimiento</h2>
             <p class="text-content">Al registrarte y utilizar el Servicio:</p>
             <ul class="text-list">
@@ -237,7 +335,7 @@
             <p class="text-content">GoToGym conserva evidencia digital de la aceptación de términos y políticas (fecha, hora, IP y versión aplicable).</p>
         </div>
 
-        <div class="content-section">
+        <div class="content-section anchor-offset" id="comparticion">
             <h2 class="section-title">8. Compartición de Datos</h2>
             <p class="text-content">No vendemos ni comercializamos datos personales.</p>
             <p class="text-content">Podemos compartir información con:</p>
@@ -252,7 +350,7 @@
             <p class="text-content">Podremos revelar información cuando sea requerido por ley o autoridad competente.</p>
         </div>
 
-        <div class="content-section">
+        <div class="content-section anchor-offset" id="transferencias">
             <h2 class="section-title">9. Transferencias Internacionales</h2>
             <p class="text-content">Al utilizar infraestructura cloud o proveedores internacionales, los datos pueden ser almacenados o procesados fuera de Colombia.</p>
             <p class="text-content">En estos casos:</p>
@@ -263,7 +361,7 @@
             </ul>
         </div>
 
-        <div class="content-section">
+        <div class="content-section anchor-offset" id="retencion">
             <h2 class="section-title">10. Retención de la Información</h2>
             <p class="text-content">Los datos serán conservados:</p>
             <ul class="text-list">
@@ -275,7 +373,7 @@
             <p class="text-content">Los datos serán eliminados o anonimizados de manera segura.</p>
         </div>
 
-        <div class="content-section">
+        <div class="content-section anchor-offset" id="seguridad">
             <h2 class="section-title">11. Seguridad de la Información</h2>
             <p class="text-content">GoToGym implementa medidas técnicas y organizacionales razonables, incluyendo:</p>
             <ul class="text-list">
@@ -288,7 +386,7 @@
             <p class="text-content">Ningún sistema es completamente infalible, pero trabajamos continuamente para minimizar riesgos.</p>
         </div>
 
-        <div class="content-section">
+        <div class="content-section anchor-offset" id="derechos">
             <h2 class="section-title">12. Derechos del Titular</h2>
             <p class="text-content">Como titular de datos personales, puedes:</p>
             <ul class="text-list">
@@ -303,7 +401,7 @@
             <p class="text-content">El tiempo máximo de respuesta será conforme a la ley colombiana.</p>
         </div>
 
-        <div class="content-section">
+        <div class="content-section anchor-offset" id="procedimiento">
             <h2 class="section-title">13. Procedimiento para Ejercicio de Derechos</h2>
             <p class="text-content">Las solicitudes deben incluir:</p>
             <ul class="text-list">
@@ -314,7 +412,7 @@
             <p class="text-content">Responderemos dentro de los plazos legales establecidos.</p>
         </div>
 
-        <div class="content-section">
+        <div class="content-section anchor-offset" id="menores">
             <h2 class="section-title">14. Menores de Edad</h2>
             <p class="text-content">Si el Servicio se ofrece a menores:</p>
             <ul class="text-list">
@@ -324,7 +422,7 @@
             <p class="text-content">Si identificamos tratamiento no autorizado de datos de menores, procederemos a su eliminación.</p>
         </div>
 
-        <div class="content-section">
+        <div class="content-section anchor-offset" id="cookies">
             <h2 class="section-title">15. Cookies y Tecnologías Similares</h2>
             <p class="text-content">Utilizamos cookies para:</p>
             <ul class="text-list">
@@ -335,7 +433,7 @@
             <p class="text-content">Puedes desactivarlas desde tu navegador, aunque algunas funciones podrían verse afectadas.</p>
         </div>
 
-        <div class="content-section">
+        <div class="content-section anchor-offset" id="incidentes">
             <h2 class="section-title">16. Incidentes de Seguridad</h2>
             <p class="text-content">En caso de incidentes que afecten datos personales:</p>
             <ul class="text-list">
@@ -344,7 +442,7 @@
             </ul>
         </div>
 
-        <div class="content-section">
+        <div class="content-section anchor-offset" id="cambios">
             <h2 class="section-title">17. Cambios a la Política</h2>
             <p class="text-content">Podemos actualizar esta Política cuando:</p>
             <ul class="text-list">
@@ -355,13 +453,15 @@
             <p class="text-content">La versión vigente estará siempre disponible en esta URL.</p>
         </div>
 
-        <div class="content-section">
+        <div class="content-section anchor-offset" id="contacto">
             <h2 class="section-title">18. Contacto</h2>
             <p class="text-content">Correo de privacidad: privacy@gotogym.store</p>
             <p class="text-content">Sitio: https://www.gotogym.store</p>
             <p class="text-content">© 2026 GoToGym</p>
             <p class="text-content">Wear the Intelligence</p>
         </div>
+
+        <a class="back-to-top" href="#top">↑ Volver arriba</a>
     </div>
 
     <script>
