@@ -12,6 +12,7 @@ from devices.models import DeviceConnection, FitnessSync
 import requests
 import json
 import traceback
+import hashlib
 import ipaddress
 from django.contrib.auth import authenticate
 from .models import User, HappinessRecord, IFQuestion, IFAnswer, UserDocument, ContactMessage, PushToken, TermsAcceptance
@@ -440,6 +441,36 @@ def _resolve_request_user(request):
 
     return None
 
+
+def _require_authenticated_user(request, requested_username=None):
+    user = _resolve_request_user(request)
+    if not user:
+        return None, Response({'error': 'Authentication required'}, status=status.HTTP_401_UNAUTHORIZED)
+    if requested_username and user.username != requested_username:
+        return None, Response({'error': 'Forbidden'}, status=status.HTTP_403_FORBIDDEN)
+    return user, None
+
+
+def _safe_session_id(user):
+    raw = f"{user.id}:{user.username}:{settings.SECRET_KEY}"
+    return f"u_{hashlib.sha256(raw.encode('utf-8')).hexdigest()}"
+
+
+def _range_bucket(value, step, lower=None, upper=None):
+    if value is None:
+        return None
+    try:
+        num = float(value)
+    except Exception:
+        return None
+    if lower is not None:
+        num = max(num, lower)
+    if upper is not None:
+        num = min(num, upper)
+    low = int((num // step) * step)
+    high = low + step
+    return f"{low}-{high}"
+
 @api_view(['GET', 'OPTIONS'])
 @authentication_classes([JWTAuthentication])
 @permission_classes([IsAuthenticatedOrOptions])
@@ -451,9 +482,12 @@ def get_user_profile(request):
     username = request.query_params.get('username')
     if not username:
         return Response({'error': 'Username required'}, status=status.HTTP_400_BAD_REQUEST)
-    
+
+    user, auth_error = _require_authenticated_user(request, username)
+    if auth_error:
+        return auth_error
+
     try:
-        user = User.objects.get(username=username)
         profile_picture = _profile_picture_db_value(user)
         profile_picture_url = _canonical_profile_picture_url(request, user)
         return Response({
@@ -1810,14 +1844,17 @@ def upload_medical_record(request):
             _delete_blob_if_exists(previous_file_url)
 
         signed_url = _build_signed_blob_url(file_url)
+        include_text = _as_bool(request.data.get('include_text') or request.POST.get('include_text'))
 
-        return Response({
+        response_payload = {
             'success': True,
             'file_url': signed_url,
             'file_url_raw': file_url,
-            'extracted_text': extracted_text,
             'doc_type': doc_key
-        })
+        }
+        if include_text:
+            response_payload['extracted_text'] = extracted_text
+        return Response(response_payload)
     except Exception as e:
         print(f"Upload Error: {e}")
         return Response({'error': str(e)}, status=500)
@@ -1828,8 +1865,13 @@ def upload_medical_record(request):
 def user_documents(request):
     username = request.query_params.get('username')
     doc_type = request.query_params.get('doc_type')
+    include_text = _as_bool(request.query_params.get('include_text'))
     if not username:
         return Response({'error': 'Username required'}, status=400)
+
+    user, auth_error = _require_authenticated_user(request, username)
+    if auth_error:
+        return auth_error
 
     try:
         user = User.objects.get(username=username)
@@ -1846,16 +1888,19 @@ def user_documents(request):
 
     signed_url = _build_signed_blob_url(doc.file_url)
 
+    document_payload = {
+        'doc_type': doc.doc_type,
+        'file_name': doc.file_name,
+        'file_url': signed_url,
+        'file_url_raw': doc.file_url,
+        'updated_at': doc.updated_at.isoformat(),
+    }
+    if include_text:
+        document_payload['extracted_text'] = doc.extracted_text
+
     return Response({
         'success': True,
-        'document': {
-            'doc_type': doc.doc_type,
-            'file_name': doc.file_name,
-            'file_url': signed_url,
-            'file_url_raw': doc.file_url,
-            'extracted_text': doc.extracted_text,
-            'updated_at': doc.updated_at.isoformat(),
-        }
+        'document': document_payload,
     })
 
 @api_view(['POST', 'OPTIONS'])
@@ -1866,6 +1911,10 @@ def user_documents_delete(request):
     doc_type = request.data.get('doc_type')
     if not username or not doc_type:
         return Response({'error': 'Username and doc_type required'}, status=400)
+
+    user, auth_error = _require_authenticated_user(request, username)
+    if auth_error:
+        return auth_error
 
     try:
         user = User.objects.get(username=username)
@@ -1890,7 +1939,7 @@ def chat_n8n(request):
     try:
         # 1. Obtener datos del frontend
         message = request.data.get('message')
-        session_id = request.data.get('sessionId') or 'invitado'
+        session_id = request.data.get('sessionId') or ''
         attachment_url = request.data.get('attachment') 
         attachment_text = request.data.get('attachment_text') # Nuevo: Texto extraído
 
@@ -1909,15 +1958,19 @@ def chat_n8n(request):
         profile_payload = None
         if_snapshot = None
         integrations_payload = None
-        username = request.data.get('username') or request.data.get('user') or request.data.get('sessionId')
+        documents_payload = None
+
+        user = _resolve_request_user(request)
+        if user:
+            session_id = _safe_session_id(user)
+        elif not session_id or session_id == 'invitado':
+            session_id = f"guest_{uuid.uuid4().hex}"
 
         def _dt_iso(value):
             return value.isoformat() if value else None
 
-        if username:
+        if user:
             try:
-                user = User.objects.get(username=username)
-
                 # Últimos 5 IF (histórico)
                 recent_records_qs = (
                     HappinessRecord.objects.filter(user=user)
@@ -1940,8 +1993,6 @@ def chat_n8n(request):
                     {
                         "doc_type": d.doc_type,
                         "file_name": d.file_name,
-                        "file_url": d.file_url,
-                        "extracted_text": d.extracted_text,
                         "updated_at": _dt_iso(d.updated_at),
                         "created_at": _dt_iso(d.created_at),
                     }
@@ -1950,31 +2001,15 @@ def chat_n8n(request):
                 documents_types = [d["doc_type"] for d in documents_payload]
 
                 profile_payload = {
-                    "id": user.id,
                     "username": user.username,
-                    "email": user.email,
                     "plan": user.plan,
-                    "age": user.age,
-                    "weight": user.weight,
-                    "height": user.height,
-                    "profession": getattr(user, "profession", None),
-                    "full_name": getattr(user, "full_name", None),
-                    "favorite_exercise_time": getattr(user, "favorite_exercise_time", None),
-                    "favorite_sport": getattr(user, "favorite_sport", None),
+                    "age_range": _range_bucket(user.age, 5),
+                    "weight_range": _range_bucket(user.weight, 5, lower=30, upper=200),
+                    "height_range": _range_bucket(user.height, 5, lower=120, upper=230),
                     "happiness_index": user.happiness_index,
                     "scores": user.scores or {},
                     "current_streak": user.current_streak,
                     "badges": user.badges,
-                    "profile_picture": str(user.profile_picture) if user.profile_picture else None,
-                    "trial_active": user.trial_active,
-                    "trial_started_at": _dt_iso(user.trial_started_at),
-                    "trial_ends_at": _dt_iso(user.trial_ends_at),
-                    "billing_status": user.billing_status,
-                    "subscription_provider": user.subscription_provider,
-                    "subscription_id": user.subscription_id,
-                    "current_period_end": _dt_iso(user.current_period_end),
-                    "cancel_at_period_end": user.cancel_at_period_end,
-                    "last_payment_status": user.last_payment_status,
                     "if_history": recent_records,
                     "has_documents": bool(documents_payload),
                     "documents_count": len(documents_payload),
