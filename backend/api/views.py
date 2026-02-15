@@ -511,6 +511,116 @@ def get_user_profile(request):
     except User.DoesNotExist:
         return Response({'error': 'User not found'}, status=status.HTTP_404_NOT_FOUND)
 
+
+@api_view(['GET', 'OPTIONS'])
+@authentication_classes([JWTAuthentication])
+@permission_classes([IsAuthenticatedOrOptions])
+def coach_context(request):
+    username = request.query_params.get('username')
+    if not username:
+        return Response({'error': 'Username required'}, status=status.HTTP_400_BAD_REQUEST)
+
+    user, auth_error = _require_authenticated_user(request, username)
+    if auth_error:
+        return auth_error
+
+    def _dt_iso(value):
+        return value.isoformat() if value else None
+
+    documents_qs = UserDocument.objects.filter(user=user).order_by('-updated_at')
+    latest_by_type = {}
+    for doc in documents_qs:
+        if doc.doc_type not in latest_by_type:
+            latest_by_type[doc.doc_type] = {
+                "doc_type": doc.doc_type,
+                "file_name": doc.file_name,
+                "updated_at": _dt_iso(doc.updated_at),
+            }
+    documents_summary = list(latest_by_type.values())
+    documents_types = list(latest_by_type.keys())
+
+    device_qs = DeviceConnection.objects.filter(user=user).order_by('-updated_at')
+    devices_payload = [
+        {
+            "provider": d.provider,
+            "status": d.status,
+            "last_sync_at": _dt_iso(d.last_sync_at),
+            "updated_at": _dt_iso(d.updated_at),
+        }
+        for d in device_qs
+    ]
+    connected_providers = [
+        d["provider"] for d in devices_payload if d["status"] == "connected"
+    ]
+
+    fitness_by_provider = {}
+    recent_syncs = FitnessSync.objects.filter(user=user).order_by('-created_at')[:50]
+    for sync in recent_syncs:
+        if sync.provider not in fitness_by_provider:
+            fitness_by_provider[sync.provider] = {
+                "provider": sync.provider,
+                "start_time": _dt_iso(sync.start_time),
+                "end_time": _dt_iso(sync.end_time),
+                "metrics": sync.metrics,
+                "created_at": _dt_iso(sync.created_at),
+            }
+
+    latest_record = HappinessRecord.objects.filter(user=user).order_by('-date').first()
+    week_id = _week_id()
+    answers_qs = (
+        IFAnswer.objects.filter(user=user, week_id=week_id)
+        .select_related('question')
+        .order_by('answered_at')
+    )
+    answers_payload = [
+        {
+            "question_id": a.question.key,
+            "question_label": a.question.label,
+            "value": a.value,
+            "slot": a.slot,
+            "answered_at": _dt_iso(a.answered_at),
+            "answered_date": _dt_iso(a.answered_date),
+            "source": a.source,
+        }
+        for a in answers_qs
+    ]
+
+    context_payload = {
+        "profile": {
+            "username": user.username,
+            "plan": user.plan,
+            "age_range": _range_bucket(user.age, 5),
+            "weight_range": _range_bucket(user.weight, 5, lower=30, upper=200),
+            "height_range": _range_bucket(user.height, 5, lower=120, upper=230),
+            "happiness_index": user.happiness_index,
+            "scores": user.scores or {},
+            "current_streak": user.current_streak,
+            "badges": user.badges,
+        },
+        "documents": {
+            "summary": documents_summary,
+            "types": documents_types,
+            "count": len(documents_summary),
+        },
+        "devices": {
+            "connected_providers": connected_providers,
+            "devices": devices_payload,
+            "fitness": fitness_by_provider,
+        },
+        "if_snapshot": {
+            "week_id": week_id,
+            "scores": user.scores or {},
+            "latest_record": {
+                "value": latest_record.value if latest_record else None,
+                "scores": latest_record.scores if latest_record else {},
+                "date": _dt_iso(latest_record.date) if latest_record else None,
+            },
+            "answers": answers_payload,
+        },
+    }
+
+    return Response(context_payload)
+
 @api_view(['POST', 'OPTIONS'])
 def register(request):
     if request.method == 'OPTIONS':

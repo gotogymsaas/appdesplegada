@@ -18,6 +18,7 @@ urlpatterns = [
     path('stats/global_history/', views.get_global_history, name='get_global_history'),
     path('chat/', views.chat_n8n, name='chat_n8n'),
     path('user_profile/', views.get_user_profile, name='get_user_profile'),
+    path('coach_context/', views.coach_context, name='coach_context'),
     path('upload_medical/', views.upload_medical_record, name='upload_medical'),
     path('user_documents/', views.user_documents, name='user_documents'),
     path('user_documents/delete/', views.user_documents_delete, name='user_documents_delete'),
