@@ -60,6 +60,7 @@ from urllib.parse import quote, unquote, urlparse
 from django.conf import settings
 from django.core.mail import EmailMessage
 from django.utils.text import get_valid_filename
+from zoneinfo import ZoneInfo
 
 try:
     from azure.storage.blob import BlobServiceClient, ContentSettings
@@ -171,6 +172,16 @@ def _as_bool(value):
     if value is None:
         return False
     return str(value).strip().lower() in ("1", "true", "yes", "y", "on")
+
+
+def _clean_extracted_text(text):
+    if not text:
+        return ""
+    cleaned = text.replace("\r", "\n")
+    cleaned = re.sub(r"[ \t]+", " ", cleaned)
+    cleaned = re.sub(r"\n{3,}", "\n\n", cleaned)
+    cleaned = "\n".join(line.strip() for line in cleaned.split("\n"))
+    return cleaned.strip()
 
 
 def _get_media_public_base():
@@ -1940,6 +1951,7 @@ def upload_medical_record(request):
                     pass
 
         # Guardar/actualizar documento en perfil
+        extracted_text = _clean_extracted_text(extracted_text)
         doc_key = doc_type or 'medical_history'
         existing = UserDocument.objects.filter(user=user, doc_type=doc_key).first()
         previous_file_url = existing.file_url if existing else ""
@@ -2103,25 +2115,41 @@ def chat_n8n(request):
                     UserDocument.objects.filter(user=user)
                     .order_by("-updated_at")
                 )
+                max_doc_text = int(os.getenv("N8N_DOC_TEXT_MAX_CHARS", "5000") or 5000)
                 documents_payload = [
                     {
                         "doc_type": d.doc_type,
                         "file_name": d.file_name,
                         "updated_at": _dt_iso(d.updated_at),
-                        "created_at": _dt_iso(d.created_at),
+                        "extracted_text": _clean_extracted_text(d.extracted_text or "")[:max_doc_text],
                     }
                     for d in documents_qs
                 ]
                 documents_types = [d["doc_type"] for d in documents_payload]
 
+                # IF snapshot (último registro + respuestas de la semana)
+                latest_record = recent_records_qs[0] if recent_records_qs else None
+                canonical_scores = latest_record.scores if latest_record else (user.scores or {})
+
+                # Evitar duplicar el último IF en el histórico
+                if latest_record and recent_records:
+                    recent_records = recent_records[1:]
+
                 profile_payload = {
                     "username": user.username,
                     "plan": user.plan,
+                    "full_name": getattr(user, "full_name", None),
+                    "age": user.age,
+                    "weight": user.weight,
+                    "height": user.height,
+                    "profession": getattr(user, "profession", None),
+                    "favorite_exercise_time": getattr(user, "favorite_exercise_time", None),
+                    "favorite_sport": getattr(user, "favorite_sport", None),
                     "age_range": _range_bucket(user.age, 5),
                     "weight_range": _range_bucket(user.weight, 5, lower=30, upper=200),
                     "height_range": _range_bucket(user.height, 5, lower=120, upper=230),
                     "happiness_index": user.happiness_index,
-                    "scores": user.scores or {},
+                    "scores_baseline": user.scores or {},
                     "current_streak": user.current_streak,
                     "badges": user.badges,
                     "if_history": recent_records,
@@ -2130,8 +2158,6 @@ def chat_n8n(request):
                     "documents_types": documents_types,
                 }
 
-                # IF snapshot (último registro + respuestas de la semana)
-                latest_record = recent_records_qs[0] if recent_records_qs else None
                 week_id = _week_id()
                 answers_qs = (
                     IFAnswer.objects.filter(user=user, week_id=week_id)
@@ -2153,13 +2179,14 @@ def chat_n8n(request):
 
                 if_snapshot = {
                     "week_id": week_id,
-                    "scores": user.scores or {},
+                    "scores": canonical_scores,
                     "latest_record": {
                         "value": latest_record.value if latest_record else None,
                         "scores": latest_record.scores if latest_record else {},
                         "date": _dt_iso(latest_record.date) if latest_record else None,
                     },
                     "answers": answers_payload,
+                    "answers_status": "empty" if not answers_payload else "ok",
                 }
 
                 # Integraciones / dispositivos
@@ -2180,29 +2207,35 @@ def chat_n8n(request):
                     d["provider"] for d in devices_payload if d["status"] == "connected"
                 ]
 
-                # Último sync por proveedor
+                # Último sync por proveedor + último sync global
                 fitness_by_provider = {}
+                latest_sync = None
                 recent_syncs = (
                     FitnessSync.objects.filter(user=user)
                     .order_by("-created_at")[:50]
                 )
                 for sync in recent_syncs:
+                    sync_payload = {
+                        "provider": sync.provider,
+                        "start_time": _dt_iso(sync.start_time),
+                        "end_time": _dt_iso(sync.end_time),
+                        "metrics": sync.metrics,
+                        "created_at": _dt_iso(sync.created_at),
+                    }
+                    if latest_sync is None:
+                        latest_sync = sync_payload
                     if sync.provider not in fitness_by_provider:
-                        fitness_by_provider[sync.provider] = {
-                            "provider": sync.provider,
-                            "start_time": _dt_iso(sync.start_time),
-                            "end_time": _dt_iso(sync.end_time),
-                            "metrics": sync.metrics,
-                            "created_at": _dt_iso(sync.created_at),
-                        }
+                        fitness_by_provider[sync.provider] = sync_payload
 
                 integrations_payload = {
                     "devices": devices_payload,
                     "connected_providers": connected_providers,
-                    "fitness": fitness_by_provider,
                 }
 
-                fitness_payload = fitness_by_provider.get("google_fit")
+                fitness_payload = {
+                    "providers": fitness_by_provider,
+                    "latest": latest_sync,
+                }
             except User.DoesNotExist:
                 fitness_payload = None
 

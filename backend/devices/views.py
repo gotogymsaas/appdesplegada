@@ -338,7 +338,11 @@ def device_sync(request, provider):
                 return Response({"ok": False, **info}, status=400)
 
         now = timezone.now()
-        date_str = now.date().isoformat()
+        tzinfo = timezone.get_current_timezone()
+        now_local = timezone.localtime(now, tzinfo)
+        start_local = now_local.replace(hour=0, minute=0, second=0, microsecond=0)
+        date_str = now_local.date().isoformat()
+        tz_name = getattr(tzinfo, "key", str(tzinfo))
 
         headers = {
             "Authorization": f"Bearer {obj.access_token}",
@@ -382,6 +386,13 @@ def device_sync(request, provider):
                 hr_val = hr_arr[-1].get("value", {})
                 avg_hr = hr_val.get("restingHeartRate")
 
+            missing_fields = []
+            if steps == 0:
+                missing_fields.append("steps")
+            if sleep_minutes == 0:
+                missing_fields.append("sleep_minutes")
+            is_partial = bool(missing_fields)
+
             metrics = {
                 "steps": steps,
                 "calories": round(calories, 2),
@@ -389,13 +400,18 @@ def device_sync(request, provider):
                 "sleep_minutes": sleep_minutes,
                 "resting_heart_rate_bpm": avg_hr,
                 "date": date_str,
+                "start_time": start_local.isoformat(),
+                "end_time": now_local.isoformat(),
+                "timezone": tz_name,
+                "data_quality": "partial" if is_partial else "ok",
+                "missing_fields": missing_fields,
             }
 
             FitnessSync.objects.create(
                 user=request.user,
                 provider="fitbit",
-                start_time=now,
-                end_time=now,
+                start_time=start_local,
+                end_time=now_local,
                 metrics=metrics,
                 raw={
                     "steps": steps_data,
