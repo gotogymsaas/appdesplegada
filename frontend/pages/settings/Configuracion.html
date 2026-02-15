@@ -199,7 +199,7 @@
 
         <!-- Footer -->
         <div class="footer-links">
-            <a href="#" class="footer-link">Política de Privacidad</a>
+            <a href="../info/PoliticaPrivacidad.html" class="footer-link">Política de Privacidad</a>
             <a href="#" class="footer-link" onclick="cerrarSesion()" style="color: var(--error)">Cerrar Sesión</a>
         </div>
     </div>
@@ -273,7 +273,7 @@
             }
         });
 
-        if (notifEnabled && window.GoToGymNotifications) {
+        if (notifEnabled && window.GoToGymNotifications && window.Capacitor && typeof window.Capacitor.isNativePlatform === 'function' && window.Capacitor.isNativePlatform()) {
             window.GoToGymNotifications.scheduleNext24Hours();
         }
     </script>
