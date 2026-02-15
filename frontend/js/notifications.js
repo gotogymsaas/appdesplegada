@@ -336,7 +336,11 @@
     disable: unregisterPushToken,
   };
 
-  if (typeof document !== 'undefined' && localStorage.getItem(NOTIF_ENABLED_KEY) !== 'false') {
+  if (
+    typeof document !== 'undefined' &&
+    localStorage.getItem(NOTIF_ENABLED_KEY) !== 'false' &&
+    isNative()
+  ) {
     scheduleNext24Hours();
     ensurePushReady();
   }
