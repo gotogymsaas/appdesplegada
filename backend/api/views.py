@@ -55,7 +55,7 @@ import os
 import uuid
 import tempfile
 from pathlib import Path
-from urllib.parse import quote, urlparse
+from urllib.parse import quote, unquote, urlparse
 from django.conf import settings
 from django.core.mail import EmailMessage
 from django.utils.text import get_valid_filename
@@ -269,9 +269,39 @@ def _extract_blob_ref_from_url(file_url):
         parts = path.split("/", 1)
         if len(parts) < 2:
             return None, None
-        return parts[0], unquote(parts[1])
+        return parts[0], parts[1]
     except Exception:
         return None, None
+
+
+def _resolve_blob_name(container_name, blob_name):
+    if not container_name or not blob_name:
+        return None
+
+    candidates = [blob_name]
+    decoded = unquote(blob_name)
+    if decoded and decoded != blob_name:
+        candidates.insert(0, decoded)
+
+    account_name = getattr(settings, "AZURE_STORAGE_ACCOUNT_NAME", "").strip()
+    account_key = getattr(settings, "AZURE_STORAGE_ACCOUNT_KEY", "").strip()
+    if not account_name or not account_key or BlobServiceClient is None:
+        return candidates[0]
+
+    try:
+        account_url = f"https://{account_name}.blob.core.windows.net"
+        blob_service = BlobServiceClient(account_url=account_url, credential=account_key)
+        for candidate in candidates:
+            try:
+                blob_client = blob_service.get_blob_client(container=container_name, blob=candidate)
+                blob_client.get_blob_properties()
+                return candidate
+            except Exception:
+                continue
+    except Exception:
+        return candidates[0]
+
+    return candidates[0]
 
 
 def _build_signed_blob_url(file_url):
@@ -280,8 +310,12 @@ def _build_signed_blob_url(file_url):
 
     account_name = getattr(settings, "AZURE_STORAGE_ACCOUNT_NAME", "").strip()
     account_key = getattr(settings, "AZURE_STORAGE_ACCOUNT_KEY", "").strip()
-    container_name, blob_name = _extract_blob_ref_from_url(file_url)
-    if not container_name or not blob_name:
+    container_name, blob_name_raw = _extract_blob_ref_from_url(file_url)
+    if not container_name or not blob_name_raw:
+        return file_url
+
+    blob_name = _resolve_blob_name(container_name, blob_name_raw)
+    if not blob_name:
         return file_url
 
     try:
@@ -319,16 +353,25 @@ def _upload_file_to_blob(container_name, blob_name, file_bytes, content_type):
 def _delete_blob_if_exists(file_url):
     if not _is_azure_blob_enabled() or not file_url:
         return
-    container_name, blob_name = _extract_blob_ref_from_url(file_url)
-    if not container_name or not blob_name:
+    container_name, blob_name_raw = _extract_blob_ref_from_url(file_url)
+    if not container_name or not blob_name_raw:
         return
     try:
         account_name = getattr(settings, "AZURE_STORAGE_ACCOUNT_NAME", "").strip()
         account_key = getattr(settings, "AZURE_STORAGE_ACCOUNT_KEY", "").strip()
         account_url = f"https://{account_name}.blob.core.windows.net"
         blob_service = BlobServiceClient(account_url=account_url, credential=account_key)
-        blob_client = blob_service.get_blob_client(container=container_name, blob=blob_name)
-        blob_client.delete_blob(delete_snapshots="include")
+        candidates = [blob_name_raw]
+        decoded = unquote(blob_name_raw)
+        if decoded and decoded != blob_name_raw:
+            candidates.insert(0, decoded)
+        for candidate in candidates:
+            try:
+                blob_client = blob_service.get_blob_client(container=container_name, blob=candidate)
+                blob_client.delete_blob(delete_snapshots="include")
+                return
+            except Exception:
+                continue
     except Exception:
         pass
 
