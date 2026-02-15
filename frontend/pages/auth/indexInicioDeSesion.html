@@ -26,6 +26,31 @@
             position: relative;
         }
 
+        .welcome-tagline {
+            margin-top: 16px;
+            color: var(--text-muted);
+            text-align: center;
+            font-size: 13px;
+            letter-spacing: 0.2px;
+        }
+
+        .legal-footer {
+            position: absolute;
+            bottom: 24px;
+            width: 100%;
+            text-align: center;
+            font-size: 12px;
+        }
+
+        .legal-footer a {
+            color: var(--text-muted);
+            text-decoration: none;
+        }
+
+        .legal-footer a:hover {
+            color: var(--primary);
+        }
+
         /* State Management Classes */
         .hidden {
             display: none !important;
@@ -64,6 +89,7 @@
                 <img src="../../assets/images/recurso-16.png" alt="GoToGym Logo"
                     style="width: 60%; height: 60%; object-fit: contain; object-position: center;">
             </div>
+            <div class="welcome-tagline">GoToGym tu plataforma de bienestar personalizado</div>
 
             <div style="width: 100%; padding: 0 20px; margin-top: 50px;">
                 <button class="btn btn-outline-gold" onclick="showLogin()">
@@ -114,6 +140,10 @@
                         style="color: var(--primary); text-decoration: none; font-weight: bold;">Regístrate</a>
                 </div>
             </form>
+        </div>
+
+        <div class="legal-footer">
+            <a href="../info/PoliticaPrivacidad.html">Políticas de privacidad</a>
         </div>
 
     </div>
