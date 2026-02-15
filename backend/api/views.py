@@ -2103,11 +2103,13 @@ def chat_n8n(request):
                     UserDocument.objects.filter(user=user)
                     .order_by("-updated_at")
                 )
+                max_doc_text = int(os.getenv("N8N_DOC_TEXT_MAX_CHARS", "2000") or 2000)
                 documents_payload = [
                     {
                         "doc_type": d.doc_type,
                         "file_name": d.file_name,
                         "updated_at": _dt_iso(d.updated_at),
+                        "extracted_text": (d.extracted_text or "")[:max_doc_text],
                     }
                     for d in documents_qs
                 ]
