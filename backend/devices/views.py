@@ -178,15 +178,6 @@ def device_disconnect(request, provider):
 @permission_classes([IsAuthenticated])
 def device_sync(request, provider):
     user = request.user
-    if getattr(user, "plan", "Gratis") != "Premium" and not (
-        getattr(user, "trial_active", False)
-        and getattr(user, "trial_ends_at", None)
-        and timezone.now() < user.trial_ends_at
-    ):
-        return Response(
-            {"ok": False, "error": "Requiere Premium para sincronizar"},
-            status=402,
-        )
 
     obj, _ = DeviceConnection.objects.get_or_create(user=request.user, provider=provider)
 
