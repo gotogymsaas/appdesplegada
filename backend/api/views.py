@@ -269,7 +269,7 @@ def _extract_blob_ref_from_url(file_url):
         parts = path.split("/", 1)
         if len(parts) < 2:
             return None, None
-        return parts[0], parts[1]
+        return parts[0], unquote(parts[1])
     except Exception:
         return None, None
 
@@ -1690,7 +1690,8 @@ def upload_medical_record(request):
 
         file_bytes = file_obj.read()
         content_type = (file_obj.content_type or 'application/octet-stream').strip() or 'application/octet-stream'
-        blob_path = f"{quote(username, safe='')}/{quote(safe_name, safe='')}"
+        safe_username = username.replace("/", "_")
+        blob_path = f"{safe_username}/{safe_name}"
 
         with tempfile.NamedTemporaryFile(delete=False, suffix=extension or "") as tmp_file:
             tmp_file.write(file_bytes)
