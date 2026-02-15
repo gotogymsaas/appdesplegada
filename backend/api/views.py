@@ -517,6 +517,7 @@ def get_user_profile(request):
 @permission_classes([IsAuthenticatedOrOptions])
 def coach_context(request):
     username = request.query_params.get('username')
+    include_text = _as_bool(request.query_params.get('include_text'))
     if not username:
         return Response({'error': 'Username required'}, status=status.HTTP_400_BAD_REQUEST)
 
@@ -531,11 +532,14 @@ def coach_context(request):
     latest_by_type = {}
     for doc in documents_qs:
         if doc.doc_type not in latest_by_type:
-            latest_by_type[doc.doc_type] = {
+            summary = {
                 "doc_type": doc.doc_type,
                 "file_name": doc.file_name,
                 "updated_at": _dt_iso(doc.updated_at),
             }
+            if include_text:
+                summary["extracted_text"] = doc.extracted_text
+            latest_by_type[doc.doc_type] = summary
     documents_summary = list(latest_by_type.values())
     documents_types = list(latest_by_type.keys())
 
