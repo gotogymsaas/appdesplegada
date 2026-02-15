@@ -1,4 +1,4 @@
-const CACHE_NAME = 'gotogym-v5';
+const CACHE_NAME = 'gotogym-v6';
 const ASSETS_TO_CACHE = [
     '/',
     '/manifest.json',
@@ -36,6 +36,43 @@ self.addEventListener('activate', event => {
 self.addEventListener('fetch', event => {
     // Only cache GET requests
     if (event.request.method !== 'GET') return;
+
+    const url = new URL(event.request.url);
+    const isSameOrigin = url.origin === self.location.origin;
+
+    // Navigations: prefer fresh HTML so UX updates propagate.
+    if (event.request.mode === 'navigate') {
+        event.respondWith(
+            fetch(event.request)
+                .then(res => {
+                    if (isSameOrigin) {
+                        const copy = res.clone();
+                        caches.open(CACHE_NAME).then(cache => cache.put(event.request, copy));
+                    }
+                    return res;
+                })
+                .catch(() => caches.match(event.request))
+        );
+        return;
+    }
+
+    // Static assets: stale-while-revalidate for better update behavior.
+    if (isSameOrigin && (url.pathname.endsWith('.js') || url.pathname.endsWith('.css') || url.pathname.endsWith('.png') || url.pathname.endsWith('.jpg') || url.pathname.endsWith('.jpeg') || url.pathname.endsWith('.svg') || url.pathname.endsWith('.webp') || url.pathname.endsWith('.ico') || url.pathname.endsWith('.json')))
+    {
+        event.respondWith(
+            caches.match(event.request).then(cached => {
+                const networkFetch = fetch(event.request)
+                    .then(res => {
+                        const copy = res.clone();
+                        caches.open(CACHE_NAME).then(cache => cache.put(event.request, copy));
+                        return res;
+                    })
+                    .catch(() => cached);
+                return cached || networkFetch;
+            })
+        );
+        return;
+    }
 
     event.respondWith(
         caches.match(event.request)
