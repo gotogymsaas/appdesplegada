@@ -213,6 +213,50 @@
           cursor: not-allowed;
         }
 
+        .loading-state {
+            background: var(--card-bg);
+            border-radius: var(--radius-lg);
+            padding: 22px;
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            text-align: center;
+            color: var(--text-muted);
+            margin-bottom: 18px;
+        }
+
+        .loading-dot {
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background: var(--primary);
+            display: inline-block;
+            animation: pulse 1.2s infinite ease-in-out;
+        }
+
+        .loading-dots {
+            display: inline-flex;
+            gap: 6px;
+            margin-left: 6px;
+        }
+
+        .loading-dots span:nth-child(2) {
+            animation-delay: 0.2s;
+        }
+
+        .loading-dots span:nth-child(3) {
+            animation-delay: 0.4s;
+        }
+
+        @keyframes pulse {
+            0%, 100% {
+                transform: scale(1);
+                opacity: 0.6;
+            }
+            50% {
+                transform: scale(1.4);
+                opacity: 1;
+            }
+        }
+
     </style>
 </head>
 
@@ -233,6 +277,17 @@
         recuperación.
         Con eso GoToGym puede calcular tu <b>Índice de Felicidad</b>.
         </p>
+
+        <div id="loadingState" class="loading-state">
+            Estamos preparando tus integraciones
+            <span class="loading-dots">
+                <span class="loading-dot"></span>
+                <span class="loading-dot"></span>
+                <span class="loading-dot"></span>
+            </span>
+        </div>
+
+        <div id="devicesContent" style="display: none;">
         
         
         <!-- Conectados -->
@@ -256,6 +311,8 @@
             <div class="empty">No hay proveedores disponibles.</div>
           </div>
         </div>
+
+                </div>
 
 
     <!-- Menu Overlay -->
