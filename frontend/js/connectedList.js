@@ -320,7 +320,7 @@
     return;
     }
     const data = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(data.detail || "Disconnect failed");
+    if (!res.ok) throw new Error(data.detail || data.error || "Disconnect failed");
     showToast("Dispositivo desconectado.", "success");
     await loadDevices();
     } catch (e) {
@@ -344,13 +344,13 @@
     return;
     }
     const data = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(data.detail || "Sync failed");
+    if (!res.ok) throw new Error(data.detail || data.error || "Sync failed");
     showToast("Sincronización iniciada.", "success");
     await loadDevices();
     } catch (e) {
     console.error(e);
     setStatus("Error");
-    showToast("No se pudo sincronizar.", "error");
+    showToast(e?.message || "No se pudo sincronizar.", "error");
     } finally {
     setStatus("Listo");
     }
