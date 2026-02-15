@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Políticas de Privacidad - GoToGym</title>
+    <link rel="stylesheet" href="../../css/../../css/theme.css">
+    <style>
+        .page-container {
+            width: 100%;
+            max-width: 450px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 30px;
+        }
+
+        .header-left {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .back-btn {
+            background: none;
+            border: none;
+            color: var(--text-muted);
+            font-size: 22px;
+            cursor: pointer;
+            padding: 0;
+        }
+
+        .page-title {
+            font-size: 24px;
+            color: var(--secondary);
+        }
+
+        .menu-btn {
+            font-size: 24px;
+            color: var(--primary);
+            background: none;
+            border: none;
+            cursor: pointer;
+        }
+
+        .content-section {
+            background: var(--card-bg);
+            border-radius: var(--radius-lg);
+            padding: 22px;
+            margin-bottom: 18px;
+            border: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        .section-title {
+            color: var(--primary);
+            font-size: 16px;
+            margin-bottom: 12px;
+            font-weight: 600;
+        }
+
+        .text-content {
+            color: var(--text-muted);
+            line-height: 1.6;
+            font-size: 13px;
+            margin-bottom: 10px;
+        }
+
+        .text-list {
+            margin: 10px 0 0;
+            padding-left: 18px;
+            color: var(--text-muted);
+            font-size: 13px;
+            line-height: 1.6;
+        }
+
+        .meta-note {
+            color: var(--text-muted);
+            font-size: 11px;
+            margin-top: 12px;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="page-container">
+        <div class="header">
+            <div class="header-left">
+                <button class="back-btn" onclick="goBack()" aria-label="Volver">←</button>
+                <h1 class="page-title">Políticas de Privacidad</h1>
+            </div>
+            <button class="menu-btn" onclick="toggleMenu()">☰</button>
+        </div>
+
+        <div class="content-section">
+            <h2 class="section-title">Resumen</h2>
+            <p class="text-content">
+                En GoToGym cuidamos tu información personal y solo la usamos para mejorar tu experiencia,
+                gestionar tu cuenta y ofrecerte bienestar personalizado.
+            </p>
+            <p class="text-content">
+                Nunca vendemos tus datos. Solo compartimos información cuando es necesaria para brindarte
+                el servicio o cumplir obligaciones legales.
+            </p>
+        </div>
+
+        <div class="content-section">
+            <h2 class="section-title">Datos que podemos usar</h2>
+            <ul class="text-list">
+                <li>Datos de perfil (nombre, email, edad, peso, altura).</li>
+                <li>Información de salud que decidas cargar (planes, documentos).</li>
+                <li>Datos técnicos de uso para mejorar rendimiento y seguridad.</li>
+            </ul>
+        </div>
+
+        <div class="content-section">
+            <h2 class="section-title">Tus derechos</h2>
+            <ul class="text-list">
+                <li>Acceder y actualizar tu información.</li>
+                <li>Solicitar eliminación de tus datos.</li>
+                <li>Retirar consentimientos cuando aplique.</li>
+            </ul>
+            <p class="text-content">Puedes escribirnos a soporte para gestionar cualquier solicitud.</p>
+        </div>
+
+        <div class="content-section">
+            <h2 class="section-title">Seguridad</h2>
+            <p class="text-content">
+                Aplicamos medidas técnicas y organizativas para proteger tus datos.
+                Si detectamos incidentes relevantes, te informaremos oportunamente.
+            </p>
+            <p class="meta-note">Última actualización: 15 Feb 2026</p>
+        </div>
+    </div>
+
+    <script>
+        function goBack() {
+            window.history.back();
+        }
+
+        function toggleMenu() {
+            // Placeholder simple: evitar errores si el menú no está en esta página.
+        }
+    </script>
+</body>
+
+</html>
