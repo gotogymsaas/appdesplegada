@@ -2061,7 +2061,7 @@ def chat_n8n(request):
             return Response({'error': 'Mensaje o adjunto vacío'}, status=400)
 
         # 2. Configuración de n8n
-        n8n_url = 'http://172.200.202.47/webhook/general-agent-gotogym-v2'
+        n8n_url = getattr(settings, "N8N_WEBHOOK_URL", "").strip() or "http://172.200.202.47/webhook/general-agent-gotogym-v2"
         
         # Construir prompt enriquecido
         final_input = message or "Análisis de archivo adjunto"

@@ -395,6 +395,15 @@ CONTACT_EMAIL_SUBJECT_PREFIX = os.getenv("CONTACT_EMAIL_SUBJECT_PREFIX", "[GoToG
 # PUSH NOTIFICATIONS (FCM)
 # ============================
 FCM_SERVER_KEY = os.getenv("FCM_SERVER_KEY", "").strip()
+
+# ============================
+# N8N (CHAT PROXY)
+# ============================
+# Default conserva el comportamiento actual; sobreescribir por entorno.
+N8N_WEBHOOK_URL = os.getenv(
+    "N8N_WEBHOOK_URL",
+    "http://172.200.202.47/webhook/general-agent-gotogym-v2",
+).strip()
 # ============================
 # SMTP (Microsoft 365 u otro)
 # ============================
