@@ -70,8 +70,12 @@
   function setGlobalLoading(isLoading) {
     const gl = document.getElementById("globalLoading");
     const btn = document.getElementById("refreshBtn");
+    const loadingState = document.getElementById("loadingState");
+    const content = document.getElementById("devicesContent");
     if (gl) gl.style.display = isLoading ? "inline" : "none";
     if (btn) btn.disabled = !!isLoading;
+    if (loadingState) loadingState.style.display = isLoading ? "block" : "none";
+    if (content) content.style.display = isLoading ? "none" : "block";
   }
 
   function handleUnauthorized() {
