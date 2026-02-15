@@ -15,6 +15,17 @@ fi
 
 cd "$BACKEND_DIR"
 
+if ! command -v tesseract >/dev/null 2>&1 || ! command -v pdftoppm >/dev/null 2>&1; then
+	if command -v apt-get >/dev/null 2>&1; then
+		echo "Installing OCR system dependencies (tesseract, poppler)."
+		apt-get update \
+			&& apt-get install -y --no-install-recommends tesseract-ocr poppler-utils \
+			&& rm -rf /var/lib/apt/lists/*
+	else
+		echo "apt-get not available; OCR system dependencies not installed."
+	fi
+fi
+
 # Prefer App Service venv if present
 PYTHON_BIN="python"
 if [ -x "/home/site/wwwroot/antenv/bin/python" ]; then
