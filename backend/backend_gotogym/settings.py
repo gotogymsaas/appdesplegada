@@ -362,6 +362,12 @@ FITBIT = {
     "TOKEN_URL": "https://api.fitbit.com/oauth2/token",
 }
 
+# Frontend redirect after OAuth
+FITBIT_FRONTEND_REDIRECT = os.getenv(
+    "FITBIT_FRONTEND_REDIRECT",
+    "http://127.0.0.1:5500/pages/settings/Dispositivos.html",
+)
+
 # ============================
 # GARMIN OAUTH (requiere Garmin Health API / partner)
 # ============================
@@ -382,6 +388,11 @@ GARMIN = {
         "heart": os.getenv("GARMIN_HEART_URL", ""),
     },
 }
+
+GARMIN_FRONTEND_REDIRECT = os.getenv(
+    "GARMIN_FRONTEND_REDIRECT",
+    "http://127.0.0.1:5500/pages/settings/Dispositivos.html",
+)
 
 # ============================
 # AZURE COMMUNICATION SERVICES (EMAIL)
