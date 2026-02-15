@@ -2108,11 +2108,18 @@ def chat_n8n(request):
                         "doc_type": d.doc_type,
                         "file_name": d.file_name,
                         "updated_at": _dt_iso(d.updated_at),
-                        "created_at": _dt_iso(d.created_at),
                     }
                     for d in documents_qs
                 ]
                 documents_types = [d["doc_type"] for d in documents_payload]
+
+                # IF snapshot (último registro + respuestas de la semana)
+                latest_record = recent_records_qs[0] if recent_records_qs else None
+                canonical_scores = latest_record.scores if latest_record else (user.scores or {})
+
+                # Evitar duplicar el último IF en el histórico
+                if latest_record and recent_records:
+                    recent_records = recent_records[1:]
 
                 profile_payload = {
                     "username": user.username,
@@ -2121,7 +2128,7 @@ def chat_n8n(request):
                     "weight_range": _range_bucket(user.weight, 5, lower=30, upper=200),
                     "height_range": _range_bucket(user.height, 5, lower=120, upper=230),
                     "happiness_index": user.happiness_index,
-                    "scores": user.scores or {},
+                    "scores": canonical_scores,
                     "current_streak": user.current_streak,
                     "badges": user.badges,
                     "if_history": recent_records,
@@ -2130,8 +2137,6 @@ def chat_n8n(request):
                     "documents_types": documents_types,
                 }
 
-                # IF snapshot (último registro + respuestas de la semana)
-                latest_record = recent_records_qs[0] if recent_records_qs else None
                 week_id = _week_id()
                 answers_qs = (
                     IFAnswer.objects.filter(user=user, week_id=week_id)
@@ -2153,13 +2158,14 @@ def chat_n8n(request):
 
                 if_snapshot = {
                     "week_id": week_id,
-                    "scores": user.scores or {},
+                    "scores": canonical_scores,
                     "latest_record": {
                         "value": latest_record.value if latest_record else None,
                         "scores": latest_record.scores if latest_record else {},
                         "date": _dt_iso(latest_record.date) if latest_record else None,
                     },
                     "answers": answers_payload,
+                    "answers_status": "empty" if not answers_payload else "ok",
                 }
 
                 # Integraciones / dispositivos
@@ -2180,29 +2186,34 @@ def chat_n8n(request):
                     d["provider"] for d in devices_payload if d["status"] == "connected"
                 ]
 
-                # Último sync por proveedor
+                # Último sync por proveedor + último sync global
                 fitness_by_provider = {}
+                latest_sync = None
                 recent_syncs = (
                     FitnessSync.objects.filter(user=user)
                     .order_by("-created_at")[:50]
                 )
                 for sync in recent_syncs:
+                    sync_payload = {
+                        "provider": sync.provider,
+                        "start_time": _dt_iso(sync.start_time),
+                        "end_time": _dt_iso(sync.end_time),
+                        "metrics": sync.metrics,
+                        "created_at": _dt_iso(sync.created_at),
+                    }
+                    if latest_sync is None:
+                        latest_sync = sync_payload
                     if sync.provider not in fitness_by_provider:
-                        fitness_by_provider[sync.provider] = {
-                            "provider": sync.provider,
-                            "start_time": _dt_iso(sync.start_time),
-                            "end_time": _dt_iso(sync.end_time),
-                            "metrics": sync.metrics,
-                            "created_at": _dt_iso(sync.created_at),
-                        }
+                        fitness_by_provider[sync.provider] = sync_payload
 
                 integrations_payload = {
                     "devices": devices_payload,
                     "connected_providers": connected_providers,
                     "fitness": fitness_by_provider,
+                    "latest_sync": latest_sync,
                 }
 
-                fitness_payload = fitness_by_provider.get("google_fit")
+                fitness_payload = latest_sync
             except User.DoesNotExist:
                 fitness_payload = None
 
@@ -2212,6 +2223,8 @@ def chat_n8n(request):
             "sessionId": session_id,
             "attachment": attachment_url,
             "fitness": fitness_payload,
+            "fitness_all": integrations_payload.get("fitness") if integrations_payload else None,
+            "fitness_latest": integrations_payload.get("latest_sync") if integrations_payload else None,
             "profile": profile_payload,
             "if_snapshot": if_snapshot,
             "integrations": integrations_payload,
