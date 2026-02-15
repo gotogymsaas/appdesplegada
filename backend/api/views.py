@@ -2138,6 +2138,13 @@ def chat_n8n(request):
                 profile_payload = {
                     "username": user.username,
                     "plan": user.plan,
+                    "full_name": getattr(user, "full_name", None),
+                    "age": user.age,
+                    "weight": user.weight,
+                    "height": user.height,
+                    "profession": getattr(user, "profession", None),
+                    "favorite_exercise_time": getattr(user, "favorite_exercise_time", None),
+                    "favorite_sport": getattr(user, "favorite_sport", None),
                     "age_range": _range_bucket(user.age, 5),
                     "weight_range": _range_bucket(user.weight, 5, lower=30, upper=200),
                     "height_range": _range_bucket(user.height, 5, lower=120, upper=230),
