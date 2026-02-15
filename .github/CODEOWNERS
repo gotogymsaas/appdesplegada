@@ -1,0 +1,7 @@
+# Default owners
+* @gotogymsaas
+
+# Sensitive areas
+/.github/workflows/ @gotogymsaas
+/backend/ @gotogymsaas
+/infra/ @gotogymsaas
