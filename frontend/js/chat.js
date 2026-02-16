@@ -413,7 +413,6 @@ messages.innerHTML = '';
 appendMessage(GREETING_TEXT, 'bot');
 });
 }
-
 if (micBtn) {
   speechRecognition = initSpeechRecognition();
   if (speechRecognition) {
