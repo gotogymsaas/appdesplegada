@@ -41,6 +41,7 @@ container.innerHTML = `
 </div>
 <form id="chat-input-area" style="display: flex; align-items:
 center;">
+<div class="chat-input-tools">
 <label for="chat-file-input" style="cursor: pointer; padding:
 10px; color: #666;">
 <svg viewBox="0 0 24 24" width="24" height="24"
@@ -54,6 +55,7 @@ fill="currentColor"><path d="M16.5 6v11.5c0 2.21-1.79 4-4
 <button type="button" id="chat-mic-btn" title="Voz">🎤</button>
 <button type="button" id="chat-voice-cancel" class="chat-voice-action" hidden>Cancelar</button>
 <button type="button" id="chat-voice-retry" class="chat-voice-action" hidden>Reintentar</button>
+</div>
 <input type="text" id="chat-input" placeholder="Escribe tu
 duda..." autocomplete="off" style="flex:1;">
 <button type="submit" id="chat-send-btn">
