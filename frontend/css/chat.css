@@ -228,6 +228,13 @@
   gap: 10px;
 }
 
+.chat-input-tools {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
 #chat-input {
   flex: 1;
   min-width: 0;
