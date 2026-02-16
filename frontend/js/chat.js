@@ -683,14 +683,24 @@ async function processMessage(text, file) {
       }
     }
 
+    const userData = JSON.parse(localStorage.getItem('user') || 'null');
+    const username = userData?.username || localStorage.getItem('username') || null;
+    const token = getAuthToken();
+
     let attachmentUrl = null;
     let attachmentText = null;
     if (file) {
+      if (!username || !token) {
+        document.getElementById(loadingId)?.remove();
+        appendMessage('Para enviar adjuntos necesitas iniciar sesion.', 'bot');
+        return;
+      }
       const formData = new FormData();
-      formData.append('username', sessionId);
+      formData.append('username', username);
       formData.append('file', file);
-      const uploadResp = await fetch(API_URL + 'upload_medical/', {
+      const uploadResp = await (window.authFetch || fetch)(API_URL + 'upload_chat_attachment/', {
         method: 'POST',
+        headers: token ? { 'Authorization': `Bearer ${token}` } : undefined,
         body: formData
       });
       const uploadData = await uploadResp.json();
@@ -701,9 +711,6 @@ async function processMessage(text, file) {
         throw new Error('Error subiendo archivo: ' + uploadData.error);
       }
     }
-
-    const userData = JSON.parse(localStorage.getItem('user') || 'null');
-    const username = userData?.username || localStorage.getItem('username') || null;
 
     const authFetch = window.authFetch || fetch;
     const response = await authFetch(API_URL + 'chat/', {

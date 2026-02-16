@@ -20,6 +20,7 @@ urlpatterns = [
     path('user_profile/', views.get_user_profile, name='get_user_profile'),
     path('coach_context/', views.coach_context, name='coach_context'),
     path('upload_medical/', views.upload_medical_record, name='upload_medical'),
+    path('upload_chat_attachment/', views.upload_chat_attachment, name='upload_chat_attachment'),
     path('stt/', views.speech_to_text, name='speech_to_text'),
     path('user_documents/', views.user_documents, name='user_documents'),
     path('user_documents/delete/', views.user_documents_delete, name='user_documents_delete'),
@@ -27,5 +28,8 @@ urlpatterns = [
     path('push/register/', views.push_register, name='push_register'),
     path('push/unregister/', views.push_unregister, name='push_unregister'),
     path('push/send_test/', views.push_send_test, name='push_send_test'),
+    path('push/web/key/', views.push_web_public_key, name='push_web_public_key'),
+    path('push/web/subscribe/', views.push_web_subscribe, name='push_web_subscribe'),
+    path('push/web/unsubscribe/', views.push_web_unsubscribe, name='push_web_unsubscribe'),
     path('billing/webhook/mercadopago/', views.mercadopago_webhook, name='mercadopago_webhook'),
 ]

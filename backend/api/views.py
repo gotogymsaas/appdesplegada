@@ -6,6 +6,7 @@ from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework.response import Response
 from rest_framework import status
 import re
+import threading
 
 from devices.models import DeviceConnection, FitnessSync
 
@@ -15,7 +16,7 @@ import traceback
 import hashlib
 import ipaddress
 from django.contrib.auth import authenticate
-from .models import User, HappinessRecord, IFQuestion, IFAnswer, UserDocument, ContactMessage, PushToken, TermsAcceptance
+from .models import User, HappinessRecord, IFQuestion, IFAnswer, UserDocument, ContactMessage, PushToken, TermsAcceptance, WebPushSubscription
 from .if_questions import IF_QUESTIONS
 from .serializers import UserSerializer
 # Importar el servicio ML
@@ -61,6 +62,11 @@ from django.conf import settings
 from django.core.mail import EmailMessage
 from django.utils.text import get_valid_filename
 from zoneinfo import ZoneInfo
+try:
+    from pywebpush import webpush, WebPushException
+except Exception:
+    webpush = None
+    WebPushException = Exception
 
 try:
     from azure.storage.blob import BlobServiceClient, ContentSettings
@@ -253,6 +259,10 @@ def _doc_container_map():
         "training_plan": os.getenv("AZURE_CONTAINER_TRAINING", "entrenamiento").strip() or "entrenamiento",
         "medical_history": os.getenv("AZURE_CONTAINER_MEDICAL", "historiaclinica").strip() or "historiaclinica",
     }
+
+
+def _chat_attachment_container():
+    return os.getenv("AZURE_CONTAINER_ATTACHMENTS", "attachments").strip() or "attachments"
 
 
 def _is_azure_blob_enabled():
@@ -822,40 +832,6 @@ def contact_message(request):
 
     provider = (settings.CONTACT_EMAIL_PROVIDER or "acs").lower()
 
-    def _send_via_smtp():
-        if not settings.EMAIL_HOST or not settings.EMAIL_HOST_USER or not settings.EMAIL_HOST_PASSWORD:
-            return Response({'error': 'SMTP no configurado'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-        try:
-            msg = EmailMessage(
-                subject=subject_line,
-                body=plain_text,
-                from_email=settings.CONTACT_EMAIL_FROM,
-                to=[recipient],
-                reply_to=[email],
-            )
-            msg.content_subtype = "plain"
-            msg.send(fail_silently=False)
-            return Response({'success': True, 'message': 'Mensaje enviado'}, status=status.HTTP_200_OK)
-        except Exception as e:
-            print("Error SMTP:", str(e))
-            return Response(
-                {
-                    'success': True,
-                    'message': 'Mensaje recibido',
-                },
-                status=status.HTTP_200_OK
-            )
-
-    def _send_confirmation_via_smtp():
-        msg = EmailMessage(
-            subject=confirmation_subject,
-            body=confirmation_plain,
-            from_email=settings.CONTACT_EMAIL_FROM,
-            to=[email],
-        )
-        msg.content_subtype = "plain"
-        msg.send(fail_silently=False)
-
     def _store_message():
         try:
             ContactMessage.objects.create(
@@ -902,23 +878,31 @@ def contact_message(request):
         <p>- Equipo GoToGym</p>
     """
 
-    if provider == "smtp":
-        response = _send_via_smtp()
-        if response.status_code == status.HTTP_200_OK:
-            try:
-                _send_confirmation_via_smtp()
-            except Exception as confirm_err:
-                print("Error enviando confirmacion:", str(confirm_err))
-            _store_message()
-        return response
-
-    if not settings.ACS_EMAIL_CONNECTION_STRING or EmailClient is None:
-        return Response(
-            {'error': 'Servicio de correo no configurado'},
-            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+    def _send_support_via_smtp():
+        if not settings.EMAIL_HOST or not settings.EMAIL_HOST_USER or not settings.EMAIL_HOST_PASSWORD:
+            print("SMTP no configurado")
+            return
+        msg = EmailMessage(
+            subject=subject_line,
+            body=plain_text,
+            from_email=settings.CONTACT_EMAIL_FROM,
+            to=[recipient],
+            reply_to=[email],
         )
+        msg.content_subtype = "plain"
+        msg.send(fail_silently=False)
 
-    try:
+    def _send_confirmation_via_smtp():
+        msg = EmailMessage(
+            subject=confirmation_subject,
+            body=confirmation_plain,
+            from_email=settings.CONTACT_EMAIL_FROM,
+            to=[email],
+        )
+        msg.content_subtype = "plain"
+        msg.send(fail_silently=False)
+
+    def _build_acs_client():
         conn = settings.ACS_EMAIL_CONNECTION_STRING or ""
         endpoint = None
         access_key = None
@@ -934,9 +918,18 @@ def contact_message(request):
         if endpoint and access_key and AzureKeyCredential is not None:
             if not endpoint.endswith("/"):
                 endpoint = endpoint + "/"
-            client = EmailClient(endpoint, AzureKeyCredential(access_key))
-        else:
-            client = EmailClient.from_connection_string(conn)
+            return EmailClient(endpoint, AzureKeyCredential(access_key))
+        return EmailClient.from_connection_string(conn)
+
+    def _send_via_acs():
+        if not settings.ACS_EMAIL_CONNECTION_STRING or EmailClient is None:
+            print("Servicio de correo no configurado")
+            return
+        try:
+            client = _build_acs_client()
+        except Exception as build_err:
+            print("Error creando cliente ACS:", str(build_err))
+            return
 
         email_message = {
             "senderAddress": sender,
@@ -955,24 +948,11 @@ def contact_message(request):
             poller.result()
         except HttpResponseError as send_err:
             print("Error ACS (soporte):", str(send_err))
-            _store_message()
-            return Response(
-                {
-                    'success': True,
-                    'message': 'Mensaje recibido',
-                },
-                status=status.HTTP_200_OK
-            )
+            return
         except Exception as send_err:
             print("Error enviando correo de soporte:", str(send_err))
-            _store_message()
-            return Response(
-                {
-                    'success': True,
-                    'message': 'Mensaje recibido',
-                },
-                status=status.HTTP_200_OK
-            )
+            return
+
         try:
             confirmation_message = {
                 "senderAddress": sender,
@@ -991,18 +971,20 @@ def contact_message(request):
             print("Error enviando confirmacion:", str(confirm_err))
         except Exception as confirm_err:
             print("Error enviando confirmacion:", str(confirm_err))
-        _store_message()
-        return Response({'success': True, 'message': 'Mensaje enviado'}, status=status.HTTP_200_OK)
-    except Exception as e:
-        print("Error enviando correo:", str(e))
-        _store_message()
-        return Response(
-            {
-                'success': True,
-                'message': 'Mensaje recibido',
-            },
-            status=status.HTTP_200_OK
-        )
+
+    def _send_email_async():
+        try:
+            if provider == "smtp":
+                _send_support_via_smtp()
+                _send_confirmation_via_smtp()
+            else:
+                _send_via_acs()
+        except Exception as e:
+            print("Error enviando correo:", str(e))
+
+    _store_message()
+    threading.Thread(target=_send_email_async, daemon=True).start()
+    return Response({'success': True, 'message': 'Mensaje recibido'}, status=status.HTTP_200_OK)
 
 
 def _send_fcm(tokens, title, body, data=None):
@@ -1033,6 +1015,52 @@ def _send_fcm(tokens, title, body, data=None):
         return True, result
     except Exception as e:
         return False, str(e)
+
+
+def _get_vapid_keys():
+    public_key = os.getenv("VAPID_PUBLIC_KEY", "").strip()
+    private_key = os.getenv("VAPID_PRIVATE_KEY", "").strip()
+    email = os.getenv("VAPID_EMAIL", "").strip() or "mailto:support@gotogym.store"
+    return public_key, private_key, email
+
+
+def _send_web_push(subscriptions, title, body, data=None):
+    public_key, private_key, email = _get_vapid_keys()
+    if not public_key or not private_key:
+        return False, "VAPID keys no configuradas"
+    if not webpush:
+        return False, "pywebpush no disponible"
+    if not subscriptions:
+        return False, "No hay suscripciones"
+
+    payload = {
+        "title": title,
+        "body": body,
+        "data": data or {},
+    }
+
+    sent = 0
+    errors = []
+    for sub in subscriptions:
+        try:
+            webpush(
+                subscription_info={
+                    "endpoint": sub.endpoint,
+                    "keys": {
+                        "p256dh": sub.p256dh,
+                        "auth": sub.auth,
+                    },
+                },
+                data=json.dumps(payload),
+                vapid_private_key=private_key,
+                vapid_claims={"sub": email},
+            )
+            sent += 1
+        except WebPushException as exc:
+            errors.append(str(exc))
+    if sent == 0:
+        return False, errors or "No se pudo enviar"
+    return True, {"sent": sent, "errors": errors}
 
 
 @api_view(['POST', 'OPTIONS'])
@@ -1112,12 +1140,99 @@ def push_send_test(request):
     tokens = list(
         PushToken.objects.filter(user=request.user, active=True).values_list('token', flat=True)
     )
+    subs = list(
+        WebPushSubscription.objects.filter(user=request.user, active=True)
+    )
 
-    ok, info = _send_fcm(tokens, title, body, data={"source": "test"})
-    if not ok:
-        return Response({'success': False, 'error': str(info)}, status=status.HTTP_400_BAD_REQUEST)
+    ok_fcm, info_fcm = _send_fcm(tokens, title, body, data={"source": "test"})
+    ok_web, info_web = _send_web_push(subs, title, body, data={"source": "test"})
 
-    return Response({'success': True, 'result': info}, status=status.HTTP_200_OK)
+    if not ok_fcm and not ok_web:
+        return Response({'success': False, 'error': str(info_fcm or info_web)}, status=status.HTTP_400_BAD_REQUEST)
+
+    return Response(
+        {
+            'success': True,
+            'result': {
+                'fcm': info_fcm,
+                'web': info_web,
+            }
+        },
+        status=status.HTTP_200_OK
+    )
+
+
+@api_view(['GET', 'OPTIONS'])
+@authentication_classes([JWTAuthentication])
+@permission_classes([IsAuthenticatedOrOptions])
+def push_web_public_key(request):
+    if request.method == 'OPTIONS':
+        response = Response()
+        response['Access-Control-Allow-Origin'] = '*'
+        response['Access-Control-Allow-Methods'] = 'GET, OPTIONS'
+        response['Access-Control-Allow-Headers'] = 'Content-Type, Authorization'
+        return response
+
+    public_key, _private_key, _email = _get_vapid_keys()
+    if not public_key:
+        return Response({'error': 'VAPID key no configurada'}, status=503)
+
+    return Response({'public_key': public_key})
+
+
+@api_view(['POST', 'OPTIONS'])
+@authentication_classes([JWTAuthentication])
+@permission_classes([IsAuthenticatedOrOptions])
+def push_web_subscribe(request):
+    if request.method == 'OPTIONS':
+        response = Response()
+        response['Access-Control-Allow-Origin'] = '*'
+        response['Access-Control-Allow-Methods'] = 'POST, OPTIONS'
+        response['Access-Control-Allow-Headers'] = 'Content-Type, Authorization'
+        return response
+
+    data = request.data or {}
+    endpoint = (data.get('endpoint') or '').strip()
+    keys = data.get('keys') or {}
+    p256dh = (keys.get('p256dh') or '').strip()
+    auth = (keys.get('auth') or '').strip()
+    device_id = (data.get('device_id') or '').strip()
+
+    if not endpoint or not p256dh or not auth:
+        return Response({'error': 'Datos incompletos'}, status=status.HTTP_400_BAD_REQUEST)
+
+    obj, created = WebPushSubscription.objects.update_or_create(
+        endpoint=endpoint,
+        defaults={
+            'user': request.user,
+            'p256dh': p256dh,
+            'auth': auth,
+            'device_id': device_id,
+            'active': True,
+        }
+    )
+
+    return Response({'success': True, 'created': created, 'id': obj.id})
+
+
+@api_view(['POST', 'OPTIONS'])
+@authentication_classes([JWTAuthentication])
+@permission_classes([IsAuthenticatedOrOptions])
+def push_web_unsubscribe(request):
+    if request.method == 'OPTIONS':
+        response = Response()
+        response['Access-Control-Allow-Origin'] = '*'
+        response['Access-Control-Allow-Methods'] = 'POST, OPTIONS'
+        response['Access-Control-Allow-Headers'] = 'Content-Type, Authorization'
+        return response
+
+    data = request.data or {}
+    endpoint = (data.get('endpoint') or '').strip()
+    if not endpoint:
+        return Response({'error': 'Endpoint requerido'}, status=status.HTTP_400_BAD_REQUEST)
+
+    updated = WebPushSubscription.objects.filter(endpoint=endpoint, user=request.user).update(active=False)
+    return Response({'success': True, 'updated': updated})
 
 @api_view(['POST', 'OPTIONS'])
 @authentication_classes([JWTAuthentication])
@@ -1875,23 +1990,35 @@ def get_global_history(request):
         print(e)
         return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-@api_view(['POST'])
+@api_view(['POST', 'OPTIONS'])
+@authentication_classes([JWTAuthentication])
+@permission_classes([IsAuthenticatedOrOptions])
 def upload_medical_record(request):
+    if request.method == 'OPTIONS':
+        response = Response()
+        response['Access-Control-Allow-Origin'] = '*'
+        response['Access-Control-Allow-Methods'] = 'POST, OPTIONS'
+        response['Access-Control-Allow-Headers'] = 'Content-Type, Authorization'
+        return response
     try:
         username = (request.data.get('username') or '').strip()
         file_obj = request.FILES.get('file')
         doc_type = (request.data.get('doc_type') or request.POST.get('doc_type') or '').strip()
-        
-        if not username or not file_obj:
-            return Response({'error': 'Username and File required'}, status=400)
+
+        if not getattr(request, "user", None) or not request.user.is_authenticated:
+            return Response({'error': 'Authentication required'}, status=401)
+
+        if username and username != request.user.username:
+            return Response({'error': 'Forbidden'}, status=403)
+
+        if not file_obj:
+            return Response({'error': 'File required'}, status=400)
 
         if doc_type not in ('nutrition_plan', 'training_plan', 'medical_history'):
             return Response({'error': 'doc_type inválido'}, status=400)
 
-        try:
-            user = User.objects.get(username=username)
-        except User.DoesNotExist:
-            return Response({'error': 'User not found'}, status=404)
+        user = request.user
+        username = user.username
             
         original_name = file_obj.name or "documento"
         extension = os.path.splitext(original_name)[1].lower()
@@ -1991,6 +2118,53 @@ def upload_medical_record(request):
         return Response(response_payload)
     except Exception as e:
         print(f"Upload Error: {e}")
+        return Response({'error': str(e)}, status=500)
+
+
+@api_view(['POST', 'OPTIONS'])
+@authentication_classes([JWTAuthentication])
+@permission_classes([IsAuthenticatedOrOptions])
+def upload_chat_attachment(request):
+    if request.method == 'OPTIONS':
+        response = Response()
+        response['Access-Control-Allow-Origin'] = '*'
+        response['Access-Control-Allow-Methods'] = 'POST, OPTIONS'
+        response['Access-Control-Allow-Headers'] = 'Content-Type, Authorization'
+        return response
+
+    try:
+        username = (request.data.get('username') or '').strip()
+        file_obj = request.FILES.get('file')
+
+        if not getattr(request, "user", None) or not request.user.is_authenticated:
+            return Response({'error': 'Authentication required'}, status=401)
+
+        if username and username != request.user.username:
+            return Response({'error': 'Forbidden'}, status=403)
+
+        if not file_obj:
+            return Response({'error': 'File required'}, status=400)
+
+        original_name = file_obj.name or "adjunto"
+        extension = os.path.splitext(original_name)[1].lower()
+        safe_base = get_valid_filename(os.path.splitext(original_name)[0]) or "adjunto"
+        safe_name = f"{safe_base}_{uuid.uuid4().hex[:8]}{extension}"
+
+        file_bytes = file_obj.read()
+        content_type = (file_obj.content_type or 'application/octet-stream').strip() or 'application/octet-stream'
+        safe_username = request.user.username.replace("/", "_")
+        blob_path = f"{safe_username}/{safe_name}"
+
+        if _is_azure_blob_enabled():
+            container_name = _chat_attachment_container()
+            file_url = _upload_file_to_blob(container_name, blob_path, file_bytes, content_type)
+        else:
+            return Response({'error': 'Storage no configurado'}, status=503)
+
+        signed_url = _build_signed_blob_url(file_url)
+        return Response({'success': True, 'file_url': signed_url, 'file_url_raw': file_url})
+    except Exception as e:
+        print(f"Upload chat attachment error: {e}")
         return Response({'error': str(e)}, status=500)
 
 
