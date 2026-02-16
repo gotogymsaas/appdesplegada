@@ -250,6 +250,7 @@
   flex-wrap: wrap;
   align-items: flex-end;
   gap: 10px;
+  padding-bottom: calc(10px + env(safe-area-inset-bottom));
 }
 
 #chat-attachment-preview {
@@ -480,6 +481,7 @@
     padding: 8px 10px;
     gap: 8px;
     z-index: 100000;
+    padding-bottom: calc(12px + env(safe-area-inset-bottom));
   }
 
   #chat-input-area label[for="chat-file-input"] {
