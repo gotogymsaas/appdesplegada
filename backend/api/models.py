@@ -144,6 +144,20 @@ class PushToken(models.Model):
         return f"{self.platform}:{self.token[:12]}..."
 
 
+class WebPushSubscription(models.Model):
+    user = models.ForeignKey(User, null=True, blank=True, on_delete=models.SET_NULL, related_name="web_push_subscriptions")
+    endpoint = models.TextField(unique=True)
+    p256dh = models.CharField(max_length=255)
+    auth = models.CharField(max_length=255)
+    device_id = models.CharField(max_length=120, blank=True, default="")
+    active = models.BooleanField(default=True)
+    last_seen_at = models.DateTimeField(auto_now=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"web:{self.endpoint[:24]}..."
+
+
 class TermsAcceptance(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="terms_acceptances")
     version = models.CharField(max_length=20)
