@@ -56,8 +56,8 @@ fill="currentColor"><path d="M16.5 6v11.5c0 2.21-1.79 4-4
 <button type="button" id="chat-voice-cancel" class="chat-voice-action" hidden>Cancelar</button>
 <button type="button" id="chat-voice-retry" class="chat-voice-action" hidden>Reintentar</button>
 </div>
-<input type="text" id="chat-input" placeholder="Escribe tu
-duda..." autocomplete="off" style="flex:1;">
+<div id="chat-attachment-preview" hidden></div>
+<textarea id="chat-input" rows="1" placeholder="Escribe tu duda..." autocomplete="off"></textarea>
 <button type="submit" id="chat-send-btn">
 <svg viewBox="0 0 24 24"><path d="M2.01 21L23 12 2.01 3 2
 10l15 2-15 2z"/></svg>
@@ -72,6 +72,7 @@ const chatWindow = document.getElementById('chat-window');
 const form = document.getElementById('chat-input-area');
 const input = document.getElementById('chat-input');
 const fileInput = document.getElementById('chat-file-input');
+const attachmentPreview = document.getElementById('chat-attachment-preview');
 const micBtn = document.getElementById('chat-mic-btn');
 const micCancelBtn = document.getElementById('chat-voice-cancel');
 const micRetryBtn = document.getElementById('chat-voice-retry');
@@ -182,6 +183,91 @@ let voiceHandled = false;
 let activeVoiceMode = null;
 let nativeSpeechPlugin = null;
 let nativeSpeechListener = null;
+
+const MAX_INPUT_HEIGHT = 120;
+
+function autoResizeInput() {
+  if (!input) return;
+  input.style.height = 'auto';
+  const nextHeight = Math.min(input.scrollHeight, MAX_INPUT_HEIGHT);
+  input.style.height = `${nextHeight}px`;
+  input.style.overflowY = input.scrollHeight > MAX_INPUT_HEIGHT ? 'auto' : 'hidden';
+}
+
+function resetInput() {
+  if (!input) return;
+  input.value = '';
+  input.placeholder = 'Escribe tu duda...';
+  autoResizeInput();
+  if (window.innerWidth > 480) input.focus();
+}
+
+function formatFileSize(bytes) {
+  if (typeof bytes !== 'number') return '';
+  if (bytes < 1024) return `${bytes} B`;
+  const kb = bytes / 1024;
+  if (kb < 1024) return `${kb.toFixed(1)} KB`;
+  const mb = kb / 1024;
+  return `${mb.toFixed(1)} MB`;
+}
+
+function setAttachmentPreview(file, state = 'ready') {
+  if (!attachmentPreview) return;
+  if (!file) {
+    attachmentPreview.hidden = true;
+    attachmentPreview.innerHTML = '';
+    return;
+  }
+  const size = formatFileSize(file.size);
+  attachmentPreview.hidden = false;
+  attachmentPreview.dataset.state = state;
+  attachmentPreview.innerHTML = `
+    <span class="attachment-name">${file.name}</span>
+    <span class="attachment-size">${size}</span>
+    <span class="attachment-state">${state === 'uploading' ? 'Subiendo...' : 'Adjunto listo'}</span>
+    <button type="button" class="attachment-clear" title="Quitar">✕</button>
+  `;
+  const clearBtn = attachmentPreview.querySelector('.attachment-clear');
+  if (clearBtn) {
+    clearBtn.disabled = state === 'uploading';
+    clearBtn.addEventListener('click', () => {
+      fileInput.value = '';
+      setAttachmentPreview(null);
+    });
+  }
+}
+
+function shouldAutoScroll() {
+  const threshold = 80;
+  return messages.scrollHeight - messages.scrollTop - messages.clientHeight < threshold;
+}
+
+function markMessageStatus(messageId, status) {
+  const el = document.getElementById(messageId);
+  if (!el) return;
+  el.classList.remove('pending', 'failed');
+  if (status === 'pending') el.classList.add('pending');
+  if (status === 'failed') el.classList.add('failed');
+}
+
+function addRetryAction(messageId) {
+  const el = document.getElementById(messageId);
+  if (!el || el.querySelector('.retry-btn')) return;
+  const text = el.dataset.text || '';
+  const hasFile = el.dataset.hasFile === '1';
+  const retry = document.createElement('button');
+  retry.type = 'button';
+  retry.className = 'retry-btn';
+  retry.textContent = 'Reintentar';
+  retry.addEventListener('click', () => {
+    if (hasFile) {
+      appendMessage('Para reintentar un adjunto, vuelve a seleccionarlo.', 'bot');
+      return;
+    }
+    sendQuickMessage(text);
+  });
+  el.appendChild(retry);
+}
 
 function canUseSpeechRecognition() {
   return !!(window.SpeechRecognition || window.webkitSpeechRecognition);
@@ -637,28 +723,46 @@ if (micRetryBtn) {
 }
 // File Selection Feedback
 fileInput.addEventListener('change', () => {
-if (fileInput.files.length > 0) {
-input.placeholder = `📎 ${fileInput.files[0].name} (Adjunto)`;
-input.focus();
-} else {
-input.placeholder = "Escribe tu duda...";
-}
+  if (fileInput.files.length > 0) {
+    setAttachmentPreview(fileInput.files[0], 'ready');
+    input.focus();
+  } else {
+    setAttachmentPreview(null);
+  }
 });
 // Send Message
 form.addEventListener('submit', async (e) => {
   e.preventDefault();
-  const text = input.value.trim();
+  const rawText = input.value || '';
+  const text = rawText.trim();
   const file = fileInput.files[0];
   if (!text && !file) return;
-  if (file) appendMessage(`📎 Subiendo: ${file.name}...`, 'user');
-  if (text) appendMessage(text, 'user');
-  input.value = '';
+  const displayText = text || (file ? `Adjunto: ${file.name}` : '');
+  const pendingId = displayText
+    ? appendMessage(displayText, 'user pending', {
+        meta: { text: text, hasFile: !!file }
+      })
+    : null;
+  if (file) setAttachmentPreview(file, 'uploading');
+  resetInput();
   fileInput.value = '';
-  input.placeholder = "Escribe tu duda...";
-  await processMessage(text, file);
+  await processMessage(text, file, pendingId);
 });
 
-async function processMessage(text, file) {
+input.addEventListener('input', autoResizeInput);
+input.addEventListener('keydown', (event) => {
+  if (event.key === 'Enter' && !event.shiftKey) {
+    event.preventDefault();
+    if (typeof form.requestSubmit === 'function') {
+      form.requestSubmit();
+    } else {
+      form.dispatchEvent(new Event('submit', { cancelable: true }));
+    }
+  }
+});
+autoResizeInput();
+
+async function processMessage(text, file, pendingId) {
   const loadingId = appendMessage('Analizando...', 'bot loading', { persist: false });
   try {
     const user = JSON.parse(localStorage.getItem('user') || '{}');
@@ -735,6 +839,8 @@ async function processMessage(text, file) {
     }
 
     document.getElementById(loadingId)?.remove();
+    if (pendingId) markMessageStatus(pendingId, 'sent');
+    setAttachmentPreview(null);
     if (data.error) {
       appendMessage('❌ Error: ' + data.error, 'bot');
       return;
@@ -756,6 +862,11 @@ async function processMessage(text, file) {
   } catch (err) {
     console.error(err);
     document.getElementById(loadingId)?.remove();
+    if (pendingId) {
+      markMessageStatus(pendingId, 'failed');
+      addRetryAction(pendingId);
+    }
+    setAttachmentPreview(null);
     appendMessage(`❌ Error: ${err.message} `, 'bot');
   }
 }
@@ -778,6 +889,10 @@ localStorage.setItem(SESSION_DAY_KEY, todayKey());
 function appendMessage(text, className, opts = {}) {
 const div = document.createElement('div');
 div.className = `message ${className}`;
+if (opts.meta) {
+  div.dataset.text = opts.meta.text || '';
+  div.dataset.hasFile = opts.meta.hasFile ? '1' : '0';
+}
 // Use Markdown if available, otherwise fallback to plain text
 if (window.marked && className.includes('bot')) {
 div.innerHTML = window.marked.parse(text);
@@ -787,7 +902,8 @@ div.textContent = text;
 const id = 'msg-' + Date.now();
 div.id = id;
 messages.appendChild(div);
-messages.scrollTop = messages.scrollHeight;
+const doScroll = opts.forceScroll || shouldAutoScroll();
+if (doScroll) messages.scrollTop = messages.scrollHeight;
 const persist = opts.persist !== false && !className.includes('loading');
 if (persist) {
 chatHistory.push({

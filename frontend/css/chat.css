@@ -137,6 +137,28 @@
   font-weight: 500;
 }
 
+.message.pending {
+  opacity: 0.7;
+}
+
+.message.failed {
+  border: 1px solid rgba(255, 74, 74, 0.5);
+  background: rgba(255, 74, 74, 0.15);
+  color: #ffe2e2;
+}
+
+.message .retry-btn {
+  margin-top: 6px;
+  display: inline-flex;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
 .message.loading {
   background: transparent;
   color: #888;
@@ -225,7 +247,53 @@
   padding: 10px;
   border-top: 1px solid rgba(255, 255, 255, 0.05);
   display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
   gap: 10px;
+}
+
+#chat-attachment-preview {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-radius: 12px;
+  background: rgba(15, 191, 160, 0.08);
+  border: 1px solid rgba(15, 191, 160, 0.2);
+  color: #cfeee7;
+  font-size: 12px;
+}
+
+#chat-attachment-preview[data-state="uploading"] {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.18);
+  color: #d8d8d8;
+}
+
+#chat-attachment-preview .attachment-name {
+  font-weight: 600;
+  max-width: 60%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+#chat-attachment-preview .attachment-size {
+  opacity: 0.8;
+}
+
+#chat-attachment-preview .attachment-state {
+  margin-left: auto;
+  opacity: 0.85;
+}
+
+#chat-attachment-preview .attachment-clear {
+  background: transparent;
+  border: none;
+  color: inherit;
+  cursor: pointer;
+  font-size: 14px;
 }
 
 .chat-input-tools {
@@ -246,6 +314,14 @@
   outline: none;
   font-size: 16px;
   line-height: 20px;
+  resize: none;
+  max-height: 120px;
+  overflow-y: hidden;
+}
+
+#chat-input:focus {
+  border-color: rgba(15, 191, 160, 0.6);
+  box-shadow: 0 0 0 2px rgba(15, 191, 160, 0.15);
 }
 
 #chat-mic-btn {
