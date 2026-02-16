@@ -256,6 +256,31 @@
   flex-shrink: 0;
 }
 
+.chat-voice-action {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: #d6d6d6;
+  padding: 6px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+#chat-voice-cancel {
+  border-color: rgba(255, 74, 74, 0.35);
+  color: #ff9a9a;
+}
+
+#chat-voice-retry {
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+.chat-voice-action:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
 #chat-mic-btn.recording {
   background: rgba(255, 74, 74, 0.15);
   border-color: rgba(255, 74, 74, 0.4);
