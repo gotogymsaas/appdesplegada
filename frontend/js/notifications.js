@@ -37,6 +37,30 @@
     return 'web';
   };
 
+  const isWebPushSupported = () => {
+    return typeof window !== 'undefined' && 'serviceWorker' in navigator && 'PushManager' in window;
+  };
+
+  const DEVICE_ID_KEY = 'gtg_device_id';
+  const getDeviceId = () => {
+    const existing = localStorage.getItem(DEVICE_ID_KEY);
+    if (existing) return existing;
+    const value = `web_${crypto.randomUUID()}`;
+    localStorage.setItem(DEVICE_ID_KEY, value);
+    return value;
+  };
+
+  const urlBase64ToUint8Array = (base64String) => {
+    const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
+    const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+    const raw = window.atob(base64);
+    const output = new Uint8Array(raw.length);
+    for (let i = 0; i < raw.length; i += 1) {
+      output[i] = raw.charCodeAt(i);
+    }
+    return output;
+  };
+
   const getUser = () => {
     const raw = localStorage.getItem('user');
     try {
@@ -91,6 +115,72 @@
       body: JSON.stringify({ token }),
     });
     return res.ok;
+  };
+
+  const registerWebSubscription = async (subscription) => {
+    if (!subscription || !subscription.endpoint) return false;
+    const authFetch = window.authFetch || fetch;
+    const res = await authFetch(`${API_URL}push/web/subscribe/`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        endpoint: subscription.endpoint,
+        keys: subscription.toJSON().keys,
+        device_id: getDeviceId(),
+      }),
+    });
+    return res.ok;
+  };
+
+  const unregisterWebSubscription = async (endpoint) => {
+    if (!endpoint) return false;
+    const authFetch = window.authFetch || fetch;
+    const res = await authFetch(`${API_URL}push/web/unsubscribe/`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ endpoint }),
+    });
+    return res.ok;
+  };
+
+  const ensureWebPushReady = async () => {
+    if (!isWebPushSupported()) {
+      showToast('Tu navegador no soporta notificaciones web.', 'error');
+      return false;
+    }
+
+    const permission = await Notification.requestPermission();
+    if (permission !== 'granted') {
+      showToast('Necesitamos permiso para notificaciones.', 'error');
+      return false;
+    }
+
+    const registration = await navigator.serviceWorker.register('/sw.js');
+    const existing = await registration.pushManager.getSubscription();
+    if (existing) {
+      await registerWebSubscription(existing);
+      return true;
+    }
+
+    const authFetch = window.authFetch || fetch;
+    const keyRes = await authFetch(`${API_URL}push/web/key/`);
+    if (!keyRes.ok) {
+      showToast('No se pudo obtener clave de notificaciones.', 'error');
+      return false;
+    }
+    const data = await keyRes.json();
+    const publicKey = data.public_key;
+    if (!publicKey) {
+      showToast('VAPID no configurado.', 'error');
+      return false;
+    }
+
+    const sub = await registration.pushManager.subscribe({
+      userVisibleOnly: true,
+      applicationServerKey: urlBase64ToUint8Array(publicKey),
+    });
+    await registerWebSubscription(sub);
+    return true;
   };
 
   const ensurePushReady = async () => {
@@ -313,14 +403,32 @@
 
   const enableNotifications = async () => {
     localStorage.setItem(NOTIF_ENABLED_KEY, 'true');
-    await scheduleNext24Hours();
-    await ensurePushReady();
+    if (isNative()) {
+      await scheduleNext24Hours();
+      await ensurePushReady();
+      return;
+    }
+    if (isWebPushSupported()) {
+      await ensureWebPushReady();
+      showToast('Listo. Te acompanare con recordatorios suaves.', 'success');
+    }
   };
 
   const disableNotifications = async () => {
     localStorage.setItem(NOTIF_ENABLED_KEY, 'false');
-    await cancelAll();
-    await unregisterPushToken();
+    if (isNative()) {
+      await cancelAll();
+      await unregisterPushToken();
+      return;
+    }
+    if (isWebPushSupported()) {
+      const registration = await navigator.serviceWorker.getRegistration();
+      const subscription = registration ? await registration.pushManager.getSubscription() : null;
+      if (subscription) {
+        await unregisterWebSubscription(subscription.endpoint);
+        await subscription.unsubscribe();
+      }
+    }
   };
 
   window.GoToGymNotifications = {
@@ -343,5 +451,35 @@
   ) {
     scheduleNext24Hours();
     ensurePushReady();
+  }
+
+  if (
+    typeof document !== 'undefined' &&
+    localStorage.getItem(NOTIF_ENABLED_KEY) !== 'false' &&
+    !isNative() &&
+    isWebPushSupported()
+  ) {
+    ensureWebPushReady();
+  }
+
+  if (typeof navigator !== 'undefined' && navigator.serviceWorker) {
+    navigator.serviceWorker.addEventListener('message', async (event) => {
+      const payload = event.data || {};
+      if (payload.type !== 'PUSH_IF_ANSWER') return;
+      const result = await postAnswer({
+        value: payload.value,
+        slot: payload.slot,
+        source: 'notification',
+        answered_at: new Date().toISOString(),
+      });
+      if (result && result.happiness_index !== undefined) {
+        const user = getUser();
+        if (user) {
+          user.happiness_index = result.happiness_index;
+          localStorage.setItem('user', JSON.stringify(user));
+        }
+      }
+      showToast('Gracias. Te estoy acompanando hoy.', 'success');
+    });
   }
 })();
