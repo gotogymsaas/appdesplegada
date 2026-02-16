@@ -2154,9 +2154,17 @@ def chat_n8n(request):
         n8n_url = getattr(settings, "N8N_WEBHOOK_URL", "").strip() or "http://172.200.202.47/webhook/general-agent-gotogym-v2"
         
         # Construir prompt enriquecido
-        final_input = message or "Análisis de archivo adjunto"
+        final_input = message or "Analisis de archivo adjunto"
         if attachment_text:
             final_input += f"\n\n--- DOCUMENTO ADJUNTO ---\n{attachment_text}\n-----------------------"
+
+        professional_rule = (
+            os.getenv("CHAT_PROFESSIONAL_RULE", "")
+            .strip()
+            or "Toma decisiones con el foco en ser lo mas profesional posible."
+        )
+        if professional_rule:
+            final_input = f"INSTRUCCION DEL SISTEMA: {professional_rule}\n\n{final_input}"
 
         fitness_payload = None
         profile_payload = None
@@ -2319,6 +2327,9 @@ def chat_n8n(request):
 
         payload = {
             "chatInput": final_input,
+            "system_rules": {
+                "professional_focus": professional_rule,
+            },
             "message": message,
             "sessionId": session_id,
             "attachment": attachment_url,
