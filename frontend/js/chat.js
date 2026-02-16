@@ -52,6 +52,8 @@ fill="currentColor"><path d="M16.5 6v11.5c0 2.21-1.79 4-4
 </label>
 <input type="file" id="chat-file-input" style="display: none;" accept="image/*,.pdf">
 <button type="button" id="chat-mic-btn" title="Voz">🎤</button>
+<button type="button" id="chat-voice-cancel" class="chat-voice-action" hidden>Cancelar</button>
+<button type="button" id="chat-voice-retry" class="chat-voice-action" hidden>Reintentar</button>
 <input type="text" id="chat-input" placeholder="Escribe tu
 duda..." autocomplete="off" style="flex:1;">
 <button type="submit" id="chat-send-btn">
@@ -69,6 +71,8 @@ const form = document.getElementById('chat-input-area');
 const input = document.getElementById('chat-input');
 const fileInput = document.getElementById('chat-file-input');
 const micBtn = document.getElementById('chat-mic-btn');
+const micCancelBtn = document.getElementById('chat-voice-cancel');
+const micRetryBtn = document.getElementById('chat-voice-retry');
 const messages = document.getElementById('chat-messages');
 
 // --- Chat persistence (24h + reset diario) ---
@@ -171,6 +175,8 @@ let speechRecognition = null;
 let mediaRecorder = null;
 let audioChunks = [];
 let recordingTimeout = null;
+let voiceCancelled = false;
+let voiceHandled = false;
 
 function canUseSpeechRecognition() {
   return !!(window.SpeechRecognition || window.webkitSpeechRecognition);
@@ -190,16 +196,25 @@ function setRecordingState(isRecording) {
   if (!micBtn) return;
   micBtn.classList.toggle('recording', !!isRecording);
   micBtn.textContent = isRecording ? '■' : '🎤';
+  if (micCancelBtn) micCancelBtn.hidden = !isRecording;
+  if (isRecording && micRetryBtn) micRetryBtn.hidden = true;
+}
+
+function setRetryVisible(visible) {
+  if (!micRetryBtn) return;
+  micRetryBtn.hidden = !visible;
 }
 
 async function startMediaRecorder() {
   if (!navigator.mediaDevices?.getUserMedia || !window.MediaRecorder) {
     appendMessage('Tu navegador no soporta grabación de voz.', 'bot');
+    setRetryVisible(true);
     return;
   }
   try {
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
     audioChunks = [];
+    voiceHandled = false;
     mediaRecorder = new MediaRecorder(stream);
     mediaRecorder.ondataavailable = (event) => {
       if (event.data && event.data.size > 0) {
@@ -210,7 +225,17 @@ async function startMediaRecorder() {
       const blob = new Blob(audioChunks, { type: mediaRecorder.mimeType || 'audio/webm' });
       stream.getTracks().forEach((track) => track.stop());
       setRecordingState(false);
-      await sendAudioForStt(blob);
+      if (voiceCancelled) {
+        appendMessage('Grabación cancelada.', 'bot');
+        return;
+      }
+      if (!audioChunks.length) {
+        appendMessage('No se recibió audio. Intenta de nuevo.', 'bot');
+        setRetryVisible(true);
+        return;
+      }
+      const ok = await sendAudioForStt(blob);
+      if (!ok) setRetryVisible(true);
     };
     mediaRecorder.start();
     setRecordingState(true);
@@ -219,6 +244,7 @@ async function startMediaRecorder() {
     }, 12000);
   } catch (e) {
     appendMessage('No se pudo acceder al micrófono.', 'bot');
+    setRetryVisible(true);
   }
 }
 
@@ -248,15 +274,20 @@ async function sendAudioForStt(blob) {
     const data = await res.json().catch(() => ({}));
     if (!res.ok || !data.text) {
       appendMessage(data.error || 'No se pudo transcribir el audio.', 'bot');
-      return;
+      return false;
     }
     await sendQuickMessage(data.text);
+    return true;
   } catch (e) {
     appendMessage('No se pudo transcribir el audio.', 'bot');
+    return false;
   }
 }
 
 async function startVoiceCapture() {
+  voiceCancelled = false;
+  voiceHandled = false;
+  setRetryVisible(false);
   if (speechRecognition) {
     try {
       speechRecognition.start();
@@ -416,23 +447,38 @@ appendMessage(GREETING_TEXT, 'bot');
 if (micBtn) {
   speechRecognition = initSpeechRecognition();
   if (speechRecognition) {
+    speechRecognition.onstart = () => {
+      voiceHandled = false;
+      setRecordingState(true);
+    };
     speechRecognition.onresult = async (event) => {
       const transcript = event.results?.[0]?.[0]?.transcript || '';
+      voiceHandled = true;
       setRecordingState(false);
+      if (voiceCancelled) return;
       if (transcript.trim()) {
         await sendQuickMessage(transcript.trim());
+      } else {
+        appendMessage('No pude escuchar nada claro. Intenta de nuevo.', 'bot');
+        setRetryVisible(true);
       }
     };
     speechRecognition.onerror = (event) => {
       setRecordingState(false);
+      if (voiceCancelled) return;
       if (event?.error === 'not-allowed' || event?.error === 'service-not-allowed') {
         appendMessage('No se otorgaron permisos para el micrófono.', 'bot');
+        setRetryVisible(true);
         return;
       }
       startMediaRecorder();
     };
     speechRecognition.onend = () => {
       setRecordingState(false);
+      if (!voiceCancelled && !voiceHandled) {
+        appendMessage('No se detectó voz. Puedes reintentar.', 'bot');
+        setRetryVisible(true);
+      }
     };
   }
 
@@ -445,6 +491,26 @@ if (micBtn) {
       }
       return;
     }
+    await startVoiceCapture();
+  });
+}
+
+if (micCancelBtn) {
+  micCancelBtn.addEventListener('click', () => {
+    voiceCancelled = true;
+    if (speechRecognition) {
+      speechRecognition.abort();
+    } else {
+      stopMediaRecorder();
+    }
+    setRecordingState(false);
+    appendMessage('Grabación cancelada.', 'bot');
+  });
+}
+
+if (micRetryBtn) {
+  micRetryBtn.addEventListener('click', async () => {
+    if (micBtn?.classList.contains('recording')) return;
     await startVoiceCapture();
   });
 }
@@ -590,6 +656,21 @@ div.innerHTML = window.marked.parse(text);
 } else {
 div.textContent = text;
 }
+const id = 'msg-' + Date.now();
+div.id = id;
+messages.appendChild(div);
+messages.scrollTop = messages.scrollHeight;
+const persist = opts.persist !== false && !className.includes('loading');
+if (persist) {
+chatHistory.push({
+role: className.includes('user') ? 'user' : 'bot',
+text,
+ts: Date.now()
+});
+persistHistory();
+}
+return id;
+}
 
 function appendQuickActions(actions) {
   if (!Array.isArray(actions) || !actions.length) return;
@@ -619,21 +700,6 @@ async function sendQuickMessage(text) {
   if (!text) return;
   appendMessage(text, 'user');
   await processMessage(text, null);
-}
-const id = 'msg-' + Date.now();
-div.id = id;
-messages.appendChild(div);
-messages.scrollTop = messages.scrollHeight;
-const persist = opts.persist !== false && !className.includes('loading');
-if (persist) {
-chatHistory.push({
-role: className.includes('user') ? 'user' : 'bot',
-text,
-ts: Date.now()
-});
-persistHistory();
-}
-return id;
 }
 
 // Restore history or show greeting
