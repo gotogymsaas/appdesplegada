@@ -28,6 +28,10 @@
 	<string>Necesitamos acceder a tus datos de Salud para sincronizar actividad y sueño con GoToGym.</string>
 	<key>NSHealthUpdateUsageDescription</key>
 	<string>Necesitamos escribir datos de Salud para sincronizar actividad y sueño con GoToGym.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Necesitamos acceder al micrófono para transcribir tu voz en el chat.</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>Necesitamos reconocimiento de voz para convertir tu audio en texto.</string>
 	<key>UILaunchStoryboardName</key>
 	<string>LaunchScreen</string>
 	<key>UIMainStoryboardFile</key>
