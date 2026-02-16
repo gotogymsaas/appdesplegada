@@ -200,6 +200,27 @@
   margin: 0;
 }
 
+.quick-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.quick-action-btn {
+  background: rgba(15, 191, 160, 0.12);
+  border: 1px solid rgba(15, 191, 160, 0.35);
+  color: #cfeee7;
+  padding: 6px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.quick-action-btn:hover {
+  background: rgba(15, 191, 160, 0.22);
+}
+
 #chat-input-area {
   padding: 10px;
   border-top: 1px solid rgba(255, 255, 255, 0.05);
