@@ -1993,6 +1993,76 @@ def upload_medical_record(request):
         print(f"Upload Error: {e}")
         return Response({'error': str(e)}, status=500)
 
+
+@api_view(['POST', 'OPTIONS'])
+@authentication_classes([JWTAuthentication])
+@permission_classes([IsAuthenticatedOrOptions])
+def speech_to_text(request):
+    if request.method == 'OPTIONS':
+        response = Response()
+        response['Access-Control-Allow-Origin'] = '*'
+        response['Access-Control-Allow-Methods'] = 'POST, OPTIONS'
+        response['Access-Control-Allow-Headers'] = 'Content-Type, Authorization'
+        return response
+
+    audio = request.FILES.get('audio')
+    if not audio:
+        return Response({'error': 'Audio requerido'}, status=400)
+
+    speech_key = os.getenv('AZURE_SPEECH_KEY', '').strip()
+    speech_region = os.getenv('AZURE_SPEECH_REGION', '').strip()
+    language = (request.data.get('language') or 'es-ES').strip()
+
+    if not speech_key or not speech_region:
+        return Response({'error': 'STT no configurado'}, status=503)
+
+    try:
+        endpoint = (
+            f"https://{speech_region}.stt.speech.microsoft.com/"
+            "speech/recognition/conversation/cognitiveservices/v1"
+        )
+        headers = {
+            'Ocp-Apim-Subscription-Key': speech_key,
+            'Content-Type': audio.content_type or 'audio/wav',
+        }
+        params = {
+            'language': language,
+        }
+        audio_bytes = audio.read()
+        if len(audio_bytes) > 10 * 1024 * 1024:
+            return Response({'error': 'Audio demasiado grande'}, status=413)
+
+        resp = requests.post(
+            endpoint,
+            params=params,
+            headers=headers,
+            data=audio_bytes,
+            timeout=30,
+        )
+        try:
+            payload = resp.json()
+        except Exception:
+            payload = {}
+
+        if resp.status_code != 200:
+            return Response(
+                {
+                    'error': 'STT error',
+                    'detail': payload or resp.text,
+                },
+                status=502,
+            )
+
+        text = payload.get('DisplayText') or ''
+        if not text and payload.get('NBest'):
+            text = payload['NBest'][0].get('Display', '')
+        if not text:
+            return Response({'error': 'Sin texto reconocido'}, status=422)
+
+        return Response({'text': text})
+    except requests.RequestException as exc:
+        return Response({'error': 'STT request failed', 'detail': str(exc)}, status=502)
+
 @api_view(['GET', 'OPTIONS'])
 @authentication_classes([JWTAuthentication])
 @permission_classes([IsAuthenticatedOrOptions])

@@ -51,6 +51,7 @@ fill="currentColor"><path d="M16.5 6v11.5c0 2.21-1.79 4-4
 5.5s5.5-2.46 5.5-5.5V6h-1.5z"/></svg>
 </label>
 <input type="file" id="chat-file-input" style="display: none;" accept="image/*,.pdf">
+<button type="button" id="chat-mic-btn" title="Voz">🎤</button>
 <input type="text" id="chat-input" placeholder="Escribe tu
 duda..." autocomplete="off" style="flex:1;">
 <button type="submit" id="chat-send-btn">
@@ -67,6 +68,7 @@ const chatWindow = document.getElementById('chat-window');
 const form = document.getElementById('chat-input-area');
 const input = document.getElementById('chat-input');
 const fileInput = document.getElementById('chat-file-input');
+const micBtn = document.getElementById('chat-mic-btn');
 const messages = document.getElementById('chat-messages');
 
 // --- Chat persistence (24h + reset diario) ---
@@ -163,6 +165,108 @@ function getOnboardingMessage(day, hasDevice) {
 
 function getStableMessage() {
   return `Hoy podemos trabajar en tres frentes:\n– tu energía,\n– tu cuerpo,\n– o tu enfoque.\n\n¿Cuál quieres priorizar?`;
+}
+
+let speechRecognition = null;
+let mediaRecorder = null;
+let audioChunks = [];
+let recordingTimeout = null;
+
+function canUseSpeechRecognition() {
+  return !!(window.SpeechRecognition || window.webkitSpeechRecognition);
+}
+
+function initSpeechRecognition() {
+  if (!canUseSpeechRecognition()) return null;
+  const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+  const recognition = new Recognition();
+  recognition.lang = 'es-ES';
+  recognition.interimResults = false;
+  recognition.maxAlternatives = 1;
+  return recognition;
+}
+
+function setRecordingState(isRecording) {
+  if (!micBtn) return;
+  micBtn.classList.toggle('recording', !!isRecording);
+  micBtn.textContent = isRecording ? '■' : '🎤';
+}
+
+async function startMediaRecorder() {
+  if (!navigator.mediaDevices?.getUserMedia || !window.MediaRecorder) {
+    appendMessage('Tu navegador no soporta grabación de voz.', 'bot');
+    return;
+  }
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    audioChunks = [];
+    mediaRecorder = new MediaRecorder(stream);
+    mediaRecorder.ondataavailable = (event) => {
+      if (event.data && event.data.size > 0) {
+        audioChunks.push(event.data);
+      }
+    };
+    mediaRecorder.onstop = async () => {
+      const blob = new Blob(audioChunks, { type: mediaRecorder.mimeType || 'audio/webm' });
+      stream.getTracks().forEach((track) => track.stop());
+      setRecordingState(false);
+      await sendAudioForStt(blob);
+    };
+    mediaRecorder.start();
+    setRecordingState(true);
+    recordingTimeout = setTimeout(() => {
+      stopMediaRecorder();
+    }, 12000);
+  } catch (e) {
+    appendMessage('No se pudo acceder al micrófono.', 'bot');
+  }
+}
+
+function stopMediaRecorder() {
+  if (recordingTimeout) {
+    clearTimeout(recordingTimeout);
+    recordingTimeout = null;
+  }
+  if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+    mediaRecorder.stop();
+  }
+}
+
+async function sendAudioForStt(blob) {
+  if (!blob || !window.API_URL) return;
+  const token = getAuthToken();
+  const formData = new FormData();
+  formData.append('audio', blob, 'voice.webm');
+  formData.append('language', 'es-ES');
+
+  try {
+    const res = await (window.authFetch || fetch)(`${API_URL}stt/`, {
+      method: 'POST',
+      headers: token ? { 'Authorization': `Bearer ${token}` } : undefined,
+      body: formData
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !data.text) {
+      appendMessage(data.error || 'No se pudo transcribir el audio.', 'bot');
+      return;
+    }
+    await sendQuickMessage(data.text);
+  } catch (e) {
+    appendMessage('No se pudo transcribir el audio.', 'bot');
+  }
+}
+
+async function startVoiceCapture() {
+  if (speechRecognition) {
+    try {
+      speechRecognition.start();
+      setRecordingState(true);
+      return;
+    } catch (e) {
+      // fall back to backend STT
+    }
+  }
+  await startMediaRecorder();
 }
 
 function getContextualPrompt(context) {
@@ -308,6 +412,42 @@ chatHistory = [];
 messages.innerHTML = '';
 appendMessage(GREETING_TEXT, 'bot');
 });
+}
+
+if (micBtn) {
+  speechRecognition = initSpeechRecognition();
+  if (speechRecognition) {
+    speechRecognition.onresult = async (event) => {
+      const transcript = event.results?.[0]?.[0]?.transcript || '';
+      setRecordingState(false);
+      if (transcript.trim()) {
+        await sendQuickMessage(transcript.trim());
+      }
+    };
+    speechRecognition.onerror = (event) => {
+      setRecordingState(false);
+      if (event?.error === 'not-allowed' || event?.error === 'service-not-allowed') {
+        appendMessage('No se otorgaron permisos para el micrófono.', 'bot');
+        return;
+      }
+      startMediaRecorder();
+    };
+    speechRecognition.onend = () => {
+      setRecordingState(false);
+    };
+  }
+
+  micBtn.addEventListener('click', async () => {
+    if (micBtn.classList.contains('recording')) {
+      if (speechRecognition) {
+        speechRecognition.stop();
+      } else {
+        stopMediaRecorder();
+      }
+      return;
+    }
+    await startVoiceCapture();
+  });
 }
 // File Selection Feedback
 fileInput.addEventListener('change', () => {
