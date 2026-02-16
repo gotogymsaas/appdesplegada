@@ -82,9 +82,61 @@ self.addEventListener('fetch', event => {
     );
 });
 
+self.addEventListener('push', event => {
+    let payload = {};
+    try {
+        payload = event.data ? event.data.json() : {};
+    } catch (e) {
+        payload = {};
+    }
+
+    const title = payload.title || 'GoToGym';
+    const body = payload.body || 'Estoy aqui para acompanarte.';
+    const data = payload.data || {};
+
+    const actions = (data.actionType === 'IF_QUICK')
+        ? [
+            { action: 'IF_3', title: '3' },
+            { action: 'IF_5', title: '5' },
+            { action: 'IF_7', title: '7' },
+            { action: 'IF_9', title: '9' },
+        ]
+        : [];
+
+    event.waitUntil(
+        self.registration.showNotification(title, {
+            body,
+            data,
+            icon: '/assets/images/logo-gotogym-192.png',
+            badge: '/assets/images/logo-gotogym-192.png',
+            actions,
+        })
+    );
+});
+
 // Interactive Notification Handler
 self.addEventListener('notificationclick', event => {
     event.notification.close();
+
+    const data = event.notification.data || {};
+
+    if (event.action && event.action.startsWith('IF_')) {
+        const value = Number(event.action.replace('IF_', ''));
+        if (value && data.slot) {
+            event.waitUntil(
+                self.clients.matchAll().then((clientsArr) => {
+                    clientsArr.forEach((client) => {
+                        client.postMessage({
+                            type: 'PUSH_IF_ANSWER',
+                            value,
+                            slot: data.slot,
+                        });
+                    });
+                })
+            );
+            return;
+        }
+    }
 
     // If normal click (no action), open app
     if (!event.action) {
