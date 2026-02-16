@@ -74,6 +74,9 @@ const CHAT_STORAGE_KEY = 'gtg_chat_history';
 const CHAT_META_KEY = 'gtg_chat_meta';
 const SESSION_DAY_KEY = 'gtg_session_day';
 const CHAT_TTL_MS = 24 * 60 * 60 * 1000;
+const ONBOARDING_START_KEY = 'gtg_chat_onboarding_start';
+const ONBOARDING_LAST_KEY = 'gtg_chat_onboarding_last';
+const CONTEXT_CACHE_KEY = 'gtg_chat_context';
 const GREETING_TEXT = 'Te ayudo a sacar lo mejor de ti. ¿Por dónde empezamos? ✨';
 
 const todayKey = () => {
@@ -83,6 +86,174 @@ const todayKey = () => {
   const day = String(d.getDate()).padStart(2, '0');
   return `${y}-${m}-${day}`;
 };
+
+function getUserProfile() {
+  try {
+    return JSON.parse(localStorage.getItem('user') || '{}');
+  } catch (e) {
+    return {};
+  }
+}
+
+function getAuthToken() {
+  return (
+    (typeof window.getAccessToken === 'function' && window.getAccessToken()) ||
+    localStorage.getItem('access') ||
+    localStorage.getItem('token') ||
+    ''
+  );
+}
+
+function getLocalHour() {
+  return new Date().getHours();
+}
+
+function getTimeGreeting(name) {
+  const hour = getLocalHour();
+  const safeName = name || 'hoy';
+  if (hour >= 5 && hour <= 11) {
+    return `Buenos días, ${safeName}.\nHoy comenzamos con energía limpia. Estoy aquí para ayudarte a ordenar tu mente, tu cuerpo y tus decisiones con coherencia.\n\n¿Desde dónde quieres empezar hoy?`;
+  }
+  if (hour >= 12 && hour <= 18) {
+    return `Buenas tardes, ${safeName}.\nVamos a revisar cómo está tu sistema hoy y ajustar lo necesario con claridad.\n\n¿Qué te gustaría priorizar ahora?`;
+  }
+  return `Buenas noches, ${safeName}.\nEste es un buen momento para cerrar el día con calma y preparar mañana con intención.\n\n¿Quieres revisar tu progreso o preparar el día siguiente?`;
+}
+
+function getOnboardingDay(username) {
+  const key = `${ONBOARDING_START_KEY}_${username || 'anon'}`;
+  const start = localStorage.getItem(key);
+  const today = todayKey();
+  if (!start) {
+    localStorage.setItem(key, today);
+    return 1;
+  }
+  const startDate = new Date(`${start}T00:00:00`);
+  const now = new Date();
+  const diffDays = Math.floor((now - startDate) / (24 * 60 * 60 * 1000));
+  return diffDays + 1;
+}
+
+function shouldShowOnboarding(username) {
+  const day = getOnboardingDay(username);
+  if (day > 3) return false;
+  const lastKey = `${ONBOARDING_LAST_KEY}_${username || 'anon'}`;
+  const lastShown = localStorage.getItem(lastKey);
+  const today = todayKey();
+  if (lastShown === today) return false;
+  localStorage.setItem(lastKey, today);
+  return true;
+}
+
+function getOnboardingMessage(day, hasDevice) {
+  if (day === 1) {
+    return `Soy tu Quantum Coach.\nMi función es acompañarte a ordenar tu energía, tu alimentación, tu entrenamiento y tus decisiones con coherencia.\n\nPuedes usarme cuando:\n– necesites claridad en una decisión,\n– quieras ajustar tu rutina de ejercicio,\n– revisar tu alimentación,\n– o simplemente entender mejor tu momento actual.\n\nNo te empujo. Te ayudo a ver con mayor claridad.\n¿Te gustaría empezar revisando tu estado actual?`;
+  }
+  if (day === 2) {
+    if (!hasDevice) {
+      return `Para trabajar con datos reales, puedes integrar tu dispositivo.\nAsí podré analizar tu energía, descanso y actividad con mayor precisión.\n\n¿Quieres conectarlo ahora o prefieres revisar tu plan primero?`;
+    }
+    return `Ya tengo tus datos de actividad recientes.\nPodemos usarlos para ajustar tu entrenamiento o revisar tu recuperación.\n\n¿Prefieres revisar tu rendimiento o tu descanso?`;
+  }
+  if (day === 3) {
+    return `Los lunes realizamos una revisión profunda de tu sistema con el análisis QAF.\nSi en algún momento necesitas claridad estratégica o entender mejor tu estado general, puedes pedirme un análisis completo.\n\nEstoy aquí para ayudarte a ver más allá de lo evidente.\n¿Quieres que revisemos tu estado actual?`;
+  }
+  return '';
+}
+
+function getStableMessage() {
+  return `Hoy podemos trabajar en tres frentes:\n– tu energía,\n– tu cuerpo,\n– o tu enfoque.\n\n¿Cuál quieres priorizar?`;
+}
+
+function getContextualPrompt(context) {
+  if (!context) return null;
+  const ifValue = context.if_snapshot?.latest_record?.value ?? context.profile?.happiness_index;
+  const ifLow = typeof ifValue === 'number' && ifValue <= 6.5;
+  const ifHigh = typeof ifValue === 'number' && ifValue >= 8;
+  const hasPlan = Array.isArray(context.documents?.types) && context.documents.types.length > 0;
+  const connectedProviders = context.devices?.connected_providers || [];
+  const hasDevice = connectedProviders.length > 0;
+  const fitnessProviders = context.devices?.fitness || {};
+  const latestProvider = Object.values(fitnessProviders)[0];
+  const metrics = latestProvider?.metrics || {};
+  const hasActivity = typeof metrics.steps === 'number' && metrics.steps > 0;
+  const sleepMissing = typeof metrics.sleep_minutes === 'number' && metrics.sleep_minutes === 0;
+  const isMonday = new Date().getDay() === 1;
+
+  if (ifLow) {
+    return `Veo que tu energía está un poco más baja hoy.\nAntes de hacer ajustes, quiero entender cómo te sientes.\n\n¿Te gustaría que revisemos qué está generando esa carga?`;
+  }
+  if (ifHigh) {
+    return `Tu sistema está bastante estable hoy.\nEste es un buen momento para consolidar hábitos y avanzar con intención.\n\n¿Quieres optimizar tu entrenamiento o mantener estabilidad?`;
+  }
+  if (sleepMissing && hasDevice) {
+    return `Aún no tengo datos completos de descanso.\nSi quieres, podemos revisarlo manualmente o esperar la sincronización.\n\n¿Cómo descansaste realmente?`;
+  }
+  if (hasActivity) {
+    return `Ya registré actividad reciente.\n¿Quieres ajustar tu entrenamiento según lo que hiciste hoy?`;
+  }
+  if (hasPlan) {
+    return `Veo que tienes un plan de entrenamiento y nutrición cargado.\nPodemos usarlo como base para organizar tu semana.\n\n¿Quieres revisarlo juntos?`;
+  }
+  if (!hasDevice) {
+    return `Para trabajar con datos reales, puedes integrar tu dispositivo.\nAsí podré analizar tu energía, descanso y actividad con mayor precisión.\n\n¿Quieres conectarlo ahora o prefieres revisar tu plan primero?`;
+  }
+  if (isMonday) {
+    return `Hoy es un buen momento para un análisis profundo QAF.\n¿Quieres que revisemos tu estado completo?`;
+  }
+  return null;
+}
+
+function buildQuickActions(context) {
+  const actions = [];
+  const hasPlan = Array.isArray(context?.documents?.types) && context.documents.types.length > 0;
+  const hasDevice = (context?.devices?.connected_providers || []).length > 0;
+
+  if (hasPlan) {
+    actions.push({ label: 'Revisar plan', type: 'link', href: '/pages/settings/PlanEntrenamiento.html' });
+  }
+  if (!hasDevice) {
+    actions.push({ label: 'Sincronizar', type: 'link', href: '/pages/settings/Dispositivos.html' });
+  }
+  actions.push({ label: 'Análisis profundo', type: 'message', text: 'Quiero un análisis profundo QAF.' });
+  return actions.slice(0, 3);
+}
+
+async function fetchCoachContext() {
+  const user = getUserProfile();
+  const username = user?.username || localStorage.getItem('username');
+  if (!username || !window.API_URL) return null;
+  const token = getAuthToken();
+  if (!token) return null;
+
+  try {
+    const res = await (window.authFetch || fetch)(
+      `${API_URL}coach_context/?include_text=0&username=${encodeURIComponent(username)}`,
+      {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        }
+      }
+    );
+    if (!res.ok) return null;
+    const data = await res.json();
+    localStorage.setItem(CONTEXT_CACHE_KEY, JSON.stringify(data));
+    return data;
+  } catch (e) {
+    return null;
+  }
+}
+
+function getCachedContext() {
+  try {
+    const raw = localStorage.getItem(CONTEXT_CACHE_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch (e) {
+    return null;
+  }
+}
 
 const loadChatHistory = () => {
   try {
@@ -149,117 +320,112 @@ input.placeholder = "Escribe tu duda...";
 });
 // Send Message
 form.addEventListener('submit', async (e) => {
-e.preventDefault();
-const text = input.value.trim();
-const file = fileInput.files[0];
-if (!text && !file) return;
-// Visual Feedback for User
-if (file) appendMessage(`📎 Subiendo: ${file.name}...`, 'user');
-if (text) appendMessage(text, 'user');
-input.value = '';
-fileInput.value = ''; // Reset file
-input.placeholder = "Escribe tu duda...";
-// Loading State
-const loadingId = appendMessage('Analizando...', 'bot loading', { persist: false });
-try {
-const user = JSON.parse(localStorage.getItem('user') || '{}');
-const today = todayKey();
-const savedDay = localStorage.getItem(SESSION_DAY_KEY);
-if (savedDay !== today) {
-localStorage.removeItem('gtg_session_id');
-localStorage.removeItem('gtg_guest_session_id');
-localStorage.setItem(SESSION_DAY_KEY, today);
-}
-// 1⃣ Intentar usar sessionId definido por backend (preferido)
-let sessionId = localStorage.getItem('gtg_session_id');
-// 2⃣ Fallback: usuario logueado pero sin sessionId guardado aún
-if (!sessionId && user.username) {
-sessionId = `user_${user.username}_${today}`;
-localStorage.setItem('gtg_session_id', sessionId);
-}
-// 3⃣ Fallback final: guest persistente (NO usar "invitado")
-if (!sessionId) {
-sessionId = localStorage.getItem('gtg_guest_session_id');
-if (!sessionId) {
-sessionId = `guest_${today}_${crypto.randomUUID()}`;
-localStorage.setItem('gtg_guest_session_id', sessionId);
-}
-}
-let attachmentUrl = null;
-let attachmentText = null;
-// 1. Upload File if exists
-if (file) {
-const formData = new FormData();
-formData.append('username', sessionId);
-formData.append('file', file);
-const uploadResp = await fetch(API_URL + 'upload_medical/', {
-method: 'POST',
-body: formData
+  e.preventDefault();
+  const text = input.value.trim();
+  const file = fileInput.files[0];
+  if (!text && !file) return;
+  if (file) appendMessage(`📎 Subiendo: ${file.name}...`, 'user');
+  if (text) appendMessage(text, 'user');
+  input.value = '';
+  fileInput.value = '';
+  input.placeholder = "Escribe tu duda...";
+  await processMessage(text, file);
 });
-const uploadData = await uploadResp.json();
-if (uploadData.success) {
-attachmentUrl = uploadData.file_url;
-attachmentText = uploadData.extracted_text; // Recibimos el texto
-} else {
-throw new Error('Error subiendo archivo: ' +
-uploadData.error);
-}
-}
-// 2. Logica Chat (enviando URL del adjunto si existe)
-const userData = JSON.parse(localStorage.getItem('user') || 'null');
-const username = userData?.username || localStorage.getItem('username') || null;
 
-const authFetch = window.authFetch || fetch;
-const response = await authFetch(API_URL + 'chat/', {
-method: 'POST',
-headers: { 'Content-Type': 'application/json' },
-body: JSON.stringify({
-message: text || "Analiza este documento adjunto.",
-sessionId: sessionId,
-attachment: attachmentUrl,
-attachment_text: attachmentText, // Enviamos texto al proxy
-username: username
-})
-});
+async function processMessage(text, file) {
+  const loadingId = appendMessage('Analizando...', 'bot loading', { persist: false });
+  try {
+    const user = JSON.parse(localStorage.getItem('user') || '{}');
+    const today = todayKey();
+    const savedDay = localStorage.getItem(SESSION_DAY_KEY);
+    if (savedDay !== today) {
+      localStorage.removeItem('gtg_session_id');
+      localStorage.removeItem('gtg_guest_session_id');
+      localStorage.setItem(SESSION_DAY_KEY, today);
+    }
+
+    let sessionId = localStorage.getItem('gtg_session_id');
+    if (!sessionId && user.username) {
+      sessionId = `user_${user.username}_${today}`;
+      localStorage.setItem('gtg_session_id', sessionId);
+    }
+    if (!sessionId) {
+      sessionId = localStorage.getItem('gtg_guest_session_id');
+      if (!sessionId) {
+        sessionId = `guest_${today}_${crypto.randomUUID()}`;
+        localStorage.setItem('gtg_guest_session_id', sessionId);
+      }
+    }
+
+    let attachmentUrl = null;
+    let attachmentText = null;
+    if (file) {
+      const formData = new FormData();
+      formData.append('username', sessionId);
+      formData.append('file', file);
+      const uploadResp = await fetch(API_URL + 'upload_medical/', {
+        method: 'POST',
+        body: formData
+      });
+      const uploadData = await uploadResp.json();
+      if (uploadData.success) {
+        attachmentUrl = uploadData.file_url;
+        attachmentText = uploadData.extracted_text;
+      } else {
+        throw new Error('Error subiendo archivo: ' + uploadData.error);
+      }
+    }
+
+    const userData = JSON.parse(localStorage.getItem('user') || 'null');
+    const username = userData?.username || localStorage.getItem('username') || null;
+
+    const authFetch = window.authFetch || fetch;
+    const response = await authFetch(API_URL + 'chat/', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        message: text || "Analiza este documento adjunto.",
+        sessionId: sessionId,
+        attachment: attachmentUrl,
+        attachment_text: attachmentText,
+        username: username
+      })
+    });
+
     let data = {};
     const textResponse = await response.text();
-
     try {
       data = textResponse ? JSON.parse(textResponse) : {};
     } catch (e) {
       console.warn("Respuesta no JSON:", textResponse);
       data = { output: textResponse };
     }
-// Remove loading
+
     document.getElementById(loadingId)?.remove();
-if (data.error) {
-    appendMessage('❌ Error: ' + data.error, 'bot');
-} else {
-// n8n suele devolver { output: "texto" } o una lista
-let reply = "No entendí eso.";
-// Prioridad de campos comunes de n8n
-if (data.output && data.output.trim() !== "") reply =
-data.output;
-else if (data.text) reply = data.text;
-else if (Array.isArray(data) && data[0] && data[0].text) reply
-= data[0].text;
-else if (typeof data === 'string') reply = data;
-// FIX: Si n8n devuelve un iframe (común en modo chat), extraemos el texto
+    if (data.error) {
+      appendMessage('❌ Error: ' + data.error, 'bot');
+      return;
+    }
+
+    let reply = "No entendí eso.";
+    if (data.output && data.output.trim() !== "") reply = data.output;
+    else if (data.text) reply = data.text;
+    else if (Array.isArray(data) && data[0] && data[0].text) reply = data[0].text;
+    else if (typeof data === 'string') reply = data;
+
     if (typeof reply === "string" && reply.startsWith('<iframe')) {
-const match = reply.match(/srcdoc="([^"]*)"/);
-if (match && match[1]) {
-reply = match[1];
+      const match = reply.match(/srcdoc="([^"]*)"/);
+      if (match && match[1]) {
+        reply = match[1];
+      }
+    }
+    appendMessage(reply, 'bot');
+  } catch (err) {
+    console.error(err);
+    document.getElementById(loadingId)?.remove();
+    appendMessage(`❌ Error: ${err.message} `, 'bot');
+  }
 }
-}
-appendMessage(reply, 'bot');
-}
-} catch (err) {
-console.error(err);
-if (document.getElementById(loadingId))
-document.getElementById(loadingId).remove();
-appendMessage(`❌ Error: ${err.message} `, 'bot');
-}
-});
 // Inject Marked.js for Markdown parsing
 if (!window.marked) {
 const script = document.createElement('script');
@@ -285,6 +451,36 @@ div.innerHTML = window.marked.parse(text);
 } else {
 div.textContent = text;
 }
+
+function appendQuickActions(actions) {
+  if (!Array.isArray(actions) || !actions.length) return;
+  const wrapper = document.createElement('div');
+  wrapper.className = 'quick-actions';
+  actions.forEach((action) => {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'quick-action-btn';
+    btn.textContent = action.label;
+    btn.addEventListener('click', () => {
+      if (action.type === 'link' && action.href) {
+        window.location.href = action.href;
+        return;
+      }
+      if (action.type === 'message' && action.text) {
+        sendQuickMessage(action.text);
+      }
+    });
+    wrapper.appendChild(btn);
+  });
+  messages.appendChild(wrapper);
+  messages.scrollTop = messages.scrollHeight;
+}
+
+async function sendQuickMessage(text) {
+  if (!text) return;
+  appendMessage(text, 'user');
+  await processMessage(text, null);
+}
 const id = 'msg-' + Date.now();
 div.id = id;
 messages.appendChild(div);
@@ -302,14 +498,33 @@ return id;
 }
 
 // Restore history or show greeting
-(() => {
-messages.innerHTML = '';
-if (chatHistory.length) {
-chatHistory.forEach((msg) => {
-appendMessage(msg.text, msg.role === 'user' ? 'user' : 'bot', { persist: false });
-});
-} else {
-appendMessage(GREETING_TEXT, 'bot');
-}
+(async () => {
+  messages.innerHTML = '';
+  if (chatHistory.length) {
+    chatHistory.forEach((msg) => {
+      appendMessage(msg.text, msg.role === 'user' ? 'user' : 'bot', { persist: false });
+    });
+    return;
+  }
+
+  const user = getUserProfile();
+  const name = (user?.full_name || user?.username || '').trim().split(' ')[0] || 'hoy';
+  const context = (await fetchCoachContext()) || getCachedContext();
+  const hasDevice = (context?.devices?.connected_providers || []).length > 0;
+
+  appendMessage(getTimeGreeting(name), 'bot');
+
+  if (shouldShowOnboarding(user?.username || 'anon')) {
+    const day = getOnboardingDay(user?.username || 'anon');
+    const onboardingText = getOnboardingMessage(day, hasDevice);
+    if (onboardingText) appendMessage(onboardingText, 'bot');
+  } else {
+    appendMessage(getStableMessage(), 'bot');
+  }
+
+  const contextual = getContextualPrompt(context);
+  if (contextual) appendMessage(contextual, 'bot');
+
+  appendQuickActions(buildQuickActions(context || {}));
 })();
 })();
