@@ -177,6 +177,9 @@ let audioChunks = [];
 let recordingTimeout = null;
 let voiceCancelled = false;
 let voiceHandled = false;
+let activeVoiceMode = null;
+let nativeSpeechPlugin = null;
+let nativeSpeechListener = null;
 
 function canUseSpeechRecognition() {
   return !!(window.SpeechRecognition || window.webkitSpeechRecognition);
@@ -190,6 +193,34 @@ function initSpeechRecognition() {
   recognition.interimResults = false;
   recognition.maxAlternatives = 1;
   return recognition;
+}
+
+function getNativeSpeechPlugin() {
+  const cap = window.Capacitor;
+  if (!cap || typeof cap.getPlatform !== 'function') return null;
+  const platform = cap.getPlatform();
+  if (platform !== 'ios' && platform !== 'android') return null;
+  return cap.Plugins?.SpeechRecognition || null;
+}
+
+async function ensureNativeSpeechPermission(plugin) {
+  if (!plugin?.hasPermission || !plugin?.requestPermission) return true;
+  const current = await plugin.hasPermission();
+  if (current?.permission === true) return true;
+  const requested = await plugin.requestPermission();
+  return requested?.permission === true;
+}
+
+function clearNativeSpeechListener() {
+  if (nativeSpeechListener?.remove) {
+    nativeSpeechListener.remove();
+  }
+  nativeSpeechListener = null;
+}
+
+function pickTranscript(matches) {
+  if (!Array.isArray(matches)) return '';
+  return String(matches[0] || '').trim();
 }
 
 function setRecordingState(isRecording) {
@@ -225,6 +256,7 @@ async function startMediaRecorder() {
       const blob = new Blob(audioChunks, { type: mediaRecorder.mimeType || 'audio/webm' });
       stream.getTracks().forEach((track) => track.stop());
       setRecordingState(false);
+      activeVoiceMode = null;
       if (voiceCancelled) {
         appendMessage('Grabación cancelada.', 'bot');
         return;
@@ -239,6 +271,7 @@ async function startMediaRecorder() {
     };
     mediaRecorder.start();
     setRecordingState(true);
+    activeVoiceMode = 'media';
     recordingTimeout = setTimeout(() => {
       stopMediaRecorder();
     }, 12000);
@@ -256,6 +289,19 @@ function stopMediaRecorder() {
   if (mediaRecorder && mediaRecorder.state !== 'inactive') {
     mediaRecorder.stop();
   }
+}
+
+async function stopNativeSpeech() {
+  if (nativeSpeechPlugin?.stop) {
+    try {
+      await nativeSpeechPlugin.stop();
+    } catch (e) {
+      // ignore
+    }
+  }
+  clearNativeSpeechListener();
+  activeVoiceMode = null;
+  setRecordingState(false);
 }
 
 async function sendAudioForStt(blob) {
@@ -288,6 +334,7 @@ async function startVoiceCapture() {
   voiceCancelled = false;
   voiceHandled = false;
   setRetryVisible(false);
+  if (await startNativeSpeech()) return;
   if (speechRecognition) {
     try {
       speechRecognition.start();
@@ -298,6 +345,71 @@ async function startVoiceCapture() {
     }
   }
   await startMediaRecorder();
+}
+
+async function startNativeSpeech() {
+  const plugin = getNativeSpeechPlugin();
+  if (!plugin) return false;
+  nativeSpeechPlugin = plugin;
+  try {
+    const availability = await plugin.available?.();
+    if (availability && availability.available === false) return false;
+  } catch (e) {
+    return false;
+  }
+
+  const permitted = await ensureNativeSpeechPermission(plugin);
+  if (!permitted) {
+    appendMessage('No se otorgaron permisos para el micrófono.', 'bot');
+    setRetryVisible(true);
+    return true;
+  }
+
+  activeVoiceMode = 'native';
+  setRecordingState(true);
+  let resolved = false;
+  const handleMatches = async (matches) => {
+    if (resolved || voiceCancelled) return;
+    resolved = true;
+    voiceHandled = true;
+    setRecordingState(false);
+    activeVoiceMode = null;
+    clearNativeSpeechListener();
+    const transcript = pickTranscript(matches);
+    if (transcript) {
+      await sendQuickMessage(transcript);
+      return;
+    }
+    appendMessage('No pude escuchar nada claro. Intenta de nuevo.', 'bot');
+    setRetryVisible(true);
+  };
+
+  if (plugin.addListener) {
+    nativeSpeechListener = await plugin.addListener('result', (data) => {
+      handleMatches(data?.matches || data?.results);
+    });
+  }
+
+  try {
+    const result = await plugin.start?.({
+      language: 'es-ES',
+      maxResults: 1,
+      partialResults: false,
+      popup: true
+    });
+    if (result?.matches?.length) {
+      await handleMatches(result.matches);
+    }
+  } catch (e) {
+    setRecordingState(false);
+    activeVoiceMode = null;
+    clearNativeSpeechListener();
+    if (!voiceCancelled) {
+      appendMessage('No se pudo iniciar el reconocimiento de voz.', 'bot');
+      setRetryVisible(true);
+    }
+  }
+  return true;
 }
 
 function getContextualPrompt(context) {
@@ -450,6 +562,7 @@ if (micBtn) {
     speechRecognition.onstart = () => {
       voiceHandled = false;
       setRecordingState(true);
+      activeVoiceMode = 'web';
     };
     speechRecognition.onresult = async (event) => {
       const transcript = event.results?.[0]?.[0]?.transcript || '';
@@ -465,6 +578,7 @@ if (micBtn) {
     };
     speechRecognition.onerror = (event) => {
       setRecordingState(false);
+      activeVoiceMode = null;
       if (voiceCancelled) return;
       if (event?.error === 'not-allowed' || event?.error === 'service-not-allowed') {
         appendMessage('No se otorgaron permisos para el micrófono.', 'bot');
@@ -475,6 +589,7 @@ if (micBtn) {
     };
     speechRecognition.onend = () => {
       setRecordingState(false);
+      activeVoiceMode = null;
       if (!voiceCancelled && !voiceHandled) {
         appendMessage('No se detectó voz. Puedes reintentar.', 'bot');
         setRetryVisible(true);
@@ -484,7 +599,9 @@ if (micBtn) {
 
   micBtn.addEventListener('click', async () => {
     if (micBtn.classList.contains('recording')) {
-      if (speechRecognition) {
+      if (activeVoiceMode === 'native') {
+        await stopNativeSpeech();
+      } else if (speechRecognition && activeVoiceMode === 'web') {
         speechRecognition.stop();
       } else {
         stopMediaRecorder();
@@ -498,7 +615,9 @@ if (micBtn) {
 if (micCancelBtn) {
   micCancelBtn.addEventListener('click', () => {
     voiceCancelled = true;
-    if (speechRecognition) {
+    if (activeVoiceMode === 'native') {
+      stopNativeSpeech();
+    } else if (speechRecognition && activeVoiceMode === 'web') {
       speechRecognition.abort();
     } else {
       stopMediaRecorder();
