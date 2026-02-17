@@ -15,14 +15,21 @@ fi
 
 cd "$BACKEND_DIR"
 
-if ! command -v tesseract >/dev/null 2>&1 || ! command -v pdftoppm >/dev/null 2>&1; then
-	if command -v apt-get >/dev/null 2>&1; then
-		echo "Installing OCR system dependencies (tesseract, poppler)."
-		apt-get update \
-			&& apt-get install -y --no-install-recommends tesseract-ocr poppler-utils \
-			&& rm -rf /var/lib/apt/lists/*
-	else
-		echo "apt-get not available; OCR system dependencies not installed."
+INSTALL_OCR_SYSTEM_DEPS="${INSTALL_OCR_SYSTEM_DEPS:-${CHAT_ATTACHMENT_INSTALL_OCR_DEPS:-}}"
+if [ "$INSTALL_OCR_SYSTEM_DEPS" = "1" ] || [ "$INSTALL_OCR_SYSTEM_DEPS" = "true" ]; then
+	if ! command -v tesseract >/dev/null 2>&1 || ! command -v pdftoppm >/dev/null 2>&1; then
+		if command -v apt-get >/dev/null 2>&1; then
+			echo "Installing OCR system dependencies (tesseract, poppler)."
+			apt-get update \
+				&& apt-get install -y --no-install-recommends tesseract-ocr poppler-utils \
+				&& rm -rf /var/lib/apt/lists/*
+		else
+			echo "apt-get not available; OCR system dependencies not installed."
+		fi
+	fi
+else
+	if ! command -v tesseract >/dev/null 2>&1 || ! command -v pdftoppm >/dev/null 2>&1; then
+		echo "OCR system dependencies not found (tesseract/pdftoppm). Skipping install for faster startup. Set INSTALL_OCR_SYSTEM_DEPS=true to enable."
 	fi
 fi
 
@@ -76,4 +83,5 @@ fi
 "$PYTHON_BIN" manage.py migrate --noinput
 "$PYTHON_BIN" manage.py collectstatic --noinput || true
 
-exec "$PYTHON_BIN" -m gunicorn --bind 0.0.0.0:8000 --workers 3 --timeout 120 backend_gotogym.wsgi:application
+APP_PORT="${PORT:-${WEBSITES_PORT:-8000}}"
+exec "$PYTHON_BIN" -m gunicorn --bind "0.0.0.0:${APP_PORT}" --workers 3 --timeout 120 backend_gotogym.wsgi:application
