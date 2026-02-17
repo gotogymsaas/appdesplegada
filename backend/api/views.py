@@ -2652,6 +2652,10 @@ def chat_n8n(request):
             except User.DoesNotExist:
                 fitness_payload = None
 
+        attachment_url_for_n8n = attachment_url
+        if (attachment_text or "").strip():
+            attachment_url_for_n8n = ""
+
         payload = {
             "chatInput": final_input,
             "system_rules": {
@@ -2661,7 +2665,8 @@ def chat_n8n(request):
             "sessionId": session_id,
             "username": username_for_payload,
             "auth_header": auth_header,
-            "attachment": attachment_url,
+            "attachment": attachment_url_for_n8n,
+            "attachment_text": attachment_text,
             "fitness": fitness_payload,
             "profile": profile_payload,
             "if_snapshot": if_snapshot,
