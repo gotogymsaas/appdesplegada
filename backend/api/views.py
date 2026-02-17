@@ -2518,6 +2518,26 @@ def chat_n8n(request):
         # Timeout corto por si n8n tarda
         response = requests.post(n8n_url, json=payload, timeout=60)
         
+        def _extract_text_from_iframe(html: str) -> str:
+            if not html:
+                return ""
+            lowered = html.lstrip().lower()
+            if not lowered.startswith("<iframe"):
+                return html
+            try:
+                import html as _html
+                # Extraer srcdoc="..." o srcdoc='...'
+                m = re.search(r"\bsrcdoc=(\"|')(.*?)(\1)", html, flags=re.IGNORECASE | re.DOTALL)
+                if not m:
+                    return html
+                srcdoc = _html.unescape(m.group(2))
+                # Quitar tags básicos (defensivo)
+                srcdoc = re.sub(r"<\s*br\s*/?>", "\n", srcdoc, flags=re.IGNORECASE)
+                srcdoc = re.sub(r"<[^>]+>", "", srcdoc)
+                return srcdoc.strip() or html
+            except Exception:
+                return html
+
         # 4. Procesar respuesta
         if response.status_code == 200:
             try:
@@ -2526,6 +2546,13 @@ def chat_n8n(request):
             except:
                 # Si devuelve texto plano, lo envolvemos
                 data = {'output': response.text}
+
+            # Normalizar output si llega como iframe HTML (mejor compatibilidad mobile)
+            try:
+                if isinstance(data, dict) and isinstance(data.get('output'), str):
+                    data['output'] = _extract_text_from_iframe(data['output'])
+            except Exception:
+                pass
             return Response(data)
         else:
             # Intentar obtener mensaje de error de n8n
