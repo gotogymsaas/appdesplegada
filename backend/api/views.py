@@ -191,6 +191,89 @@ def _clean_extracted_text(text):
     return cleaned.strip()
 
 
+def _extract_text_from_file_bytes(original_name: str, file_bytes: bytes):
+    """Extrae texto de PDFs/imágenes desde bytes.
+
+    Retorna (extracted_text, diagnostic).
+    diagnostic ayuda a entender por qué podría venir vacío.
+    """
+
+    original_name = (original_name or "").strip() or "adjunto"
+    extension = os.path.splitext(original_name)[1].lower()
+    extracted_text = ""
+    diagnostic = ""
+    temp_path = None
+
+    try:
+        with tempfile.NamedTemporaryFile(delete=False, suffix=extension or "") as tmp_file:
+            tmp_file.write(file_bytes or b"")
+            temp_path = tmp_file.name
+
+        is_pdf = extension == ".pdf"
+        default_ocr = "false" if is_pdf else "true"
+        enable_ocr = _as_bool(os.getenv("CHAT_ATTACHMENT_OCR", default_ocr))
+
+        if is_pdf:
+            try:
+                from pypdf import PdfReader
+
+                reader = PdfReader(temp_path)
+                for page in reader.pages:
+                    extracted_text += (page.extract_text() or "") + "\n"
+            except Exception as ex:
+                diagnostic = f"pypdf_failed:{ex}"
+                extracted_text = ""
+
+            if enable_ocr and not extracted_text.strip():
+                if pytesseract and convert_from_path:
+                    try:
+                        pages = convert_from_path(temp_path, dpi=200, first_page=1, last_page=10)
+                        ocr_chunks = []
+                        for img in pages:
+                            try:
+                                ocr_chunks.append(pytesseract.image_to_string(img))
+                            except Exception:
+                                pass
+                        extracted_text = "\n".join([c for c in ocr_chunks if c.strip()])
+                    except Exception as ex:
+                        diagnostic = f"pdf_ocr_failed:{ex}"
+                else:
+                    diagnostic = "pdf_ocr_unavailable"
+        else:
+            if enable_ocr and pytesseract and Image is not None:
+                try:
+                    img = Image.open(temp_path)
+                    extracted_text = pytesseract.image_to_string(img)
+                except Exception as ex:
+                    diagnostic = f"img_ocr_failed:{ex}"
+            elif not enable_ocr:
+                diagnostic = "img_ocr_disabled"
+            else:
+                diagnostic = "img_ocr_unavailable"
+    finally:
+        if temp_path and os.path.exists(temp_path):
+            try:
+                os.remove(temp_path)
+            except Exception:
+                pass
+
+    extracted_text = _clean_extracted_text(extracted_text or "")
+    max_chars = int(
+        os.getenv(
+            "CHAT_ATTACHMENT_TEXT_MAX_CHARS",
+            os.getenv("N8N_DOC_TEXT_MAX_CHARS", "5000"),
+        )
+        or 5000
+    )
+    if max_chars and len(extracted_text) > max_chars:
+        extracted_text = extracted_text[:max_chars]
+
+    if not extracted_text.strip() and not diagnostic:
+        diagnostic = "empty"
+
+    return extracted_text, diagnostic
+
+
 def _get_media_public_base():
     base = (
         os.getenv("MEDIA_PUBLIC_BASE", "").strip()
@@ -2176,59 +2259,14 @@ def upload_chat_attachment(request):
         blob_path = f"{safe_username}/{safe_name}"
 
         extracted_text = None
-        temp_path = None
         if include_text:
-            extracted_text = ""
-            try:
-                with tempfile.NamedTemporaryFile(delete=False, suffix=extension or "") as tmp_file:
-                    tmp_file.write(file_bytes)
-                    temp_path = tmp_file.name
-
-                lower_name = original_name.lower()
-                # OCR para imágenes: ON por defecto (mejora UX en chat).
-                # OCR para PDFs: OFF por defecto (más caro); habilitar con CHAT_ATTACHMENT_OCR=true.
-                default_ocr = 'false' if lower_name.endswith('.pdf') else 'true'
-                enable_ocr = _as_bool(os.getenv('CHAT_ATTACHMENT_OCR', default_ocr))
-
-                if lower_name.endswith('.pdf'):
-                    try:
-                        from pypdf import PdfReader
-                        reader = PdfReader(temp_path)
-                        for page in reader.pages:
-                            extracted_text += (page.extract_text() or "") + "\n"
-                    except Exception:
-                        extracted_text = ""
-
-                    # OCR es caro; solo si se habilita explícitamente
-                    if enable_ocr and not extracted_text.strip():
-                        if pytesseract and convert_from_path:
-                            pages = convert_from_path(temp_path, dpi=200, first_page=1, last_page=10)
-                            ocr_chunks = []
-                            for img in pages:
-                                try:
-                                    ocr_chunks.append(pytesseract.image_to_string(img))
-                                except Exception:
-                                    pass
-                            extracted_text = "\n".join([c for c in ocr_chunks if c.strip()])
-                else:
-                    # Imagen
-                    if enable_ocr and pytesseract and Image is not None:
-                        img = Image.open(temp_path)
-                        extracted_text = pytesseract.image_to_string(img)
-            except Exception as ex:
-                print(f"Chat attachment extraction warning: {ex}")
-                extracted_text = ""
-            finally:
-                if temp_path and os.path.exists(temp_path):
-                    try:
-                        os.remove(temp_path)
-                    except Exception:
-                        pass
-
-            extracted_text = _clean_extracted_text(extracted_text or "")
-            max_chars = int(os.getenv('CHAT_ATTACHMENT_TEXT_MAX_CHARS', os.getenv('N8N_DOC_TEXT_MAX_CHARS', '5000')) or 5000)
-            if max_chars and len(extracted_text) > max_chars:
-                extracted_text = extracted_text[:max_chars]
+            extracted_text, diagnostic = _extract_text_from_file_bytes(original_name, file_bytes)
+            if not extracted_text.strip():
+                extracted_text = (
+                    "[No se pudo extraer texto del adjunto automáticamente. "
+                    f"diag={diagnostic}. "
+                    "Si es un PDF escaneado, verifica CHAT_ATTACHMENT_OCR=true y reinicia el App Service.]"
+                )
 
         if _is_azure_blob_enabled():
             container_name = _chat_attachment_container()
@@ -2406,8 +2444,43 @@ def chat_n8n(request):
 
         # 2. Configuración de n8n
         n8n_url = getattr(settings, "N8N_WEBHOOK_URL", "").strip() or "http://172.200.202.47/webhook/general-agent-gotogym-v2"
-        
-        # Construir prompt enriquecido
+
+        # Resolver usuario temprano (para fallback de adjuntos y sessionId seguro)
+        user = _resolve_request_user(request)
+        if user:
+            session_id = _safe_session_id(user)
+        elif not session_id or session_id == 'invitado':
+            session_id = f"guest_{uuid.uuid4().hex}"
+
+        # Sync por evento (contextual): si el usuario expresa fatiga/estrés, encolar una sync rápida.
+        try:
+            if user and message:
+                msg_low = str(message).lower()
+                if re.search(r"\b(cansad|agotad|deprim|estres|ansios|sin energia|fatig)\b", msg_low):
+                    enqueue_sync_request(user, provider="", reason="chat_signal", priority=3)
+        except Exception:
+            pass
+
+        # Fallback de adjunto: si hay URL pero no texto, descargar y extraer (solo attachments del usuario)
+        try:
+            if user and attachment_url and not (attachment_text or "").strip():
+                container_name, blob_name = _extract_blob_ref_from_url(str(attachment_url))
+                if container_name == _chat_attachment_container() and blob_name:
+                    safe_username = user.username.replace("/", "_")
+                    if blob_name.startswith(f"{safe_username}/"):
+                        max_bytes = int(os.getenv('CHAT_ATTACHMENT_MAX_BYTES', str(15 * 1024 * 1024)) or (15 * 1024 * 1024))
+                        resp = requests.get(str(attachment_url), timeout=20)
+                        if resp.status_code == 200 and resp.content and len(resp.content) <= max_bytes:
+                            filename = os.path.basename(blob_name)
+                            extracted, diagnostic = _extract_text_from_file_bytes(filename, resp.content)
+                            attachment_text = extracted or (
+                                "[No se pudo extraer texto del adjunto automáticamente. "
+                                f"diag={diagnostic}.]"
+                            )
+        except Exception as ex:
+            print(f"Attachment fallback extraction warning: {ex}")
+
+        # Construir prompt enriquecido (ya con attachment_text si se pudo)
         final_input = message or "Analisis de archivo adjunto"
         if attachment_text:
             final_input += f"\n\n--- DOCUMENTO ADJUNTO ---\n{attachment_text}\n-----------------------"
@@ -2425,21 +2498,6 @@ def chat_n8n(request):
         if_snapshot = None
         integrations_payload = None
         documents_payload = None
-
-        user = _resolve_request_user(request)
-        if user:
-            session_id = _safe_session_id(user)
-        elif not session_id or session_id == 'invitado':
-            session_id = f"guest_{uuid.uuid4().hex}"
-
-        # Sync por evento (contextual): si el usuario expresa fatiga/estrés, encolar una sync rápida.
-        try:
-            if user and message:
-                msg_low = str(message).lower()
-                if re.search(r"\b(cansad|agotad|deprim|estres|ansios|sin energia|fatig)\b", msg_low):
-                    enqueue_sync_request(user, provider="", reason="chat_signal", priority=3)
-        except Exception:
-            pass
 
         username_for_payload = None
         if user:
