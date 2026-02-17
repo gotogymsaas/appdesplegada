@@ -16,20 +16,34 @@ fi
 cd "$BACKEND_DIR"
 
 INSTALL_OCR_SYSTEM_DEPS="${INSTALL_OCR_SYSTEM_DEPS:-${CHAT_ATTACHMENT_INSTALL_OCR_DEPS:-}}"
+INSTALL_PDF_OCR_SYSTEM_DEPS="${INSTALL_PDF_OCR_SYSTEM_DEPS:-${CHAT_ATTACHMENT_INSTALL_PDF_OCR_DEPS:-}}"
 if [ "$INSTALL_OCR_SYSTEM_DEPS" = "1" ] || [ "$INSTALL_OCR_SYSTEM_DEPS" = "true" ]; then
-	if ! command -v tesseract >/dev/null 2>&1 || ! command -v pdftoppm >/dev/null 2>&1; then
+	if ! command -v tesseract >/dev/null 2>&1; then
 		if command -v apt-get >/dev/null 2>&1; then
-			echo "Installing OCR system dependencies (tesseract, poppler)."
+			echo "Installing OCR system dependency: tesseract."
 			apt-get update \
-				&& apt-get install -y --no-install-recommends tesseract-ocr poppler-utils \
+				&& apt-get install -y --no-install-recommends tesseract-ocr \
 				&& rm -rf /var/lib/apt/lists/*
 		else
-			echo "apt-get not available; OCR system dependencies not installed."
+			echo "apt-get not available; tesseract not installed."
+		fi
+	fi
+
+	if [ "$INSTALL_PDF_OCR_SYSTEM_DEPS" = "1" ] || [ "$INSTALL_PDF_OCR_SYSTEM_DEPS" = "true" ]; then
+		if ! command -v pdftoppm >/dev/null 2>&1; then
+			if command -v apt-get >/dev/null 2>&1; then
+				echo "Installing PDF OCR system dependency: poppler-utils (pdftoppm)."
+				apt-get update \
+					&& apt-get install -y --no-install-recommends poppler-utils \
+					&& rm -rf /var/lib/apt/lists/*
+			else
+				echo "apt-get not available; poppler-utils not installed."
+			fi
 		fi
 	fi
 else
-	if ! command -v tesseract >/dev/null 2>&1 || ! command -v pdftoppm >/dev/null 2>&1; then
-		echo "OCR system dependencies not found (tesseract/pdftoppm). Skipping install for faster startup. Set INSTALL_OCR_SYSTEM_DEPS=true to enable."
+	if ! command -v tesseract >/dev/null 2>&1; then
+		echo "OCR system dependency not found (tesseract). Skipping install for faster startup. Set INSTALL_OCR_SYSTEM_DEPS=true to enable."
 	fi
 fi
 
