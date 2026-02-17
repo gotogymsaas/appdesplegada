@@ -39,6 +39,10 @@ container.innerHTML = `
 </div>
 <div id="chat-messages">
 </div>
+<div id="chat-scroll-controls" hidden>
+  <button id="chat-scroll-up" type="button" aria-label="Subir" title="Subir">↑</button>
+  <button id="chat-scroll-down" type="button" aria-label="Bajar" title="Bajar">↓</button>
+</div>
 <form id="chat-input-area" style="display: flex; align-items:
 center;">
 <div class="chat-input-tools">
@@ -77,6 +81,9 @@ const micBtn = document.getElementById('chat-mic-btn');
 const micCancelBtn = document.getElementById('chat-voice-cancel');
 const micRetryBtn = document.getElementById('chat-voice-retry');
 const messages = document.getElementById('chat-messages');
+const scrollControls = document.getElementById('chat-scroll-controls');
+const scrollUpBtn = document.getElementById('chat-scroll-up');
+const scrollDownBtn = document.getElementById('chat-scroll-down');
 
 // --- Chat persistence (24h + reset diario) ---
 const CHAT_STORAGE_KEY = 'gtg_chat_history';
@@ -240,6 +247,27 @@ function setAttachmentPreview(file, state = 'ready') {
 function shouldAutoScroll() {
   const threshold = 80;
   return messages.scrollHeight - messages.scrollTop - messages.clientHeight < threshold;
+}
+
+function updateScrollControls() {
+  if (!messages || !scrollControls || !scrollUpBtn || !scrollDownBtn) return;
+  const canScroll = messages.scrollHeight > messages.clientHeight + 2;
+  if (!canScroll) {
+    scrollControls.hidden = true;
+    return;
+  }
+  const atTop = messages.scrollTop <= 10;
+  const atBottom = messages.scrollHeight - messages.scrollTop - messages.clientHeight <= 10;
+  scrollControls.hidden = false;
+  scrollUpBtn.hidden = atTop;
+  scrollDownBtn.hidden = atBottom;
+}
+
+function scrollMessagesByPages(direction) {
+  if (!messages) return;
+  const delta = Math.max(120, Math.floor(messages.clientHeight * 0.85));
+  const top = direction === 'up' ? -delta : delta;
+  messages.scrollBy({ top, behavior: 'smooth' });
 }
 
 function markMessageStatus(messageId, status) {
@@ -623,6 +651,8 @@ chatWindow.classList.toggle('open');
 containerWidget.classList.toggle('expanded'); // Critical for Mobile // CSS
 if (chatWindow.classList.contains('open')) {
 if (window.innerWidth > 480) input.focus();
+// Recalcular visibilidad de los controles de scroll al abrir.
+setTimeout(updateScrollControls, 50);
 }
 }
 toggleBtn.addEventListener('click', toggleChat);
@@ -720,6 +750,19 @@ if (micRetryBtn) {
     if (micBtn?.classList.contains('recording')) return;
     await startVoiceCapture();
   });
+}
+
+if (messages) {
+  messages.addEventListener('scroll', () => {
+    updateScrollControls();
+  });
+}
+
+if (scrollUpBtn) {
+  scrollUpBtn.addEventListener('click', () => scrollMessagesByPages('up'));
+}
+if (scrollDownBtn) {
+  scrollDownBtn.addEventListener('click', () => scrollMessagesByPages('down'));
 }
 // File Selection Feedback
 fileInput.addEventListener('change', () => {
@@ -912,6 +955,7 @@ div.id = id;
 messages.appendChild(div);
 const doScroll = opts.forceScroll || shouldAutoScroll();
 if (doScroll) messages.scrollTop = messages.scrollHeight;
+updateScrollControls();
 const persist = opts.persist !== false && !className.includes('loading');
 if (persist) {
 chatHistory.push({
@@ -946,6 +990,7 @@ function appendQuickActions(actions) {
   });
   messages.appendChild(wrapper);
   messages.scrollTop = messages.scrollHeight;
+  updateScrollControls();
 }
 
 async function sendQuickMessage(text) {

@@ -59,6 +59,37 @@
   border: 1px solid rgba(255, 255, 255, 0.1);
 }
 
+#chat-scroll-controls {
+  position: absolute;
+  right: 10px;
+  bottom: 78px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  z-index: 2;
+}
+
+#chat-scroll-controls button {
+  width: 34px;
+  height: 34px;
+  border-radius: 999px;
+  cursor: pointer;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.06);
+  color: #cfcfcf;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  font-size: 16px;
+  line-height: 1;
+}
+
+#chat-scroll-controls button:hover {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.12);
+}
+
 #chat-window.open {
   opacity: 1;
   transform: translateY(0);
