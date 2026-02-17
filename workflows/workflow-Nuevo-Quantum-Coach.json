@@ -573,6 +573,15 @@
       "parameters": {
         "toolDescription": "Usa esta herramienta para obtener el perfil del cliente desde Django usando username_norm. Solo usar si username_norm no esta vacio.",
         "url": "={{\n  ($json.username_norm && $json.username_norm.trim())\n    ? (\n        \"https://api.gotogym.store/api/coach_context/?include_text=1&username=\" +\n        encodeURIComponent($json.username_norm.trim())\n      )\n    : \"\"\n}}\n",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "={{ $json.auth_header || '' }}"
+            }
+          ]
+        },
         "options": {}
       },
       "type": "n8n-nodes-base.httpRequestTool",
@@ -597,7 +606,13 @@
             {
               "id": "2bf3897f-9b89-4eb3-ba82-eb6768bc28d5",
               "name": "username_norm",
-              "value": "={{ $json.body?.username }}",
+              "value": "={{ $json.body?.profile?.username || $json.body?.username || $json.body?.user?.username || $json.body?.profile?.email || '' }}",
+              "type": "string"
+            },
+            {
+              "id": "3b1395c3-0f95-4e04-8e4b-9f5ef3c2d5ae",
+              "name": "auth_header",
+              "value": "={{ $json.body?.auth_header || '' }}",
               "type": "string"
             },
             {

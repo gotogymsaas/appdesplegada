@@ -801,6 +801,7 @@ async function processMessage(text, file, pendingId) {
       }
       const formData = new FormData();
       formData.append('username', username);
+      formData.append('include_text', '1');
       formData.append('file', file);
       const uploadResp = await (window.authFetch || fetch)(API_URL + 'upload_chat_attachment/', {
         method: 'POST',

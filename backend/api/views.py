@@ -2135,6 +2135,7 @@ def upload_chat_attachment(request):
     try:
         username = (request.data.get('username') or '').strip()
         file_obj = request.FILES.get('file')
+        include_text = _as_bool(request.data.get('include_text') or request.POST.get('include_text'))
 
         if not getattr(request, "user", None) or not request.user.is_authenticated:
             return Response({'error': 'Authentication required'}, status=401)
@@ -2145,15 +2146,80 @@ def upload_chat_attachment(request):
         if not file_obj:
             return Response({'error': 'File required'}, status=400)
 
+        max_bytes = int(os.getenv('CHAT_ATTACHMENT_MAX_BYTES', str(15 * 1024 * 1024)) or (15 * 1024 * 1024))
+        if getattr(file_obj, 'size', None) and file_obj.size > max_bytes:
+            return Response({'error': 'Archivo demasiado grande'}, status=413)
+
         original_name = file_obj.name or "adjunto"
         extension = os.path.splitext(original_name)[1].lower()
+        allowed_ext = (
+            '.pdf',
+            '.png', '.jpg', '.jpeg', '.webp', '.heic', '.heif'
+        )
+        if extension not in allowed_ext:
+            return Response({'error': 'Tipo de archivo no permitido'}, status=400)
+
         safe_base = get_valid_filename(os.path.splitext(original_name)[0]) or "adjunto"
         safe_name = f"{safe_base}_{uuid.uuid4().hex[:8]}{extension}"
 
         file_bytes = file_obj.read()
+        if len(file_bytes) > max_bytes:
+            return Response({'error': 'Archivo demasiado grande'}, status=413)
         content_type = (file_obj.content_type or 'application/octet-stream').strip() or 'application/octet-stream'
         safe_username = request.user.username.replace("/", "_")
         blob_path = f"{safe_username}/{safe_name}"
+
+        extracted_text = None
+        temp_path = None
+        if include_text:
+            extracted_text = ""
+            try:
+                with tempfile.NamedTemporaryFile(delete=False, suffix=extension or "") as tmp_file:
+                    tmp_file.write(file_bytes)
+                    temp_path = tmp_file.name
+
+                lower_name = original_name.lower()
+                enable_ocr = _as_bool(os.getenv('CHAT_ATTACHMENT_OCR', 'false'))
+
+                if lower_name.endswith('.pdf'):
+                    try:
+                        from pypdf import PdfReader
+                        reader = PdfReader(temp_path)
+                        for page in reader.pages:
+                            extracted_text += (page.extract_text() or "") + "\n"
+                    except Exception:
+                        extracted_text = ""
+
+                    # OCR es caro; solo si se habilita explícitamente
+                    if enable_ocr and not extracted_text.strip():
+                        if pytesseract and convert_from_path:
+                            pages = convert_from_path(temp_path, dpi=200, first_page=1, last_page=10)
+                            ocr_chunks = []
+                            for img in pages:
+                                try:
+                                    ocr_chunks.append(pytesseract.image_to_string(img))
+                                except Exception:
+                                    pass
+                            extracted_text = "\n".join([c for c in ocr_chunks if c.strip()])
+                else:
+                    # Imagen
+                    if enable_ocr and pytesseract and Image is not None:
+                        img = Image.open(temp_path)
+                        extracted_text = pytesseract.image_to_string(img)
+            except Exception as ex:
+                print(f"Chat attachment extraction warning: {ex}")
+                extracted_text = ""
+            finally:
+                if temp_path and os.path.exists(temp_path):
+                    try:
+                        os.remove(temp_path)
+                    except Exception:
+                        pass
+
+            extracted_text = _clean_extracted_text(extracted_text or "")
+            max_chars = int(os.getenv('CHAT_ATTACHMENT_TEXT_MAX_CHARS', os.getenv('N8N_DOC_TEXT_MAX_CHARS', '5000')) or 5000)
+            if max_chars and len(extracted_text) > max_chars:
+                extracted_text = extracted_text[:max_chars]
 
         if _is_azure_blob_enabled():
             container_name = _chat_attachment_container()
@@ -2162,7 +2228,10 @@ def upload_chat_attachment(request):
             return Response({'error': 'Storage no configurado'}, status=503)
 
         signed_url = _build_signed_blob_url(file_url)
-        return Response({'success': True, 'file_url': signed_url, 'file_url_raw': file_url})
+        payload = {'success': True, 'file_url': signed_url, 'file_url_raw': file_url}
+        if include_text:
+            payload['extracted_text'] = extracted_text or ''
+        return Response(payload)
     except Exception as e:
         print(f"Upload chat attachment error: {e}")
         return Response({'error': str(e)}, status=500)
@@ -2321,6 +2390,8 @@ def chat_n8n(request):
         attachment_url = request.data.get('attachment') 
         attachment_text = request.data.get('attachment_text') # Nuevo: Texto extraído
 
+        auth_header = request.headers.get('Authorization', '')
+
         if not message and not attachment_url:
             return Response({'error': 'Mensaje o adjunto vacío'}, status=400)
 
@@ -2351,6 +2422,12 @@ def chat_n8n(request):
             session_id = _safe_session_id(user)
         elif not session_id or session_id == 'invitado':
             session_id = f"guest_{uuid.uuid4().hex}"
+
+        username_for_payload = None
+        if user:
+            username_for_payload = user.username
+        else:
+            username_for_payload = (request.data.get('username') or '').strip() or None
 
         def _dt_iso(value):
             return value.isoformat() if value else None
@@ -2506,6 +2583,8 @@ def chat_n8n(request):
             },
             "message": message,
             "sessionId": session_id,
+            "username": username_for_payload,
+            "auth_header": auth_header,
             "attachment": attachment_url,
             "fitness": fitness_payload,
             "profile": profile_payload,
