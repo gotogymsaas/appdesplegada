@@ -2179,7 +2179,10 @@ def upload_chat_attachment(request):
                     temp_path = tmp_file.name
 
                 lower_name = original_name.lower()
-                enable_ocr = _as_bool(os.getenv('CHAT_ATTACHMENT_OCR', 'false'))
+                # OCR para imágenes: ON por defecto (mejora UX en chat).
+                # OCR para PDFs: OFF por defecto (más caro); habilitar con CHAT_ATTACHMENT_OCR=true.
+                default_ocr = 'false' if lower_name.endswith('.pdf') else 'true'
+                enable_ocr = _as_bool(os.getenv('CHAT_ATTACHMENT_OCR', default_ocr))
 
                 if lower_name.endswith('.pdf'):
                     try:
