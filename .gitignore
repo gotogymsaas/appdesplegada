@@ -10,6 +10,7 @@ backend/.env
 *.pem
 *.p12
 *.pfx
+backend/n8ngotogymkey.pem
 backend/devices/oauth/*.json
 AGENTE-GENERAL 2.json
 infra/publish_profile.xml
