@@ -9,6 +9,7 @@ import re
 import threading
 
 from devices.models import DeviceConnection, FitnessSync
+from devices.scheduler_service import enqueue_sync_request
 
 import requests
 import json
@@ -616,6 +617,7 @@ def coach_context(request):
             "plan": user.plan,
             "full_name": getattr(user, "full_name", None),
             "email": user.email,
+            "timezone": getattr(user, "timezone", "") or "",
             "age": user.age,
             "weight": user.weight,
             "height": user.height,
@@ -629,6 +631,10 @@ def coach_context(request):
             "scores": user.scores or {},
             "current_streak": user.current_streak,
             "badges": user.badges,
+            "coach_state": getattr(user, "coach_state", {}) or {},
+            "coach_state_updated_at": _dt_iso(getattr(user, "coach_state_updated_at", None)),
+            "coach_weekly_state": getattr(user, "coach_weekly_state", {}) or {},
+            "coach_weekly_updated_at": _dt_iso(getattr(user, "coach_weekly_updated_at", None)),
         },
         "documents": {
             "summary": documents_summary,
@@ -2425,6 +2431,15 @@ def chat_n8n(request):
             session_id = _safe_session_id(user)
         elif not session_id or session_id == 'invitado':
             session_id = f"guest_{uuid.uuid4().hex}"
+
+        # Sync por evento (contextual): si el usuario expresa fatiga/estrés, encolar una sync rápida.
+        try:
+            if user and message:
+                msg_low = str(message).lower()
+                if re.search(r"\b(cansad|agotad|deprim|estres|ansios|sin energia|fatig)\b", msg_low):
+                    enqueue_sync_request(user, provider="", reason="chat_signal", priority=3)
+        except Exception:
+            pass
 
         username_for_payload = None
         if user:

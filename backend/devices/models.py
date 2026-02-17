@@ -65,3 +65,74 @@ class FitnessSync(models.Model):
 
     def __str__(self):
         return f'{self.user} - {self.provider} ({self.created_at:%Y-%m-%d %H:%M})'
+
+
+class UserSyncCheckpoint(models.Model):
+    """Marca la última ejecución de una tarea de sync por usuario.
+
+    Ejemplos de key:
+    - daily_reset
+    - sleep_analysis
+    - midday_review
+    - evening_review
+    - weekly_qaf
+    - invisible_3h
+    """
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='sync_checkpoints'
+    )
+    key = models.CharField(max_length=40)
+    last_run_at = models.DateTimeField(null=True, blank=True)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        unique_together = ('user', 'key')
+        indexes = [
+            models.Index(fields=["user", "key"]),
+        ]
+
+    def __str__(self):
+        return f"{self.user} - {self.key}"
+
+
+class SyncRequest(models.Model):
+    """Cola simple en DB para sync por evento o por apertura de app."""
+
+    STATUS_CHOICES = [
+        ("pending", "pending"),
+        ("running", "running"),
+        ("done", "done"),
+        ("error", "error"),
+        ("skipped", "skipped"),
+    ]
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='sync_requests'
+    )
+    provider = models.CharField(max_length=40, blank=True, default="")
+    reason = models.CharField(max_length=80, blank=True, default="")
+    priority = models.IntegerField(default=5)
+    status = models.CharField(max_length=12, choices=STATUS_CHOICES, default="pending")
+
+    requested_at = models.DateTimeField(auto_now_add=True)
+    started_at = models.DateTimeField(null=True, blank=True)
+    finished_at = models.DateTimeField(null=True, blank=True)
+
+    error = models.TextField(blank=True, default="")
+    result = models.JSONField(default=dict, blank=True)
+
+    class Meta:
+        indexes = [
+            models.Index(fields=["status", "priority", "requested_at"]),
+            models.Index(fields=["user", "status"]),
+        ]
+
+    def __str__(self):
+        return f"{self.user} - {self.provider or 'any'} ({self.status})"

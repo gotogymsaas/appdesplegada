@@ -4,14 +4,19 @@ import requests
 from django.conf import settings
 import base64
 from rest_framework.decorators import api_view, permission_classes, authentication_classes
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework.response import Response
 from rest_framework_simplejwt.authentication import JWTAuthentication
+
+import secrets
 
 
 from .models import DeviceConnection, FitnessSync
 from api.models import User
 from .serializers import DeviceConnectionSerializer
+
+from .sync_service import sync_device
+from .scheduler_service import enqueue_sync_request, run_due_sync
 
 PROVIDERS = [
     {"provider": "apple_health", "label": "Apple Health"},
@@ -136,10 +141,58 @@ def _refresh_garmin_token(conn):
 def devices_list(request):
     # Solo considerar realmente conectados en la lista de "Conectados"
     qs = DeviceConnection.objects.filter(user=request.user, status="connected")
+
+    # Sync invisible al abrir (no ejecuta sync inline; encola si está viejo)
+    try:
+        now = timezone.now()
+        stale_after = timezone.timedelta(hours=3)
+        for conn in qs:
+            if not conn.last_sync_at or (now - conn.last_sync_at) >= stale_after:
+                recently = (
+                    request.user.sync_requests.filter(
+                        status="pending",
+                        provider=conn.provider,
+                        requested_at__gte=now - timezone.timedelta(minutes=30),
+                    ).exists()
+                )
+                if not recently:
+                    enqueue_sync_request(
+                        request.user,
+                        provider=conn.provider,
+                        reason="app_open_devices",
+                        priority=7,
+                    )
+    except Exception:
+        pass
+
     return Response({
         "providers": PROVIDERS,
         "connected": DeviceConnectionSerializer(qs, many=True).data
     })
+
+
+@api_view(["POST"])
+@permission_classes([AllowAny])
+def internal_run_due_sync(request):
+    """Endpoint interno para ejecutar sync programado.
+
+    Autorización: header X-Internal-Token debe coincidir con INTERNAL_SYNC_TOKEN.
+    """
+
+    expected = (getattr(settings, "INTERNAL_SYNC_TOKEN", "") or "").strip()
+    if not expected:
+        return Response({"ok": False, "error": "scheduler_not_configured"}, status=503)
+
+    provided = (request.headers.get("X-Internal-Token") or request.META.get("HTTP_X_INTERNAL_TOKEN") or "").strip()
+    if not provided or not secrets.compare_digest(provided, expected):
+        return Response({"ok": False, "error": "unauthorized"}, status=401)
+
+    payload = request.data if isinstance(request.data, dict) else {}
+    window = int(payload.get("window_minutes") or 15)
+    max_users = int(payload.get("max_users") or 50)
+    max_requests = int(payload.get("max_requests") or 50)
+    result = run_due_sync(window_minutes=window, max_users=max_users, max_requests=max_requests)
+    return Response(result)
 
 @api_view(["POST"])
 @authentication_classes([JWTAuthentication])
@@ -177,285 +230,8 @@ def device_disconnect(request, provider):
 @authentication_classes([JWTAuthentication])
 @permission_classes([IsAuthenticated])
 def device_sync(request, provider):
-    user = request.user
-    if getattr(user, "plan", "Gratis") != "Premium" and not (
-        getattr(user, "trial_active", False)
-        and getattr(user, "trial_ends_at", None)
-        and timezone.now() < user.trial_ends_at
-    ):
-        return Response(
-            {"ok": False, "error": "Requiere Premium para sincronizar"},
-            status=402,
-        )
-
-    obj, _ = DeviceConnection.objects.get_or_create(user=request.user, provider=provider)
-
-    if provider == "google_fit":
-        if obj.status != "connected" or not obj.access_token:
-            return Response(
-                {"ok": False, "error": "Google Fit no conectado"},
-                status=400,
-            )
-
-        if obj.token_expires_at and obj.token_expires_at <= timezone.now() + timezone.timedelta(seconds=30):
-            ok, info = _refresh_google_fit_token(obj)
-            if not ok:
-                return Response({"ok": False, **info}, status=400)
-
-        # Google Fit dataset aggregation for steps + calories + distance + sleep + heart rate
-        now = timezone.now()
-        start = obj.last_sync_at or (now - timezone.timedelta(hours=24))
-
-        payload = {
-            "aggregateBy": [
-                {"dataTypeName": "com.google.step_count.delta"},
-                {"dataTypeName": "com.google.calories.expended"},
-                {"dataTypeName": "com.google.distance.delta"},
-                {"dataTypeName": "com.google.sleep.segment"},
-                {"dataTypeName": "com.google.heart_rate.bpm"},
-            ],
-            "bucketByTime": {"durationMillis": 86400000},
-            "startTimeMillis": int(start.timestamp() * 1000),
-            "endTimeMillis": int(now.timestamp() * 1000),
-        }
-
-        headers = {
-            "Authorization": f"Bearer {obj.access_token}",
-        }
-
-        try:
-            r = requests.post(
-                "https://www.googleapis.com/fitness/v1/users/me/dataset:aggregate",
-                json=payload,
-                headers=headers,
-                timeout=15,
-            )
-            if r.status_code != 200:
-                return Response(
-                    {"ok": False, "error": "Google Fit error", "google": r.json()},
-                    status=400,
-                )
-
-            data = r.json()
-            total_steps = 0
-            total_calories = 0.0
-            total_distance_m = 0.0
-            sleep_duration_ms = 0
-            hr_values = []
-
-            for bucket in data.get("bucket", []):
-                for dataset in bucket.get("dataset", []):
-                    dtype = dataset.get("dataTypeName") or dataset.get("dataSourceId", "")
-                    for point in dataset.get("point", []):
-                        values = point.get("value") or []
-                        if not values:
-                            continue
-
-                        v_int = values[0].get("intVal")
-                        v_fp = values[0].get("fpVal")
-                        v = v_int if v_int is not None else v_fp
-                        if v is None:
-                            v = 0
-
-                        if "step_count" in dtype:
-                            total_steps += int(v)
-                        elif "calories" in dtype:
-                            total_calories += float(v)
-                        elif "distance" in dtype:
-                            total_distance_m += float(v)
-                        elif "heart_rate" in dtype:
-                            hr_values.append(float(v))
-                        elif "sleep" in dtype:
-                            try:
-                                start_ns = int(point.get("startTimeNanos", 0))
-                                end_ns = int(point.get("endTimeNanos", 0))
-                                if end_ns > start_ns:
-                                    sleep_duration_ms += (end_ns - start_ns) / 1_000_000
-                            except Exception:
-                                pass
-
-            avg_hr = round(sum(hr_values) / len(hr_values), 2) if hr_values else None
-            metrics = {
-                "steps": total_steps,
-                "calories": round(total_calories, 2),
-                "distance_m": round(total_distance_m, 2),
-                "sleep_minutes": round(sleep_duration_ms / 60000.0, 2),
-                "avg_heart_rate_bpm": avg_hr,
-                "start_time": start.isoformat(),
-                "end_time": now.isoformat(),
-            }
-
-            FitnessSync.objects.create(
-                user=request.user,
-                provider="google_fit",
-                start_time=start,
-                end_time=now,
-                metrics=metrics,
-                raw=data,
-            )
-
-            # Update user "concentrador" scores
-            try:
-                user = User.objects.get(id=request.user.id)
-                current_scores = user.scores if user.scores else {}
-                current_scores["s_steps"] = _score_from_steps(total_steps)
-                current_scores["s_sleep"] = _score_from_sleep_minutes(metrics["sleep_minutes"])
-                user.scores = current_scores
-                user.save()
-            except User.DoesNotExist:
-                pass
-
-            obj.last_sync_at = now
-            obj.save()
-            return Response(
-                {
-                    "ok": True,
-                    "provider": "google_fit",
-                    "metrics": metrics,
-                    "scores": {
-                        "s_steps": _score_from_steps(total_steps),
-                        "s_sleep": _score_from_sleep_minutes(metrics["sleep_minutes"]),
-                    },
-                    "device": DeviceConnectionSerializer(obj).data,
-                }
-            )
-        except requests.RequestException as exc:
-            return Response(
-                {"ok": False, "error": "Google Fit request failed", "detail": str(exc)},
-                status=500,
-            )
-
-    if provider == "fitbit":
-        if obj.status != "connected" or not obj.access_token:
-            return Response(
-                {"ok": False, "error": "Fitbit no conectado"},
-                status=400,
-            )
-
-        if obj.token_expires_at and obj.token_expires_at <= timezone.now() + timezone.timedelta(seconds=30):
-            ok, info = _refresh_fitbit_token(obj)
-            if not ok:
-                return Response({"ok": False, **info}, status=400)
-
-        now = timezone.now()
-        tzinfo = timezone.get_current_timezone()
-        now_local = timezone.localtime(now, tzinfo)
-        start_local = now_local.replace(hour=0, minute=0, second=0, microsecond=0)
-        date_str = now_local.date().isoformat()
-        tz_name = getattr(tzinfo, "key", str(tzinfo))
-
-        headers = {
-            "Authorization": f"Bearer {obj.access_token}",
-        }
-
-        def _get(url):
-            r = requests.get(url, headers=headers, timeout=15)
-            if r.status_code != 200:
-                raise ValueError(r.json())
-            return r.json()
-
-        try:
-            steps = 0
-            calories = 0.0
-            distance = 0.0
-            sleep_minutes = 0
-            avg_hr = None
-
-            steps_data = _get(f"https://api.fitbit.com/1/user/-/activities/steps/date/{date_str}/1d.json")
-            steps_arr = steps_data.get("activities-steps", [])
-            if steps_arr:
-                steps = int(float(steps_arr[-1].get("value", 0) or 0))
-
-            cal_data = _get(f"https://api.fitbit.com/1/user/-/activities/calories/date/{date_str}/1d.json")
-            cal_arr = cal_data.get("activities-calories", [])
-            if cal_arr:
-                calories = float(cal_arr[-1].get("value", 0) or 0)
-
-            dist_data = _get(f"https://api.fitbit.com/1/user/-/activities/distance/date/{date_str}/1d.json")
-            dist_arr = dist_data.get("activities-distance", [])
-            if dist_arr:
-                distance = float(dist_arr[-1].get("value", 0) or 0)
-
-            sleep_data = _get(f"https://api.fitbit.com/1/user/-/sleep/date/{date_str}.json")
-            sleep_summary = sleep_data.get("summary", {})
-            sleep_minutes = int(sleep_summary.get("totalMinutesAsleep", 0) or 0)
-
-            hr_data = _get(f"https://api.fitbit.com/1/user/-/activities/heart/date/{date_str}/1d.json")
-            hr_arr = hr_data.get("activities-heart", [])
-            if hr_arr:
-                hr_val = hr_arr[-1].get("value", {})
-                avg_hr = hr_val.get("restingHeartRate")
-
-            missing_fields = []
-            if steps == 0:
-                missing_fields.append("steps")
-            if sleep_minutes == 0:
-                missing_fields.append("sleep_minutes")
-            is_partial = bool(missing_fields)
-
-            metrics = {
-                "steps": steps,
-                "calories": round(calories, 2),
-                "distance_km": round(distance, 3),
-                "sleep_minutes": sleep_minutes,
-                "resting_heart_rate_bpm": avg_hr,
-                "date": date_str,
-                "start_time": start_local.isoformat(),
-                "end_time": now_local.isoformat(),
-                "timezone": tz_name,
-                "data_quality": "partial" if is_partial else "ok",
-                "missing_fields": missing_fields,
-            }
-
-            FitnessSync.objects.create(
-                user=request.user,
-                provider="fitbit",
-                start_time=start_local,
-                end_time=now_local,
-                metrics=metrics,
-                raw={
-                    "steps": steps_data,
-                    "calories": cal_data,
-                    "distance": dist_data,
-                    "sleep": sleep_data,
-                    "heart": hr_data,
-                },
-            )
-
-            try:
-                user = User.objects.get(id=request.user.id)
-                current_scores = user.scores if user.scores else {}
-                current_scores["s_steps"] = _score_from_steps(steps)
-                current_scores["s_sleep"] = _score_from_sleep_minutes(sleep_minutes)
-                user.scores = current_scores
-                user.save()
-            except User.DoesNotExist:
-                pass
-
-            obj.last_sync_at = now
-            obj.save()
-            return Response(
-                {
-                    "ok": True,
-                    "provider": "fitbit",
-                    "metrics": metrics,
-                    "scores": {
-                        "s_steps": _score_from_steps(steps),
-                        "s_sleep": _score_from_sleep_minutes(sleep_minutes),
-                    },
-                    "device": DeviceConnectionSerializer(obj).data,
-                }
-            )
-        except ValueError as exc:
-            return Response(
-                {"ok": False, "error": "Fitbit error", "fitbit": exc.args[0]},
-                status=400,
-            )
-        except requests.RequestException as exc:
-            return Response(
-                {"ok": False, "error": "Fitbit request failed", "detail": str(exc)},
-                status=500,
-            )
+    res = sync_device(request.user, provider)
+    return Response(res.payload, status=res.status)
 
     if provider == "garmin":
         if obj.status != "connected" or not obj.access_token:

@@ -36,6 +36,13 @@ class User(AbstractUser):
     terms_accepted_user_agent = models.TextField(blank=True, default="")
     terms_accepted_source = models.CharField(max_length=30, blank=True, default="web")
 
+    # Sync & coaching state (para experiencia tipo "Laura")
+    timezone = models.CharField(max_length=64, blank=True, default="")
+    coach_state = models.JSONField(default=dict, blank=True)
+    coach_state_updated_at = models.DateTimeField(null=True, blank=True)
+    coach_weekly_state = models.JSONField(default=dict, blank=True)
+    coach_weekly_updated_at = models.DateTimeField(null=True, blank=True)
+
 
     def __str__(self):
         return self.username

@@ -415,6 +415,12 @@ N8N_WEBHOOK_URL = os.getenv(
     "N8N_WEBHOOK_URL",
     "http://172.200.202.47/webhook/general-agent-gotogym-v2",
 ).strip()
+
+# ============================
+# INTERNAL SCHEDULER (server-to-server)
+# ============================
+# Token compartido para ejecutar sincronizaciones programadas sin exponer endpoints públicos.
+INTERNAL_SYNC_TOKEN = os.getenv("INTERNAL_SYNC_TOKEN", "").strip()
 # ============================
 # SMTP (Microsoft 365 u otro)
 # ============================
