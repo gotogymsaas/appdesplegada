@@ -1,6 +1,6 @@
 from rest_framework.decorators import api_view
 from rest_framework.decorators import authentication_classes, permission_classes
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework_simplejwt.authentication import JWTAuthentication
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework.response import Response
@@ -2211,8 +2211,7 @@ def upload_medical_record(request):
 
 
 @api_view(['POST', 'OPTIONS'])
-@authentication_classes([JWTAuthentication])
-@permission_classes([IsAuthenticatedOrOptions])
+@permission_classes([AllowAny])
 def upload_chat_attachment(request):
     if request.method == 'OPTIONS':
         response = Response()
@@ -2222,14 +2221,26 @@ def upload_chat_attachment(request):
         return response
 
     try:
+        # IMPORTANTE:
+        # No usamos autenticación/permisos DRF aquí porque si el request es multipart grande
+        # y el framework responde 401 antes de consumir el body, App Service/ARR puede devolver 502.
+        # Forzamos el parse (request.data / request.FILES) y luego validamos JWT manualmente.
         username = (request.data.get('username') or '').strip()
         file_obj = request.FILES.get('file')
         include_text = _as_bool(request.data.get('include_text') or request.POST.get('include_text'))
 
-        if not getattr(request, "user", None) or not request.user.is_authenticated:
+        auth_result = None
+        try:
+            auth_result = JWTAuthentication().authenticate(request)
+        except Exception:
+            auth_result = None
+
+        if not auth_result:
             return Response({'error': 'Authentication required'}, status=401)
 
-        if username and username != request.user.username:
+        user, _validated_token = auth_result
+
+        if username and username != user.username:
             return Response({'error': 'Forbidden'}, status=403)
 
         if not file_obj:
@@ -2255,7 +2266,7 @@ def upload_chat_attachment(request):
         if len(file_bytes) > max_bytes:
             return Response({'error': 'Archivo demasiado grande'}, status=413)
         content_type = (file_obj.content_type or 'application/octet-stream').strip() or 'application/octet-stream'
-        safe_username = request.user.username.replace("/", "_")
+        safe_username = user.username.replace("/", "_")
         blob_path = f"{safe_username}/{safe_name}"
 
         extracted_text = None

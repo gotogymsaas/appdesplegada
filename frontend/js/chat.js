@@ -808,7 +808,11 @@ async function processMessage(text, file, pendingId) {
         headers: token ? { 'Authorization': `Bearer ${token}` } : undefined,
         body: formData
       });
-      const uploadData = await uploadResp.json();
+      const uploadData = await uploadResp.json().catch(() => ({}));
+      if (!uploadResp.ok) {
+        const msg = uploadData.error || uploadData.detail || `Error subiendo archivo (HTTP ${uploadResp.status}).`;
+        throw new Error(msg);
+      }
       if (uploadData.success) {
         attachmentUrl = uploadData.file_url;
         attachmentText = uploadData.extracted_text;
