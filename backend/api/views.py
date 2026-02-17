@@ -57,6 +57,7 @@ except Exception:
 import os
 import uuid
 import tempfile
+import base64
 from pathlib import Path
 from urllib.parse import quote, unquote, urlparse
 from django.conf import settings
@@ -200,6 +201,102 @@ def _is_attachment_text_placeholder(text: str) -> bool:
         or t.startswith("[No se pudo extraer texto automáticamente")
         or t.startswith("[OCR no disponible")
     )
+
+
+def _is_image_filename(name: str) -> bool:
+    ext = os.path.splitext((name or "").lower())[1]
+    return ext in (".png", ".jpg", ".jpeg", ".webp", ".heic", ".heif")
+
+
+def _azure_openai_vision_config():
+    endpoint = (os.getenv("AZURE_OPENAI_ENDPOINT", "") or "").strip()
+    api_key = (os.getenv("AZURE_OPENAI_API_KEY", "") or "").strip()
+    deployment = (
+        (os.getenv("AZURE_OPENAI_VISION_DEPLOYMENT", "") or "").strip()
+        or (os.getenv("AZURE_OPENAI_DEPLOYMENT", "") or "").strip()
+    )
+    api_version = (os.getenv("AZURE_OPENAI_API_VERSION", "") or "").strip() or "2024-06-01"
+    enabled = _as_bool(os.getenv("CHAT_ATTACHMENT_VISION", "true"))
+    if not (enabled and endpoint and api_key and deployment):
+        return None
+    return {
+        "endpoint": endpoint.rstrip("/"),
+        "api_key": api_key,
+        "deployment": deployment,
+        "api_version": api_version,
+    }
+
+
+def _describe_image_with_azure_openai(image_url: str, *, image_bytes: bytes | None = None, content_type: str | None = None):
+    """Genera una descripción de una imagen usando Azure OpenAI (Vision).
+
+    - Si image_bytes es provisto, se manda como data URL para evitar que el modelo haga fetch.
+    - Retorna (descripcion, diagnostic).
+    """
+
+    cfg = _azure_openai_vision_config()
+    if not cfg:
+        return "", "vision_not_configured"
+
+    try:
+        url = (
+            f"{cfg['endpoint']}/openai/deployments/{cfg['deployment']}/chat/completions"
+            f"?api-version={cfg['api_version']}"
+        )
+
+        final_image_url = (image_url or "").strip()
+        if image_bytes:
+            safe_ct = (content_type or "image/png").split(";")[0].strip() or "image/png"
+            b64 = base64.b64encode(image_bytes).decode("ascii")
+            final_image_url = f"data:{safe_ct};base64,{b64}"
+
+        if not final_image_url:
+            return "", "vision_missing_image_url"
+
+        system_msg = (
+            "Eres un nutricionista y coach. Describe la imagen con precisión en español, "
+            "enfocándote en comida/alimentos, ingredientes visibles y porciones aproximadas. "
+            "Si no es comida, descríbela igual y di que no es comida."
+        )
+        user_text = (
+            "Analiza la imagen y responde SOLO en JSON con estas claves: "
+            "is_food (boolean), items (lista de strings), portion_estimate (string), "
+            "notes (string). Sé breve."
+        )
+
+        payload = {
+            "messages": [
+                {"role": "system", "content": system_msg},
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": user_text},
+                        {"type": "image_url", "image_url": {"url": final_image_url}},
+                    ],
+                },
+            ],
+            "temperature": 0.2,
+            "max_tokens": 500,
+        }
+
+        headers = {
+            "Content-Type": "application/json",
+            "api-key": cfg["api_key"],
+        }
+
+        resp = requests.post(url, headers=headers, json=payload, timeout=25)
+        if resp.status_code != 200:
+            return "", f"vision_http_{resp.status_code}: {resp.text[:200]}"
+
+        data = resp.json() if resp.content else {}
+        content = (
+            (data.get("choices") or [{}])[0]
+            .get("message", {})
+            .get("content", "")
+        )
+        return (content or "").strip(), ""
+    except Exception as ex:
+        return "", f"vision_failed:{ex}"
 
 
 def _extract_text_from_file_bytes(original_name: str, file_bytes: bytes):
@@ -2509,6 +2606,59 @@ def chat_n8n(request):
                                 attachment_text_diagnostic = f"fallback_extraction_failed: {diagnostic}"
         except Exception as ex:
             print(f"Attachment fallback extraction warning: {ex}")
+
+        # Vision para imágenes (comida/porciones): si sigue sin texto, generar descripción.
+        try:
+            if attachment_url and not (attachment_text or "").strip():
+                filename_guess = os.path.basename(urlparse(str(attachment_url)).path or "")
+                if _is_image_filename(filename_guess):
+                    vision_desc, vision_diag = _describe_image_with_azure_openai(str(attachment_url))
+
+                    # Si el servicio no puede hacer fetch de la URL, intentamos mandarla embebida (data URL) hasta cierto tamaño.
+                    if not (vision_desc or "").strip() and vision_diag and attachment_url:
+                        try:
+                            resp = requests.get(str(attachment_url), timeout=20)
+                            if resp.status_code == 200 and resp.content and len(resp.content) <= 4 * 1024 * 1024:
+                                vision_desc2, vision_diag2 = _describe_image_with_azure_openai(
+                                    str(attachment_url),
+                                    image_bytes=resp.content,
+                                    content_type=(resp.headers.get("Content-Type") or "image/png"),
+                                )
+                                vision_desc = vision_desc2 or vision_desc
+                                vision_diag = vision_diag2 or vision_diag
+                        except Exception:
+                            pass
+
+                    if (vision_desc or "").strip():
+                        pretty = vision_desc.strip()
+                        try:
+                            parsed = json.loads(pretty)
+                            if isinstance(parsed, dict):
+                                items = parsed.get("items")
+                                if isinstance(items, list):
+                                    items_str = ", ".join([str(x) for x in items if str(x).strip()])
+                                else:
+                                    items_str = ""
+                                portion = str(parsed.get("portion_estimate") or "").strip()
+                                notes = str(parsed.get("notes") or "").strip()
+                                is_food = parsed.get("is_food")
+                                summary = []
+                                summary.append(f"is_food: {bool(is_food)}")
+                                if items_str:
+                                    summary.append(f"items: {items_str}")
+                                if portion:
+                                    summary.append(f"portion_estimate: {portion}")
+                                if notes:
+                                    summary.append(f"notes: {notes}")
+                                pretty = "\n".join(summary)
+                        except Exception:
+                            pass
+
+                        attachment_text = f"[DESCRIPCIÓN DE IMAGEN]\n{pretty}"
+                    elif vision_diag and not attachment_text_diagnostic:
+                        attachment_text_diagnostic = f"vision_failed: {vision_diag}"[:350]
+        except Exception as ex:
+            print(f"Vision image description warning: {ex}")
 
         # Construir prompt enriquecido (solo con texto real si se pudo)
         final_input = message or "Analisis de archivo adjunto"
