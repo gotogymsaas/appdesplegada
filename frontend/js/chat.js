@@ -820,7 +820,10 @@ async function processMessage(text, file, pendingId) {
     const authFetch = window.authFetch || fetch;
     const response = await authFetch(API_URL + 'chat/', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+      },
       body: JSON.stringify({
         message: text || "Analiza este documento adjunto.",
         sessionId: sessionId,
