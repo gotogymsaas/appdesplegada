@@ -11,6 +11,7 @@ azure-communication-email
 Pillow
 pytesseract
 pdf2image
+pypdf
 joblib
 numpy
 pandas
