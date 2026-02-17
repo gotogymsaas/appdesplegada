@@ -191,6 +191,17 @@ def _clean_extracted_text(text):
     return cleaned.strip()
 
 
+def _is_attachment_text_placeholder(text: str) -> bool:
+    t = (text or "").strip()
+    if not t:
+        return False
+    return (
+        t.startswith("[No se pudo extraer texto del adjunto automáticamente")
+        or t.startswith("[No se pudo extraer texto automáticamente")
+        or t.startswith("[OCR no disponible")
+    )
+
+
 def _extract_text_from_file_bytes(original_name: str, file_bytes: bytes):
     """Extrae texto de PDFs/imágenes desde bytes.
 
@@ -2270,13 +2281,15 @@ def upload_chat_attachment(request):
         blob_path = f"{safe_username}/{safe_name}"
 
         extracted_text = None
+        extracted_text_diagnostic = ""
         if include_text:
             extracted_text, diagnostic = _extract_text_from_file_bytes(original_name, file_bytes)
             if not extracted_text.strip():
-                extracted_text = (
-                    "[No se pudo extraer texto del adjunto automáticamente. "
+                extracted_text = ""
+                extracted_text_diagnostic = (
+                    "No se pudo extraer texto del adjunto automáticamente. "
                     f"diag={diagnostic}. "
-                    "Si es un PDF escaneado, verifica CHAT_ATTACHMENT_OCR=true y reinicia el App Service.]"
+                    "Para OCR de imágenes instala tesseract. Para OCR de PDF escaneado se requiere poppler + tesseract."
                 )
 
         if _is_azure_blob_enabled():
@@ -2289,6 +2302,8 @@ def upload_chat_attachment(request):
         payload = {'success': True, 'file_url': signed_url, 'file_url_raw': file_url}
         if include_text:
             payload['extracted_text'] = extracted_text or ''
+            if extracted_text_diagnostic and not (extracted_text or '').strip():
+                payload['extracted_text_diagnostic'] = extracted_text_diagnostic
         return Response(payload)
     except Exception as e:
         print(f"Upload chat attachment error: {e}")
@@ -2445,8 +2460,9 @@ def chat_n8n(request):
         # 1. Obtener datos del frontend
         message = request.data.get('message')
         session_id = request.data.get('sessionId') or ''
-        attachment_url = request.data.get('attachment') 
-        attachment_text = request.data.get('attachment_text') # Nuevo: Texto extraído
+        attachment_url = request.data.get('attachment')
+        attachment_text = request.data.get('attachment_text')  # Nuevo: Texto extraído
+        attachment_text_diagnostic = request.data.get('attachment_text_diagnostic') or ""
 
         auth_header = request.headers.get('Authorization', '')
 
@@ -2472,6 +2488,10 @@ def chat_n8n(request):
         except Exception:
             pass
 
+        # Normalizar: si viene placeholder, no lo tratamos como texto real.
+        if _is_attachment_text_placeholder(attachment_text or ""):
+            attachment_text = ""
+
         # Fallback de adjunto: si hay URL pero no texto, descargar y extraer (solo attachments del usuario)
         try:
             if user and attachment_url and not (attachment_text or "").strip():
@@ -2484,16 +2504,15 @@ def chat_n8n(request):
                         if resp.status_code == 200 and resp.content and len(resp.content) <= max_bytes:
                             filename = os.path.basename(blob_name)
                             extracted, diagnostic = _extract_text_from_file_bytes(filename, resp.content)
-                            attachment_text = extracted or (
-                                "[No se pudo extraer texto del adjunto automáticamente. "
-                                f"diag={diagnostic}.]"
-                            )
+                            attachment_text = extracted or ""
+                            if diagnostic and not (attachment_text or "").strip():
+                                attachment_text_diagnostic = f"fallback_extraction_failed: {diagnostic}"
         except Exception as ex:
             print(f"Attachment fallback extraction warning: {ex}")
 
-        # Construir prompt enriquecido (ya con attachment_text si se pudo)
+        # Construir prompt enriquecido (solo con texto real si se pudo)
         final_input = message or "Analisis de archivo adjunto"
-        if attachment_text:
+        if (attachment_text or "").strip() and not _is_attachment_text_placeholder(attachment_text):
             final_input += f"\n\n--- DOCUMENTO ADJUNTO ---\n{attachment_text}\n-----------------------"
 
         professional_rule = (
@@ -2664,7 +2683,8 @@ def chat_n8n(request):
                 fitness_payload = None
 
         attachment_url_for_n8n = attachment_url
-        if (attachment_text or "").strip():
+        # Solo omitimos el URL si hay texto real (evita perder el adjunto cuando hay solo diagnóstico).
+        if (attachment_text or "").strip() and not _is_attachment_text_placeholder(attachment_text):
             attachment_url_for_n8n = ""
 
         payload = {
@@ -2678,6 +2698,7 @@ def chat_n8n(request):
             "auth_header": auth_header,
             "attachment": attachment_url_for_n8n,
             "attachment_text": attachment_text,
+            "attachment_text_diagnostic": attachment_text_diagnostic,
             "fitness": fitness_payload,
             "profile": profile_payload,
             "if_snapshot": if_snapshot,
