@@ -65,10 +65,13 @@ fi
 
 # If venv exists but Django is missing, we'll install deps below.
 
-# Install deps only if Django is missing
+# Install deps only if key runtime deps are missing
 if ! "$PYTHON_BIN" - <<'PY'
 import importlib.util
-raise SystemExit(0 if importlib.util.find_spec("django") else 1)
+
+required = ("django", "rest_framework")
+missing = [m for m in required if importlib.util.find_spec(m) is None]
+raise SystemExit(0 if not missing else 1)
 PY
 then
 	REQ_FILE=""
