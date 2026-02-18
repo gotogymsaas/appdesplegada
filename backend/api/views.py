@@ -968,13 +968,36 @@ def login(request):
         
     try:
         data = request.data
-        print("Intento de login:", data)
 
-        username = data.get('username')
-        password = data.get('password')
+        username = (data.get('username') or '').strip()
+        password = data.get('password') or ''
 
-        user = authenticate(request, username=username, password=password)
-        if user is not None:
+        if not username or not password:
+            return Response({
+                'success': False,
+                'error': 'Usuario y contraseña son requeridos'
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        # Optimización: una sola consulta a DB (evita authenticate + exists)
+        user = User.objects.filter(username=username).first()
+        if not user:
+            return Response({
+                'success': False,
+                'error': 'Usuario no encontrado'
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        if hasattr(user, "is_active") and not user.is_active:
+            return Response({
+                'success': False,
+                'error': 'Usuario inactivo'
+            }, status=status.HTTP_403_FORBIDDEN)
+
+        if not user.check_password(password):
+            return Response({
+                'success': False,
+                'error': 'Contrasena incorrecta'
+            }, status=status.HTTP_400_BAD_REQUEST)
+
             _apply_trial_status(user)
             serializer = UserSerializer(user, context={"request": request})
             refresh = RefreshToken.for_user(user)
@@ -988,16 +1011,7 @@ def login(request):
             })
             response['Access-Control-Allow-Origin'] = '*'
             return response
-        else:
-            if not User.objects.filter(username=username).exists():
-                error_msg = 'Usuario no encontrado'
-            else:
-                error_msg = 'Contrasena incorrecta'
-                
-            return Response({
-                'success': False,
-                'error': error_msg
-            }, status=status.HTTP_400_BAD_REQUEST)
+        
             
     except Exception as e:
         print('Error en login:', str(e))
