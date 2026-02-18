@@ -256,6 +256,8 @@
               icon: META[p.provider]?.icon ?? "⌚",
               tags: META[p.provider]?.tags ?? [],
               oauth: META[p.provider]?.oauth ?? false,
+              enabled: p.enabled,
+              disabled_reason: p.disabled_reason,
             }))
           : PROVIDERS;
 

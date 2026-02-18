@@ -32,17 +32,16 @@ def _provider_catalog():
     apple_enabled = False
     apple_reason = "Próximamente (requiere integración nativa iOS)."
 
-    gf = settings.GOOGLE_FIT.get("WEB", {}) if isinstance(settings.GOOGLE_FIT, dict) else {}
-    gf_enabled = bool(gf.get("CLIENT_ID")) and bool(gf.get("CLIENT_SECRET")) and bool(gf.get("REDIRECT_URI"))
-    gf_reason = "Configura GF_WEB_CLIENT_ID / GF_WEB_CLIENT_SECRET / GF_WEB_REDIRECT_URI" if not gf_enabled else ""
+    # Importante: no dependemos de defaults en settings.py para "enabled".
+    # Solo habilitamos si hay variables de entorno configuradas (producción real).
+    gf_enabled = bool((os.getenv("GF_WEB_CLIENT_ID", "") or "").strip()) and bool((os.getenv("GF_WEB_CLIENT_SECRET", "") or "").strip()) and bool((os.getenv("GF_WEB_REDIRECT_URI", "") or "").strip())
+    gf_reason = "Próximamente (Google Fit en configuración)." if not gf_enabled else ""
 
-    fb = settings.FITBIT if isinstance(getattr(settings, "FITBIT", None), dict) else {}
-    fb_enabled = bool(fb.get("CLIENT_ID")) and bool(fb.get("CLIENT_SECRET")) and bool(fb.get("REDIRECT_URI"))
-    fb_reason = "Configura FITBIT_CLIENT_ID / FITBIT_CLIENT_SECRET / FITBIT_REDIRECT_URI" if not fb_enabled else ""
+    fb_enabled = bool((os.getenv("FITBIT_CLIENT_ID", "") or "").strip()) and bool((os.getenv("FITBIT_CLIENT_SECRET", "") or "").strip()) and bool((os.getenv("FITBIT_REDIRECT_URI", "") or "").strip())
+    fb_reason = "Configura credenciales de Fitbit" if not fb_enabled else ""
 
-    garmin = settings.GARMIN if isinstance(getattr(settings, "GARMIN", None), dict) else {}
-    garmin_enabled = bool(garmin.get("CLIENT_ID")) and bool(garmin.get("CLIENT_SECRET")) and bool(garmin.get("REDIRECT_URI")) and bool(garmin.get("AUTH_URL")) and bool(garmin.get("TOKEN_URL"))
-    garmin_reason = "Configura GARMIN_CLIENT_ID / GARMIN_CLIENT_SECRET / GARMIN_REDIRECT_URI / GARMIN_AUTH_URL / GARMIN_TOKEN_URL" if not garmin_enabled else ""
+    garmin_enabled = bool((os.getenv("GARMIN_CLIENT_ID", "") or "").strip()) and bool((os.getenv("GARMIN_CLIENT_SECRET", "") or "").strip()) and bool((os.getenv("GARMIN_REDIRECT_URI", "") or "").strip()) and bool((os.getenv("GARMIN_AUTH_URL", "") or "").strip()) and bool((os.getenv("GARMIN_TOKEN_URL", "") or "").strip())
+    garmin_reason = "Próximamente (Garmin en configuración)." if not garmin_enabled else ""
 
     return [
         {"provider": "apple_health", "label": "Apple Health", "enabled": apple_enabled, "disabled_reason": apple_reason},
