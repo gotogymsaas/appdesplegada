@@ -17,6 +17,7 @@ cd "$BACKEND_DIR"
 
 INSTALL_OCR_SYSTEM_DEPS="${INSTALL_OCR_SYSTEM_DEPS:-${CHAT_ATTACHMENT_INSTALL_OCR_DEPS:-}}"
 INSTALL_PDF_OCR_SYSTEM_DEPS="${INSTALL_PDF_OCR_SYSTEM_DEPS:-${CHAT_ATTACHMENT_INSTALL_PDF_OCR_DEPS:-}}"
+
 if [ "$INSTALL_OCR_SYSTEM_DEPS" = "1" ] || [ "$INSTALL_OCR_SYSTEM_DEPS" = "true" ]; then
 	if ! command -v tesseract >/dev/null 2>&1; then
 		if command -v apt-get >/dev/null 2>&1; then
@@ -47,9 +48,8 @@ else
 	fi
 fi
 
+# Prefer a persistent virtualenv under /home (App Service)
 PYTHON_BIN="python"
-
-# Use a persistent virtualenv under /home (App Service). Create it if missing.
 VENV_DIR="${APP_ROOT}/antenv"
 VENV_PY="${VENV_DIR}/bin/python"
 
@@ -63,12 +63,9 @@ else
 	fi
 fi
 
-# If venv exists but Django is missing, we'll install deps below.
-
 # Install deps only if key runtime deps are missing
 if ! "$PYTHON_BIN" - <<'PY'
 import importlib.util
-
 required = ("django", "rest_framework")
 missing = [m for m in required if importlib.util.find_spec(m) is None]
 raise SystemExit(0 if not missing else 1)
