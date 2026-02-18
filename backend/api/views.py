@@ -1638,7 +1638,7 @@ def internal_bootstrap_superuser(request):
     Recomendación: setear el token solo para el bootstrap y luego removerlo.
     """
 
-    expected = (getattr(settings, "INTERNAL_ADMIN_BOOTSTRAP_TOKEN", "") or "").strip()
+    expected = (os.getenv("INTERNAL_ADMIN_BOOTSTRAP_TOKEN", "") or "").strip()
     if not expected:
         return Response({"ok": False, "error": "bootstrap_not_configured"}, status=503)
 
