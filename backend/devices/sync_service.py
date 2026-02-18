@@ -285,10 +285,38 @@ def sync_device(user: User, provider: str) -> SyncResult:
         headers = {"Authorization": f"Bearer {conn.access_token}"}
 
         def _get(url: str) -> dict[str, Any]:
+            """GET con 1 reintento automático si Fitbit devuelve 401.
+
+            Fitbit puede invalidar access tokens antes de token_expires_at (revocación, rotación, etc.).
+            En ese caso, intentamos refresh y reintentamos una vez.
+            """
+
+            def _parse_body(resp: requests.Response):
+                try:
+                    return resp.json()
+                except Exception:
+                    return {"raw": (resp.text or "")[:500]}
+
             r = requests.get(url, headers=headers, timeout=15)
-            if r.status_code != 200:
-                raise ValueError(r.json())
-            return r.json()
+            if r.status_code == 200:
+                return _parse_body(r)
+
+            # Rate limit
+            if r.status_code == 429:
+                raise ValueError({"http": 429, "error": "rate_limited", "fitbit": _parse_body(r)})
+
+            # Token inválido/revocado: refresh y retry
+            if r.status_code == 401 and conn.refresh_token:
+                ok, info = _refresh_fitbit_token(conn)
+                if ok:
+                    headers["Authorization"] = f"Bearer {conn.access_token}"
+                    r2 = requests.get(url, headers=headers, timeout=15)
+                    if r2.status_code == 200:
+                        return _parse_body(r2)
+                    raise ValueError({"http": r2.status_code, "fitbit": _parse_body(r2)})
+                raise ValueError({"http": 401, "error": "refresh_failed", **info})
+
+            raise ValueError({"http": r.status_code, "fitbit": _parse_body(r)})
 
         try:
             steps = 0
@@ -391,7 +419,14 @@ def sync_device(user: User, provider: str) -> SyncResult:
                 },
             )
         except ValueError as exc:
-            return SyncResult(False, 400, {"ok": False, "error": "Fitbit error", "fitbit": exc.args[0]})
+            details = exc.args[0] if exc.args else {}
+            http = details.get("http") if isinstance(details, dict) else None
+            if http == 429:
+                return SyncResult(False, 429, {"ok": False, "error": "Fitbit rate limit. Intenta en 1-2 minutos.", "fitbit": details})
+            # Mensaje más accionable si parece auth
+            if http == 401:
+                return SyncResult(False, 400, {"ok": False, "error": "Fitbit sesión expirada. Reconecta Fitbit e intenta de nuevo.", "fitbit": details})
+            return SyncResult(False, 400, {"ok": False, "error": "Fitbit error", "fitbit": details})
         except requests.RequestException as exc:
             return SyncResult(False, 500, {"ok": False, "error": "Fitbit request failed", "detail": str(exc)})
 

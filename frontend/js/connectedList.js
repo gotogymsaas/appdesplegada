@@ -354,7 +354,16 @@
     }
     const data = await res.json().catch(() => ({}));
     if (!res.ok) {
-      const msg = data.error || data.detail || `No se pudo sincronizar (HTTP ${res.status}).`;
+      let msg = data.error || data.detail || `No se pudo sincronizar (HTTP ${res.status}).`;
+      // En errores de Fitbit, el backend adjunta detalle en data.fitbit
+      if (provider === 'fitbit' && data.fitbit) {
+        const http = data.fitbit.http;
+        const inner = data.fitbit.fitbit || data.fitbit;
+        const innerStr = (() => {
+          try { return JSON.stringify(inner); } catch (e) { return String(inner); }
+        })();
+        msg = `${msg}${http ? ` (fitbit http ${http})` : ''}: ${innerStr}`;
+      }
       throw new Error(msg);
     }
     if (data && data.ok === false && data.error) {
