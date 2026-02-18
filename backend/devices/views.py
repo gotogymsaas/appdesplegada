@@ -3,6 +3,7 @@ from django.utils import timezone
 import requests
 from django.conf import settings
 import base64
+import os
 from rest_framework.decorators import api_view, permission_classes, authentication_classes
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework.response import Response
