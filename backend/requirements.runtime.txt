@@ -4,7 +4,7 @@ django-cors-headers
 djangorestframework-simplejwt
 django-storages
 azure-storage-blob
-gunicorn
+gunicorn==24.1.1
 psycopg2-binary
 python-dotenv
 azure-communication-email
