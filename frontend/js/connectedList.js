@@ -116,6 +116,8 @@
 
       list.forEach((p) => {
         const isOn = connectedSet.has(p.key);
+        const enabled = p.enabled !== false; // default true si no viene
+        const disabledReason = String(p.disabled_reason || p.disabledReason || '').trim();
 
         const card = document.createElement("div");
         card.className = `device-card ${isOn ? "connected" : ""}`;
@@ -125,6 +127,7 @@
           .join("");
 
         const buttonClass = isOn ? "btn btn-outline-gold" : "btn btn-secondary";
+        const buttonLabel = !enabled ? "Próximamente" : (isOn ? "Desconectar" : "Conectar");
 
         card.innerHTML = `
           <div class="device-info">
@@ -136,8 +139,8 @@
           </div>
 
           <div style="display:flex; gap:10px; align-items:center;">
-            <button class="${buttonClass}" data-action="toggle">
-              ${isOn ? "Desconectar" : "Conectar"}
+            <button class="${buttonClass}" data-action="toggle" ${enabled ? "" : "disabled"} title="${!enabled && disabledReason ? disabledReason.replace(/\"/g,'&quot;') : ''}">
+              ${buttonLabel}
             </button>
           </div>
         `;
@@ -146,10 +149,14 @@
           const btn = e.currentTarget;
           btn.disabled = true;
           try {
+            if (!enabled) {
+              showToast(disabledReason || "Próximamente.", "error");
+              return;
+            }
             if (!isOn) await connect(p.key);
             else await disconnect(p.key);
           } finally {
-            btn.disabled = false;
+            btn.disabled = !enabled ? true : false;
           }
         });
 
@@ -344,8 +351,15 @@
     return;
     }
     const data = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(data.detail || "Sync failed");
-    showToast("Sincronización iniciada.", "success");
+    if (!res.ok) {
+      const msg = data.error || data.detail || `No se pudo sincronizar (HTTP ${res.status}).`;
+      throw new Error(msg);
+    }
+    if (data && data.ok === false && data.error) {
+      showToast(String(data.error), "error");
+    } else {
+      showToast("Sincronización completada.", "success");
+    }
     await loadDevices();
     } catch (e) {
     console.error(e);

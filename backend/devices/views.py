@@ -26,6 +26,31 @@ PROVIDERS = [
 ]
 PROVIDER_KEYS = {p["provider"] for p in PROVIDERS}
 
+
+def _provider_catalog():
+    # Apple Health no está soportado vía web OAuth en este MVP.
+    apple_enabled = False
+    apple_reason = "Próximamente (requiere integración nativa iOS)."
+
+    gf = settings.GOOGLE_FIT.get("WEB", {}) if isinstance(settings.GOOGLE_FIT, dict) else {}
+    gf_enabled = bool(gf.get("CLIENT_ID")) and bool(gf.get("CLIENT_SECRET")) and bool(gf.get("REDIRECT_URI"))
+    gf_reason = "Configura GF_WEB_CLIENT_ID / GF_WEB_CLIENT_SECRET / GF_WEB_REDIRECT_URI" if not gf_enabled else ""
+
+    fb = settings.FITBIT if isinstance(getattr(settings, "FITBIT", None), dict) else {}
+    fb_enabled = bool(fb.get("CLIENT_ID")) and bool(fb.get("CLIENT_SECRET")) and bool(fb.get("REDIRECT_URI"))
+    fb_reason = "Configura FITBIT_CLIENT_ID / FITBIT_CLIENT_SECRET / FITBIT_REDIRECT_URI" if not fb_enabled else ""
+
+    garmin = settings.GARMIN if isinstance(getattr(settings, "GARMIN", None), dict) else {}
+    garmin_enabled = bool(garmin.get("CLIENT_ID")) and bool(garmin.get("CLIENT_SECRET")) and bool(garmin.get("REDIRECT_URI")) and bool(garmin.get("AUTH_URL")) and bool(garmin.get("TOKEN_URL"))
+    garmin_reason = "Configura GARMIN_CLIENT_ID / GARMIN_CLIENT_SECRET / GARMIN_REDIRECT_URI / GARMIN_AUTH_URL / GARMIN_TOKEN_URL" if not garmin_enabled else ""
+
+    return [
+        {"provider": "apple_health", "label": "Apple Health", "enabled": apple_enabled, "disabled_reason": apple_reason},
+        {"provider": "google_fit", "label": "Google Fit", "enabled": gf_enabled, "disabled_reason": gf_reason},
+        {"provider": "fitbit", "label": "Fitbit", "enabled": fb_enabled, "disabled_reason": fb_reason},
+        {"provider": "garmin", "label": "Garmin", "enabled": garmin_enabled, "disabled_reason": garmin_reason},
+    ]
+
 def _validate_provider(provider):
     if provider not in PROVIDER_KEYS:
         return False
@@ -166,7 +191,7 @@ def devices_list(request):
         pass
 
     return Response({
-        "providers": PROVIDERS,
+        "providers": _provider_catalog(),
         "connected": DeviceConnectionSerializer(qs, many=True).data
     })
 

@@ -6,6 +6,7 @@ from typing import Any
 
 import requests
 from django.conf import settings
+from django.db import transaction
 from django.utils import timezone
 
 from api.models import User
@@ -119,7 +120,17 @@ def sync_device(user: User, provider: str) -> SyncResult:
             payload={"ok": False, "error": "Requiere Premium para sincronizar"},
         )
 
-    conn, _ = DeviceConnection.objects.get_or_create(user=user, provider=provider)
+    # Evitar concurrencia: el auto-sync (scheduler) y el botón manual pueden ejecutarse al mismo tiempo.
+    # En Fitbit, el refresh_token puede rotar, causando fallos intermitentes si hay 2 refresh simultáneos.
+    # Bloqueamos la fila por (user, provider) durante todo el proceso.
+    with transaction.atomic():
+        conn = (
+            DeviceConnection.objects.select_for_update()
+            .filter(user=user, provider=provider)
+            .first()
+        )
+        if not conn:
+            conn = DeviceConnection.objects.create(user=user, provider=provider)
 
     if provider == "google_fit":
         if conn.status != "connected" or not conn.access_token:
