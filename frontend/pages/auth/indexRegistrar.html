@@ -220,11 +220,15 @@ return;
 try {
 btnRegister.textContent = "Registrando...";
 btnRegister.disabled = true;
+const controller = new AbortController();
+const timeoutId = setTimeout(() => controller.abort(), 15000);
 const res = await fetch(API_URL + "register/", {
 method: "POST",
 headers: { "Content-Type": "application/json" },
 body: JSON.stringify({ username, email, password, plan, fullName, termsAccepted, termsVersion, termsSource: "web" }),
+signal: controller.signal,
 });
+clearTimeout(timeoutId);
 const data = await res.json();
 if (res.ok) {
 showToast("¡Registro exitoso! Redirigiendo...", "success");
@@ -239,7 +243,8 @@ btnRegister.disabled = false;
 }
 } catch (error) {
 console.error(error);
-showToast("Error de conexión", "error");
+const isTimeout = error && (error.name === 'AbortError');
+showToast(isTimeout ? "Tiempo de espera agotado. Intenta de nuevo." : "Error de conexión", "error");
 btnRegister.textContent = "Crear Cuenta";
 btnRegister.disabled = false;
 }

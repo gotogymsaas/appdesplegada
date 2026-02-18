@@ -203,11 +203,16 @@
                     btnLogin.textContent = "Cargando...";
                     btnLogin.disabled = true;
 
+                    const controller = new AbortController();
+                    const timeoutId = setTimeout(() => controller.abort(), 15000);
                     const res = await fetch(API_URL + "login/", {
                         method: "POST",
                         headers: { "Content-Type": "application/json" },
                         body: JSON.stringify({ username, password }),
+                        signal: controller.signal,
                     });
+
+                    clearTimeout(timeoutId);
 
                     const data = await res.json();
 
@@ -260,7 +265,13 @@
                 } catch (error) {
                     console.error(error);
                     // Show detailed error for debugging
-                    showToast(`Conexión fallida: ${API_URL} - ${error.message}`, "error");
+                    const isTimeout = error && (error.name === 'AbortError');
+                    showToast(
+                        isTimeout
+                            ? `Tiempo de espera agotado. Intenta de nuevo.`
+                            : `Conexión fallida: ${API_URL} - ${error.message}`,
+                        "error"
+                    );
                     btnLogin.textContent = "Iniciar Sesión";
                     btnLogin.disabled = false;
                 }

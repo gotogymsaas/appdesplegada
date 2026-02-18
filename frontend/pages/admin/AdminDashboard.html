@@ -350,26 +350,33 @@
         <!-- Toast Notification -->
         <div id="toast" class="toast"></div>
 
-        <script src="../../js/config.js"></script>
+        <script src="../../js/config.js?v=2026-02-18"></script>
         <script>
             // --- AUTH CHECK PROTECTION ---
             (function () {
                 const userStr = localStorage.getItem("user");
+                const hasToken = !!(localStorage.getItem("access") || localStorage.getItem("token"));
+                const isLoggedIn = localStorage.getItem("isLoggedIn") === "true";
                 if (!userStr) {
-                    window.location.href = '../auth/indexInicioDeSesion.html';
+                    window.location.href = '/pages/auth/indexInicioDeSesion.html';
                     return;
                 }
                 try {
                     const user = JSON.parse(userStr);
                     // Force check if superuser. If undefined or false, redirect.
                     // Note: user.is_superuser coming from API.
+                    if (!isLoggedIn || !hasToken) {
+                        window.location.href = '/pages/auth/indexInicioDeSesion.html';
+                        return;
+                    }
                     if (!user.is_superuser) {
                         alert("Acceso denegado. Área exclusiva para administradores.");
-                        window.location.href = '../pages/profile/Perfil.html';
+                        window.location.href = '/pages/profile/Perfil.html';
+                        return;
                     }
                 } catch (e) {
                     localStorage.removeItem("user");
-                    window.location.href = '../pages/auth/indexInicioDeSesion.html';
+                    window.location.href = '/pages/auth/indexInicioDeSesion.html';
                 }
             })();
 
@@ -624,7 +631,7 @@
                 if (confirm("¿Cerrar sesión de administrador?")) {
                     localStorage.removeItem("user");
                     localStorage.removeItem("isLoggedIn");
-                    window.location.href = '../auth/indexInicioDeSesion.html';
+                    window.location.href = '/pages/auth/indexInicioDeSesion.html';
                 }
             }
 

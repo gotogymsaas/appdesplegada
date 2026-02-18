@@ -47,19 +47,23 @@ else
 	fi
 fi
 
-# Prefer App Service venv if present
 PYTHON_BIN="python"
-if [ -x "/home/site/wwwroot/antenv/bin/python" ]; then
-	if /home/site/wwwroot/antenv/bin/python - <<'PY'
-import importlib.util
-raise SystemExit(0 if importlib.util.find_spec("django") else 1)
-PY
-	then
-		PYTHON_BIN="/home/site/wwwroot/antenv/bin/python"
-	else
-		echo "Detected broken antenv (django missing). Falling back to system python."
+
+# Use a persistent virtualenv under /home (App Service). Create it if missing.
+VENV_DIR="${APP_ROOT}/antenv"
+VENV_PY="${VENV_DIR}/bin/python"
+
+if [ -x "$VENV_PY" ]; then
+	PYTHON_BIN="$VENV_PY"
+else
+	echo "Creating persistent virtualenv at: $VENV_DIR"
+	python -m venv "$VENV_DIR" || true
+	if [ -x "$VENV_PY" ]; then
+		PYTHON_BIN="$VENV_PY"
 	fi
 fi
+
+# If venv exists but Django is missing, we'll install deps below.
 
 # Install deps only if Django is missing
 if ! "$PYTHON_BIN" - <<'PY'
@@ -82,7 +86,7 @@ then
 	fi
 
 	echo "Installing dependencies from: $REQ_FILE"
-	"$PYTHON_BIN" -m pip install -r "$REQ_FILE"
+	"$PYTHON_BIN" -m pip install --no-cache-dir -r "$REQ_FILE"
 fi
 
 if ! "$PYTHON_BIN" - <<'PY'
