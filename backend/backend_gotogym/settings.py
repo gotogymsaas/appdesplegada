@@ -421,6 +421,9 @@ N8N_WEBHOOK_URL = os.getenv(
 # ============================
 # Token compartido para ejecutar sincronizaciones programadas sin exponer endpoints públicos.
 INTERNAL_SYNC_TOKEN = os.getenv("INTERNAL_SYNC_TOKEN", "").strip()
+
+# One-time admin bootstrap (server-to-server). Prefer to set and remove after use.
+INTERNAL_ADMIN_BOOTSTRAP_TOKEN = os.getenv("INTERNAL_ADMIN_BOOTSTRAP_TOKEN", "").strip()
 # ============================
 # SMTP (Microsoft 365 u otro)
 # ============================

@@ -7,6 +7,7 @@ from rest_framework.response import Response
 from rest_framework import status
 import re
 import threading
+import secrets
 
 from devices.models import DeviceConnection, FitnessSync
 from devices.scheduler_service import enqueue_sync_request
@@ -1563,6 +1564,8 @@ def update_profile(request):
 @permission_classes([IsAuthenticatedOrOptions])
 def get_users(request):
     try:
+        if not getattr(request, "user", None) or not request.user.is_superuser:
+            return Response({"error": "Forbidden"}, status=status.HTTP_403_FORBIDDEN)
         users = User.objects.all().order_by('-date_joined')
         serializer = UserSerializer(users, many=True, context={"request": request})
         return Response(serializer.data)
@@ -1575,6 +1578,8 @@ def get_users(request):
 @permission_classes([IsAuthenticatedOrOptions])
 def delete_user(request, user_id):
     try:
+        if not getattr(request, "user", None) or not request.user.is_superuser:
+            return Response({"error": "Forbidden"}, status=status.HTTP_403_FORBIDDEN)
         try:
             user = User.objects.get(id=user_id)
         except User.DoesNotExist:
@@ -1593,6 +1598,8 @@ def delete_user(request, user_id):
 @permission_classes([IsAuthenticatedOrOptions])
 def create_user_admin(request):
     try:
+        if not getattr(request, "user", None) or not request.user.is_superuser:
+            return Response({"error": "Forbidden"}, status=status.HTTP_403_FORBIDDEN)
         data = request.data
         username = data.get('username')
         email = data.get('email')
@@ -1620,6 +1627,51 @@ def create_user_admin(request):
         }, status=status.HTTP_201_CREATED)
     except Exception as e:
         return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(["POST"])
+@permission_classes([AllowAny])
+def internal_bootstrap_superuser(request):
+    """Bootstrap controlado del primer superuser.
+
+    Autorización: header X-Internal-Token debe coincidir con INTERNAL_ADMIN_BOOTSTRAP_TOKEN.
+    Recomendación: setear el token solo para el bootstrap y luego removerlo.
+    """
+
+    expected = (getattr(settings, "INTERNAL_ADMIN_BOOTSTRAP_TOKEN", "") or "").strip()
+    if not expected:
+        return Response({"ok": False, "error": "bootstrap_not_configured"}, status=503)
+
+    provided = (
+        request.headers.get("X-Internal-Token")
+        or request.META.get("HTTP_X_INTERNAL_TOKEN")
+        or ""
+    ).strip()
+    if not provided or not secrets.compare_digest(provided, expected):
+        return Response({"ok": False, "error": "unauthorized"}, status=401)
+
+    # Safety: only allow if there are no superusers yet.
+    if User.objects.filter(is_superuser=True).exists():
+        return Response({"ok": False, "error": "already_bootstrapped"}, status=403)
+
+    payload = request.data if isinstance(request.data, dict) else {}
+    username = (payload.get("username") or "").strip()
+    email = (payload.get("email") or "").strip()
+    password = payload.get("password") or ""
+    if not username or not password:
+        return Response({"ok": False, "error": "username_password_required"}, status=400)
+
+    if not email:
+        email = f"{username}@gotogym.store"
+
+    user, created = User.objects.get_or_create(username=username, defaults={"email": email})
+    user.email = email
+    user.is_staff = True
+    user.is_superuser = True
+    user.set_password(password)
+    user.save()
+
+    return Response({"ok": True, "created": created, "username": user.username})
 
 @api_view(['POST', 'OPTIONS'])
 @authentication_classes([JWTAuthentication])
@@ -2151,6 +2203,8 @@ def check_badges(user):
 @permission_classes([IsAuthenticatedOrOptions])
 def update_user_admin(request, user_id):
     try:
+        if not getattr(request, "user", None) or not request.user.is_superuser:
+            return Response({"error": "Forbidden"}, status=status.HTTP_403_FORBIDDEN)
         try:
             user = User.objects.get(id=user_id)
         except User.DoesNotExist:
@@ -2171,6 +2225,8 @@ def update_user_admin(request, user_id):
 @permission_classes([IsAuthenticatedOrOptions])
 def get_global_history(request):
     try:
+        if not getattr(request, "user", None) or not request.user.is_superuser:
+            return Response({"error": "Forbidden"}, status=status.HTTP_403_FORBIDDEN)
         # Group by day and calc average
         # Limit to last 30 days roughly
         thirty_days_ago = date.today() - timedelta(days=30)
