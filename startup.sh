@@ -98,6 +98,15 @@ then
 	"$PYTHON_BIN" -m pip install django-storages azure-storage-blob
 fi
 
+if ! "$PYTHON_BIN" - <<'PY'
+import importlib.util
+raise SystemExit(0 if importlib.util.find_spec("pywebpush") else 1)
+PY
+then
+	echo "Installing missing runtime dependency: pywebpush"
+	"$PYTHON_BIN" -m pip install pywebpush
+fi
+
 "$PYTHON_BIN" manage.py migrate --noinput
 "$PYTHON_BIN" manage.py collectstatic --noinput || true
 
