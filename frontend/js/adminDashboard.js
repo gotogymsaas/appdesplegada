@@ -40,6 +40,14 @@
     deltaRangePremiumSignups: () => document.getElementById('delta-range-premium-signups'),
     deltaRangeConversion: () => document.getElementById('delta-range-conversion'),
 
+    kpiMrrCurrent: () => document.getElementById('kpi-mrr-current'),
+    kpiMrrCurrentSub: () => document.getElementById('kpi-mrr-current-sub'),
+    kpiMrrProjected30d: () => document.getElementById('kpi-mrr-projected-30d'),
+    kpiMrrProjected30dSub: () => document.getElementById('kpi-mrr-projected-30d-sub'),
+
+    mrrHistoryChart: () => document.getElementById('mrrHistoryChart'),
+    mrrProjectionChart: () => document.getElementById('mrrProjectionChart'),
+
     bulkCreateInput: () => document.getElementById('bulkCreateInput'),
     bulkPlanInput: () => document.getElementById('bulkPlanInput'),
 
@@ -71,6 +79,203 @@
   let planChartInstance = null;
   let usersCumulativeChartInstance = null;
   let premiumShareChartInstance = null;
+
+  let mrrHistoryChartInstance = null;
+  let mrrProjectionChartInstance = null;
+
+  function getPremiumPriceCOP() {
+    const override =
+      window.GTG_PREMIUM_PRICE_COP ||
+      localStorage.getItem('gtg_premium_price_cop') ||
+      localStorage.getItem('premium_price_cop');
+    const v = Number(String(override || '').replace(/[^0-9.]/g, ''));
+    if (Number.isFinite(v) && v > 0) return v;
+    // Fuente: frontend/pages/plans/Planes.html (Mensual: $20.900 COP / mes)
+    return 20900;
+  }
+
+  function formatCOP(value) {
+    const n = Number(value);
+    if (!Number.isFinite(n)) return '--';
+    try {
+      return n.toLocaleString('es-CO', { style: 'currency', currency: 'COP', maximumFractionDigits: 0 });
+    } catch (e) {
+      return `$${Math.round(n).toLocaleString('es-CO')} COP`;
+    }
+  }
+
+  function computePremiumSignupsSeries() {
+    const rows = signupsSeriesCache && signupsSeriesCache.data;
+    if (!Array.isArray(rows) || rows.length === 0) return null;
+    const labels = rows.map((r) => r.date);
+    const premium = rows.map((r) => Number(r.premium || 0));
+    return { labels, premium };
+  }
+
+  function movingAverage(values, windowSize) {
+    const w = Math.max(1, Number(windowSize) || 1);
+    const out = [];
+    for (let i = 0; i < values.length; i++) {
+      const start = Math.max(0, i - w + 1);
+      const slice = values.slice(start, i + 1);
+      const sum = slice.reduce((a, b) => a + (Number(b) || 0), 0);
+      out.push(slice.length ? sum / slice.length : 0);
+    }
+    return out;
+  }
+
+  function addDaysISO(iso, days) {
+    try {
+      const d = new Date(iso);
+      if (Number.isNaN(d.getTime())) return iso;
+      d.setDate(d.getDate() + days);
+      return d.toISOString().slice(0, 10);
+    } catch (e) {
+      return iso;
+    }
+  }
+
+  function renderRevenueAndProjections() {
+    if (!overviewCache) return;
+    const d = overviewCache.data || {};
+    const premiumActiveNow = Number(d.premium_active || 0);
+    const price = getPremiumPriceCOP();
+
+    const mrrNow = premiumActiveNow * price;
+    if (els.kpiMrrCurrent()) els.kpiMrrCurrent().innerText = formatCOP(mrrNow);
+    if (els.kpiMrrCurrentSub()) {
+      els.kpiMrrCurrentSub().innerText = `${premiumActiveNow} Premium activos × ${formatCOP(price)}/mes`;
+    }
+
+    const series = computePremiumSignupsSeries();
+    if (!series) return;
+
+    const sumPremiumSignups = series.premium.reduce((a, b) => a + (Number(b) || 0), 0);
+    const premiumAtStart = Math.max(0, premiumActiveNow - sumPremiumSignups);
+
+    // Histórico MRR estimado dentro del rango
+    let runningPremium = premiumAtStart;
+    const premiumActiveEst = [];
+    for (const p of series.premium) {
+      runningPremium += Number(p) || 0;
+      premiumActiveEst.push(runningPremium);
+    }
+    const mrrHistory = premiumActiveEst.map((n) => n * price);
+
+    // Proyección MRR 30 días: usa promedio móvil (últimos 14 días o menos)
+    const tailWindow = Math.min(14, series.premium.length);
+    const tail = series.premium.slice(-tailWindow);
+    const avgPremiumPerDay = tailWindow ? tail.reduce((a, b) => a + (Number(b) || 0), 0) / tailWindow : 0;
+
+    const daysForecast = 30;
+    const lastLabel = series.labels[series.labels.length - 1] || new Date().toISOString().slice(0, 10);
+    const projLabels = [];
+    const projMrr = [];
+
+    for (let i = 1; i <= daysForecast; i++) {
+      projLabels.push(addDaysISO(lastLabel, i));
+      const premiumProjected = premiumActiveNow + avgPremiumPerDay * i;
+      projMrr.push(premiumProjected * price);
+    }
+
+    const mrrProjected30d = projMrr[projMrr.length - 1] || mrrNow;
+    if (els.kpiMrrProjected30d()) els.kpiMrrProjected30d().innerText = formatCOP(mrrProjected30d);
+    if (els.kpiMrrProjected30dSub()) {
+      els.kpiMrrProjected30dSub().innerText = `Altas Premium/día (prom. ${tailWindow}d): ${avgPremiumPerDay.toFixed(2)} | Precio: ${formatCOP(price)}/mes`;
+    }
+
+    // Charts
+    const { secondary, primary, textMuted } = getThemeVars();
+
+    const histEl = els.mrrHistoryChart();
+    if (histEl && window.Chart) {
+      const ctx = histEl.getContext('2d');
+      if (mrrHistoryChartInstance) mrrHistoryChartInstance.destroy();
+      mrrHistoryChartInstance = new Chart(ctx, {
+        type: 'line',
+        data: {
+          labels: series.labels,
+          datasets: [
+            {
+              label: 'MRR estimado',
+              data: mrrHistory,
+              borderColor: secondary,
+              backgroundColor: 'rgba(212, 180, 106, 0.10)',
+              borderWidth: 2,
+              tension: 0.25,
+              fill: true,
+              pointRadius: 0,
+            },
+          ],
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { display: false },
+            tooltip: {
+              callbacks: {
+                label: (ctx2) => ` ${formatCOP(ctx2.parsed.y)}`,
+              },
+            },
+          },
+          scales: {
+            y: {
+              beginAtZero: true,
+              grid: { color: 'rgba(255,255,255,0.1)' },
+              ticks: { color: textMuted, callback: (v) => formatCOP(v) },
+            },
+            x: { grid: { display: false }, ticks: { maxTicksLimit: 7, color: textMuted } },
+          },
+        },
+      });
+    }
+
+    const projEl = els.mrrProjectionChart();
+    if (projEl && window.Chart) {
+      const ctx = projEl.getContext('2d');
+      if (mrrProjectionChartInstance) mrrProjectionChartInstance.destroy();
+      mrrProjectionChartInstance = new Chart(ctx, {
+        type: 'line',
+        data: {
+          labels: projLabels,
+          datasets: [
+            {
+              label: 'MRR proyectado',
+              data: projMrr,
+              borderColor: primary,
+              backgroundColor: 'rgba(15, 191, 176, 0.10)',
+              borderWidth: 2,
+              tension: 0.25,
+              fill: true,
+              pointRadius: 0,
+              borderDash: [6, 6],
+            },
+          ],
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { display: false },
+            tooltip: {
+              callbacks: {
+                label: (ctx2) => ` ${formatCOP(ctx2.parsed.y)}`,
+              },
+            },
+          },
+          scales: {
+            y: {
+              beginAtZero: true,
+              grid: { color: 'rgba(255,255,255,0.1)' },
+              ticks: { color: textMuted, callback: (v) => formatCOP(v) },
+            },
+            x: { grid: { display: false }, ticks: { maxTicksLimit: 7, color: textMuted } },
+          },
+        },
+      });
+    }
+  }
 
   function getThemeVars() {
     const styles = getComputedStyle(document.documentElement);
@@ -906,6 +1111,7 @@
     loadGlobalChart();
 
     renderPeriodComparatives();
+    renderRevenueAndProjections();
     setLastUpdatedNow();
   }
 

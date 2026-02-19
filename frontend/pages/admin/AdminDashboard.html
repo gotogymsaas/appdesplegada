@@ -57,6 +57,50 @@
                 <span class="layer-chip" data-range-chip>Últimos 30 días</span>
             </div>
 
+            <div class="table-section revenue-hero">
+                <div class="meta-row" style="margin-bottom: 6px;">
+                    <h2 style="margin: 0; color: var(--text-main); font-size: 18px;">Ingresos (estimado)</h2>
+                    <span class="meta-chip">MRR estimado</span>
+                </div>
+                <div class="revenue-grid">
+                    <div class="revenue-metric">
+                        <div class="revenue-value" id="kpi-mrr-current">--</div>
+                        <div class="revenue-label">MRR actual (Premium activos × precio)</div>
+                        <div class="revenue-sub" id="kpi-mrr-current-sub">—</div>
+                    </div>
+                    <div class="revenue-metric">
+                        <div class="revenue-value" id="kpi-mrr-projected-30d">--</div>
+                        <div class="revenue-label">MRR proyectado (próx. 30 días)</div>
+                        <div class="revenue-sub" id="kpi-mrr-projected-30d-sub">—</div>
+                    </div>
+                </div>
+                <div class="chart-explainer">Algoritmo MVP: proyecta nuevas altas Premium con promedio móvil de los últimos días del rango (sin churn/cancelaciones por ahora).</div>
+            </div>
+
+            <div class="charts-grid" style="margin-top: 16px;">
+                <div class="table-section">
+                    <div class="meta-row" style="margin-bottom: 10px;">
+                        <h2 style="margin: 0; color: var(--text-main); font-size: 18px;">MRR estimado (histórico)</h2>
+                        <span class="meta-chip" data-range-chip>Últimos 30 días</span>
+                    </div>
+                    <div class="chart-canvas-wrap chart-tall">
+                        <canvas id="mrrHistoryChart"></canvas>
+                    </div>
+                    <div class="chart-explainer">Serie estimada del MRR usando Premium activos y altas Premium dentro del rango. Útil para ver crecimiento de ingresos.</div>
+                </div>
+
+                <div class="table-section">
+                    <div class="meta-row" style="margin-bottom: 10px;">
+                        <h2 style="margin: 0; color: var(--text-main); font-size: 18px;">Proyección MRR (30 días)</h2>
+                        <span class="meta-chip">Futuro</span>
+                    </div>
+                    <div class="chart-canvas-wrap chart-tall">
+                        <canvas id="mrrProjectionChart"></canvas>
+                    </div>
+                    <div class="chart-explainer">Proyección a 30 días con promedio móvil de altas Premium (sin churn). Se recalcula al cambiar el rango.</div>
+                </div>
+            </div>
+
             <!-- KPI CARDS -->
             <div class="kpi-grid" style="margin-bottom: 0;">
                 <div class="kpi-card">

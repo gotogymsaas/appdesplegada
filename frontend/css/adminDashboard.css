@@ -176,6 +176,43 @@
   color: var(--error);
 }
 
+/* Ingresos (estratégico) */
+.revenue-hero {
+  border: 1px solid rgba(212, 180, 106, 0.25);
+}
+
+.revenue-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 14px;
+}
+
+.revenue-metric {
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: var(--radius-lg);
+  padding: 14px;
+  background: rgba(255, 255, 255, 0.02);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.revenue-value {
+  font-size: 28px;
+  font-weight: 900;
+  color: var(--secondary);
+}
+
+.revenue-label {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.revenue-sub {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
 /* MAIN DASHBOARD LAYOUT */
 .dashboard-main {
   display: grid;
