@@ -11,7 +11,7 @@ from django.utils import timezone
 
 from api.models import User
 
-from .models import DeviceConnection, FitnessSync
+from .models import DeviceConnection, FitnessSync, WhoopRawRecord
 
 
 @dataclass(frozen=True)
@@ -110,6 +110,137 @@ def _refresh_fitbit_token(conn: DeviceConnection) -> tuple[bool, dict[str, Any]]
         conn.token_expires_at = timezone.now() + timezone.timedelta(seconds=expires_in)
     conn.save(update_fields=["access_token", "refresh_token", "token_expires_at", "updated_at"])
     return True, {"ok": True}
+
+
+def _refresh_whoop_token(conn: DeviceConnection) -> tuple[bool, dict[str, Any]]:
+    if not conn.refresh_token:
+        return False, {"error": "Falta refresh_token"}
+
+    cfg = getattr(settings, "WHOOP", {})
+    client_id = (cfg.get("CLIENT_ID") or "").strip()
+    client_secret = (cfg.get("CLIENT_SECRET") or "").strip()
+    token_url = (cfg.get("TOKEN_URL") or "").strip()
+    if not client_id or not client_secret or not token_url:
+        return False, {"error": "Configuración WHOOP incompleta"}
+
+    payload = {
+        "grant_type": "refresh_token",
+        "refresh_token": conn.refresh_token,
+        "client_id": client_id,
+        "client_secret": client_secret,
+    }
+
+    r = requests.post(token_url, data=payload, timeout=20)
+    data = r.json() if r.content else {}
+    if r.status_code != 200:
+        return False, {"error": "Refresh failed", "whoop": data}
+
+    conn.access_token = data.get("access_token", conn.access_token)
+    if data.get("refresh_token"):
+        conn.refresh_token = data["refresh_token"]
+    expires_in = int(data.get("expires_in", 0) or 0)
+    if expires_in:
+        conn.token_expires_at = timezone.now() + timezone.timedelta(seconds=expires_in)
+    conn.save(update_fields=["access_token", "refresh_token", "token_expires_at", "updated_at"])
+    return True, {"ok": True}
+
+
+def _whoop_api_base() -> str:
+    base = getattr(settings, "WHOOP", {}).get("API_BASE") or "https://api.prod.whoop.com/developer"
+    return base.rstrip("/")
+
+
+def _whoop_get(url_path: str, access_token: str, *, params: dict[str, Any] | None = None) -> requests.Response:
+    url = f"{_whoop_api_base()}{url_path}"
+    headers = {"Authorization": f"Bearer {access_token}"}
+    return requests.get(url, headers=headers, params=params or {}, timeout=25)
+
+
+def _parse_dt(value: Any):
+    if not value or not isinstance(value, str):
+        return None
+    try:
+        # Django puede parsear ISO con 'Z' usando fromisoformat si se normaliza.
+        cleaned = value.replace("Z", "+00:00")
+        return timezone.datetime.fromisoformat(cleaned)
+    except Exception:
+        return None
+
+
+def _whoop_upsert_records(user: User, resource_type: str, records: list[dict[str, Any]]) -> int:
+    written = 0
+    for rec in records:
+        if not isinstance(rec, dict):
+            continue
+
+        rid = rec.get("id")
+        if rid is None and resource_type == "recovery":
+            # Recovery no tiene id uuid; cycle_id es el identificador estable en el schema.
+            rid = rec.get("cycle_id")
+        if rid is None and resource_type in ("profile", "body"):
+            rid = rec.get("user_id") or "singleton"
+        if rid is None:
+            continue
+
+        defaults = {
+            "payload": rec,
+            "timezone_offset": (rec.get("timezone_offset") or "")[:8],
+            "score_state": (rec.get("score_state") or "")[:20],
+            "start_time": _parse_dt(rec.get("start")),
+            "end_time": _parse_dt(rec.get("end")),
+            "created_at_remote": _parse_dt(rec.get("created_at")),
+            "updated_at_remote": _parse_dt(rec.get("updated_at")),
+        }
+        WhoopRawRecord.objects.update_or_create(
+            user=user,
+            resource_type=resource_type,
+            resource_id=str(rid),
+            defaults=defaults,
+        )
+        written += 1
+    return written
+
+
+def _whoop_fetch_collection(user: User, access_token: str, *, resource_type: str, path: str, start: str | None, end: str | None) -> dict[str, Any]:
+    total = 0
+    next_token: str | None = None
+    pages = 0
+
+    while True:
+        params: dict[str, Any] = {"limit": 25}
+        if start:
+            params["start"] = start
+        if end:
+            params["end"] = end
+        if next_token:
+            params["nextToken"] = next_token
+
+        resp = _whoop_get(path, access_token, params=params)
+        if resp.status_code == 401:
+            return {"ok": False, "error": "whoop_unauthorized", "http": 401}
+        if resp.status_code == 429:
+            return {"ok": False, "error": "whoop_rate_limited", "http": 429}
+        if resp.status_code != 200:
+            try:
+                return {"ok": False, "error": "whoop_http_error", "http": resp.status_code, "whoop": resp.json()}
+            except Exception:
+                return {"ok": False, "error": "whoop_http_error", "http": resp.status_code, "whoop": (resp.text or "")[:500]}
+
+        data = resp.json() if resp.content else {}
+        records = data.get("records") or []
+        if isinstance(records, list) and records:
+            total += _whoop_upsert_records(user, resource_type, records)
+
+        next_token = data.get("next_token") or data.get("nextToken")
+        pages += 1
+        if not next_token:
+            break
+
+        # corte de seguridad para evitar loops accidentales
+        if pages >= 50:
+            break
+
+    return {"ok": True, "written": total, "pages": pages}
 
 
 def sync_device(user: User, provider: str) -> SyncResult:
@@ -263,6 +394,103 @@ def sync_device(user: User, provider: str) -> SyncResult:
                     },
                 },
             )
+
+    if provider == "whoop":
+        if conn.status != "connected" or not conn.access_token:
+            return SyncResult(False, 400, {"ok": False, "error": "WHOOP no conectado"})
+
+        # refresh si expira pronto
+        if conn.token_expires_at and conn.token_expires_at <= timezone.now() + timezone.timedelta(seconds=30):
+            ok, info = _refresh_whoop_token(conn)
+            if not ok:
+                return SyncResult(False, 400, {"ok": False, **info})
+
+        # Ventana: incremental por last_sync_at; si no hay, último 30 días
+        now = timezone.now()
+        start_dt = conn.last_sync_at or (now - timezone.timedelta(days=30))
+        start = start_dt.isoformat()
+        end = now.isoformat()
+
+        # 1) profile/basic y body measurements (no paginado, raw “singleton”)
+        profile_resp = _whoop_get("/v2/user/profile/basic", conn.access_token)
+        if profile_resp.status_code == 200:
+            profile = profile_resp.json() if profile_resp.content else {}
+            if isinstance(profile, dict) and profile:
+                _whoop_upsert_records(user, "profile", [profile])
+        elif profile_resp.status_code == 401:
+            return SyncResult(False, 401, {"ok": False, "error": "whoop_unauthorized"})
+
+        body_resp = _whoop_get("/v2/user/measurement/body", conn.access_token)
+        if body_resp.status_code == 200:
+            body = body_resp.json() if body_resp.content else {}
+            if isinstance(body, dict) and body:
+                _whoop_upsert_records(user, "body", [body])
+        elif body_resp.status_code == 401:
+            return SyncResult(False, 401, {"ok": False, "error": "whoop_unauthorized"})
+
+        # 2) colecciones principales
+        cycles = _whoop_fetch_collection(user, conn.access_token, resource_type="cycle", path="/v2/cycle", start=start, end=end)
+        sleeps = _whoop_fetch_collection(user, conn.access_token, resource_type="sleep", path="/v2/activity/sleep", start=start, end=end)
+        recoveries = _whoop_fetch_collection(user, conn.access_token, resource_type="recovery", path="/v2/recovery", start=start, end=end)
+        workouts = _whoop_fetch_collection(user, conn.access_token, resource_type="workout", path="/v2/activity/workout", start=start, end=end)
+
+        if not all(x.get("ok") for x in (cycles, sleeps, recoveries, workouts)):
+            return SyncResult(
+                False,
+                400,
+                {
+                    "ok": False,
+                    "error": "whoop_sync_failed",
+                    "cycles": cycles,
+                    "sleeps": sleeps,
+                    "recoveries": recoveries,
+                    "workouts": workouts,
+                },
+            )
+
+        # registrar un resumen en FitnessSync (métricas normalizadas vendrán después)
+        FitnessSync.objects.create(
+            user=user,
+            provider="whoop",
+            start_time=start_dt,
+            end_time=now,
+            metrics={
+                "cycles_written": cycles.get("written", 0),
+                "sleeps_written": sleeps.get("written", 0),
+                "recoveries_written": recoveries.get("written", 0),
+                "workouts_written": workouts.get("written", 0),
+            },
+            raw={
+                "cycles": cycles,
+                "sleeps": sleeps,
+                "recoveries": recoveries,
+                "workouts": workouts,
+            },
+        )
+
+        conn.last_sync_at = now
+        conn.save(update_fields=["last_sync_at", "updated_at"])
+
+        return SyncResult(
+            True,
+            200,
+            {
+                "ok": True,
+                "provider": "whoop",
+                "window": {"start": start, "end": end},
+                "ingest": {
+                    "cycles": cycles,
+                    "sleeps": sleeps,
+                    "recoveries": recoveries,
+                    "workouts": workouts,
+                },
+                "device": {
+                    "provider": conn.provider,
+                    "status": conn.status,
+                    "last_sync_at": conn.last_sync_at.isoformat() if conn.last_sync_at else None,
+                },
+            },
+        )
         except requests.RequestException as exc:
             return SyncResult(False, 500, {"ok": False, "error": "Google Fit request failed", "detail": str(exc)})
 

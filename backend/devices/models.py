@@ -6,6 +6,7 @@ class DeviceConnection(models.Model):
         ('google_fit', 'Google Fit'),
         ('fitbit', 'Fitbit'),
         ('garmin', 'Garmin'),
+        ('whoop', 'WHOOP'),
     ]
 
     # Línea clave: relación con el usuario
@@ -136,3 +137,50 @@ class SyncRequest(models.Model):
 
     def __str__(self):
         return f"{self.user} - {self.provider or 'any'} ({self.status})"
+
+
+class WhoopRawRecord(models.Model):
+    """Almacena payloads crudos de WHOOP por recurso (sleep/workout/cycle/recovery/profile/body).
+
+    Esta capa permite ingestar "todo" inicialmente sin forzar normalización inmediata.
+    """
+
+    RESOURCE_TYPES = [
+        ("cycle", "cycle"),
+        ("sleep", "sleep"),
+        ("recovery", "recovery"),
+        ("workout", "workout"),
+        ("profile", "profile"),
+        ("body", "body"),
+    ]
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="whoop_raw_records",
+    )
+    resource_type = models.CharField(max_length=20, choices=RESOURCE_TYPES)
+    resource_id = models.CharField(max_length=100)
+
+    start_time = models.DateTimeField(null=True, blank=True)
+    end_time = models.DateTimeField(null=True, blank=True)
+    created_at_remote = models.DateTimeField(null=True, blank=True)
+    updated_at_remote = models.DateTimeField(null=True, blank=True)
+
+    timezone_offset = models.CharField(max_length=8, blank=True, default="")
+    score_state = models.CharField(max_length=20, blank=True, default="")
+
+    payload = models.JSONField(default=dict, blank=True)
+
+    fetched_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        unique_together = ("user", "resource_type", "resource_id")
+        indexes = [
+            models.Index(fields=["user", "resource_type"], name="devices_whoop_user_type_idx"),
+            models.Index(fields=["resource_type", "resource_id"], name="devices_whoop_type_id_idx"),
+        ]
+
+    def __str__(self):
+        return f"{self.user} - whoop:{self.resource_type}:{self.resource_id}"

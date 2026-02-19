@@ -10,6 +10,7 @@
     { key: "google_fit", name: "Google Fit", icon: "🤖", tags: ["Android", "Wear OS"], oauth: true },
     { key: "garmin",       name: "Garmin Connect",icon:"🟦", tags: ["iOS / Android", "OAuth"], oauth: true },
     { key: "fitbit",       name: "Fitbit",       icon: "🟪", tags: ["iOS / Android", "OAuth"], oauth: true },
+    { key: "whoop",        name: "WHOOP",        icon: "🟧", tags: ["iOS / Android", "OAuth"], oauth: true },
   ];
 
   // ========= Helpers =========

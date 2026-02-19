@@ -3,6 +3,7 @@ from devices.oauth.oauth_views import oauth_authorize, oauth_callback
 from devices.oauth.views_google_fit import google_fit_authorize, google_fit_callback
 from devices.oauth.views_fitbit import fitbit_authorize, fitbit_callback
 from devices.oauth.views_garmin import garmin_authorize, garmin_callback
+from devices.oauth.views_whoop import whoop_authorize, whoop_callback
 
 urlpatterns = [
     # ✅ Google Fit REAL (redirige a Google)
@@ -14,6 +15,10 @@ urlpatterns = [
     # ✅ Garmin REAL (requiere credenciales de partner)
     path('garmin/authorize/', garmin_authorize),
     path('garmin/callback/', garmin_callback),
+
+    # ✅ WHOOP REAL
+    path('whoop/authorize/', whoop_authorize),
+    path('whoop/callback/', whoop_callback),
 
     # genéricos (otros providers)
     path("<str:provider>/authorize/", oauth_authorize),

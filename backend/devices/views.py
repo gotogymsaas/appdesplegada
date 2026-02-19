@@ -24,6 +24,7 @@ PROVIDERS = [
     {"provider": "google_fit", "label": "Google Fit"},
     {"provider": "fitbit", "label": "Fitbit"},
     {"provider": "garmin", "label": "Garmin"},
+    {"provider": "whoop", "label": "WHOOP"},
 ]
 PROVIDER_KEYS = {p["provider"] for p in PROVIDERS}
 
@@ -44,11 +45,15 @@ def _provider_catalog():
     garmin_enabled = bool((os.getenv("GARMIN_CLIENT_ID", "") or "").strip()) and bool((os.getenv("GARMIN_CLIENT_SECRET", "") or "").strip()) and bool((os.getenv("GARMIN_REDIRECT_URI", "") or "").strip()) and bool((os.getenv("GARMIN_AUTH_URL", "") or "").strip()) and bool((os.getenv("GARMIN_TOKEN_URL", "") or "").strip())
     garmin_reason = "Próximamente (Garmin en configuración)." if not garmin_enabled else ""
 
+    whoop_enabled = bool((os.getenv("WHOOP_CLIENT_ID", "") or "").strip()) and bool((os.getenv("WHOOP_CLIENT_SECRET", "") or "").strip()) and bool((os.getenv("WHOOP_REDIRECT_URI", "") or "").strip())
+    whoop_reason = "Próximamente (WHOOP en configuración)." if not whoop_enabled else ""
+
     return [
         {"provider": "apple_health", "label": "Apple Health", "enabled": apple_enabled, "disabled_reason": apple_reason},
         {"provider": "google_fit", "label": "Google Fit", "enabled": gf_enabled, "disabled_reason": gf_reason},
         {"provider": "fitbit", "label": "Fitbit", "enabled": fb_enabled, "disabled_reason": fb_reason},
         {"provider": "garmin", "label": "Garmin", "enabled": garmin_enabled, "disabled_reason": garmin_reason},
+        {"provider": "whoop", "label": "WHOOP", "enabled": whoop_enabled, "disabled_reason": whoop_reason},
     ]
 
 def _validate_provider(provider):
