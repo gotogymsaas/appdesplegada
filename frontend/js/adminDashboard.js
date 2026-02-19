@@ -56,6 +56,7 @@
   const API_URL = window.API_URL;
 
   let allUsers = [];
+  const selectedUserIds = new Set();
 
   let overviewCache = null;
   let signupsSeriesCache = null;
@@ -81,11 +82,14 @@
 
   function clampDaysWindow(value) {
     const v = Number(value);
-    if (v === 90 || v === 180 || v === 270 || v === 365 || v === 730) return v;
+    if (v === 1 || v === 7 || v === 30 || v === 90 || v === 180 || v === 270 || v === 365 || v === 730) return v;
     return DEFAULT_DAYS_WINDOW;
   }
 
   function rangeLabelText(days) {
+    if (days === 1) return 'último día';
+    if (days === 7) return 'última semana';
+    if (days === 30) return 'último mes';
     if (days === 730) return 'últimos 2 años';
     return `últimos ${days} días`;
   }
@@ -95,7 +99,11 @@
     if (labelEl) labelEl.textContent = rangeLabelText(daysWindow);
 
     document.querySelectorAll('[data-range-chip]').forEach((el) => {
-      el.textContent = `Últimos ${daysWindow} días`;
+      if (daysWindow === 1) el.textContent = 'Último día';
+      else if (daysWindow === 7) el.textContent = 'Última semana';
+      else if (daysWindow === 30) el.textContent = 'Último mes';
+      else if (daysWindow === 730) el.textContent = 'Últimos 2 años';
+      else el.textContent = `Últimos ${daysWindow} días`;
     });
 
     const selectEl = els.rangeSelect();
@@ -303,9 +311,12 @@
       const date = user.date_joined ? new Date(user.date_joined).toLocaleDateString() : '-';
       const badgeClass = user.plan === 'Premium' ? 'badge-premium' : 'badge-free';
 
+      const checked = selectedUserIds.has(user.id) ? 'checked' : '';
+
       const nextPlan = user.plan === 'Premium' ? 'Gratis' : 'Premium';
       const planBtnLabel = user.plan === 'Premium' ? 'Quitar Premium' : 'Dar Premium';
       row.innerHTML = `
+        <td><input class="row-select" type="checkbox" data-user-id="${user.id}" ${checked} /></td>
         <td>#${user.id}</td>
         <td style="font-weight: bold; color: var(--text-main);">${user.username}</td>
         <td style="color: var(--text-muted);">${user.email}</td>
@@ -322,6 +333,145 @@
 
       tbody.appendChild(row);
     });
+
+    bindRowSelectionHandlers();
+    syncSelectionUI(users);
+  }
+
+  function setSelectedCount(count) {
+    const el = document.getElementById('selectedCount');
+    if (!el) return;
+    el.textContent = `${count} seleccionados`;
+  }
+
+  function getRenderedUserIds(users) {
+    return (users || []).map((u) => u && u.id).filter((id) => typeof id === 'number' || typeof id === 'string');
+  }
+
+  function syncSelectionUI(renderedUsers) {
+    setSelectedCount(selectedUserIds.size);
+
+    const selectAllEl = document.getElementById('selectAllUsers');
+    if (!selectAllEl) return;
+
+    const renderedIds = getRenderedUserIds(renderedUsers);
+    if (renderedIds.length === 0) {
+      selectAllEl.checked = false;
+      selectAllEl.indeterminate = false;
+      return;
+    }
+
+    const selectedInRendered = renderedIds.filter((id) => selectedUserIds.has(Number(id) || id)).length;
+    selectAllEl.checked = selectedInRendered === renderedIds.length;
+    selectAllEl.indeterminate = selectedInRendered > 0 && selectedInRendered < renderedIds.length;
+  }
+
+  function bindRowSelectionHandlers() {
+    document.querySelectorAll('input.row-select[data-user-id]').forEach((cb) => {
+      cb.addEventListener('change', (e) => {
+        const idRaw = e.target.getAttribute('data-user-id');
+        const id = Number(idRaw);
+        if (e.target.checked) selectedUserIds.add(id);
+        else selectedUserIds.delete(id);
+        setSelectedCount(selectedUserIds.size);
+        syncSelectionUI(getCurrentlyRenderedUsers());
+      });
+    });
+  }
+
+  function getCurrentlyRenderedUsers() {
+    const term = (els.searchInput()?.value || '').toLowerCase();
+    if (!term) return allUsers;
+    return allUsers.filter((u) => u.username.toLowerCase().includes(term) || u.email.toLowerCase().includes(term));
+  }
+
+  function bindSelectAll() {
+    const selectAllEl = document.getElementById('selectAllUsers');
+    if (!selectAllEl) return;
+    selectAllEl.addEventListener('change', (e) => {
+      const renderedUsers = getCurrentlyRenderedUsers();
+      const renderedIds = getRenderedUserIds(renderedUsers).map((x) => Number(x));
+      if (e.target.checked) {
+        renderedIds.forEach((id) => selectedUserIds.add(id));
+      } else {
+        renderedIds.forEach((id) => selectedUserIds.delete(id));
+      }
+      renderTable(renderedUsers);
+    });
+  }
+
+  async function bulkSetPlan(plan) {
+    const ids = Array.from(selectedUserIds.values());
+    if (!ids.length) {
+      showToast('Selecciona usuarios primero', 'error');
+      return;
+    }
+
+    const pretty = plan === 'Premium' ? 'Premium' : 'Gratis';
+    if (!confirm(`¿Cambiar plan a ${pretty} para ${ids.length} usuario(s)?`)) return;
+    const reason = (prompt('Motivo (requerido) para el cambio masivo de plan:') || '').trim();
+    if (!reason) {
+      showToast('Motivo requerido', 'error');
+      return;
+    }
+
+    let ok = 0;
+    let fail = 0;
+    for (const id of ids) {
+      const user = allUsers.find((u) => u && u.id === id);
+      if (!user) {
+        fail += 1;
+        continue;
+      }
+      try {
+        const res = await authFetch(API_URL + `users/update_admin/${id}/`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username: user.username, email: user.email, plan: pretty, reason }),
+        });
+        if (res.ok) ok += 1;
+        else fail += 1;
+      } catch (e) {
+        fail += 1;
+      }
+    }
+
+    showToast(`Planes: ${ok} ok, ${fail} fallidos`, fail ? 'error' : 'success');
+    await fetchUsers();
+  }
+
+  async function bulkDeleteUsers() {
+    const ids = Array.from(selectedUserIds.values());
+    if (!ids.length) {
+      showToast('Selecciona usuarios primero', 'error');
+      return;
+    }
+    if (!confirm(`¿Eliminar (borrado lógico) ${ids.length} usuario(s)?`)) return;
+    const reason = (prompt('Motivo (requerido) para eliminar estos usuarios:') || '').trim();
+    if (!reason) {
+      showToast('Motivo requerido', 'error');
+      return;
+    }
+
+    let ok = 0;
+    let fail = 0;
+    for (const id of ids) {
+      try {
+        const res = await authFetch(API_URL + `users/delete/${id}/`, {
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ reason }),
+        });
+        if (res.ok) ok += 1;
+        else fail += 1;
+      } catch (e) {
+        fail += 1;
+      }
+    }
+
+    showToast(`Eliminados: ${ok} ok, ${fail} fallidos`, fail ? 'error' : 'success');
+    selectedUserIds.clear();
+    await fetchUsers();
   }
 
   function lastNDaysLabels(days) {
@@ -1391,6 +1541,8 @@
   window.sendDashboardNotification = sendDashboardNotification;
   window.logout = logout;
   window.refreshDashboard = refreshDashboard;
+  window.bulkSetPlan = bulkSetPlan;
+  window.bulkDeleteUsers = bulkDeleteUsers;
 
   document.addEventListener('DOMContentLoaded', () => {
     if (!requireAdminSessionOrRedirect()) return;
@@ -1401,6 +1553,7 @@
     bindCompareToggle();
     syncRangeUI();
     bindBulkInputs();
+    bindSelectAll();
 
     const toggleEl = els.compareToggle();
     if (toggleEl) toggleEl.checked = compareEnabled;

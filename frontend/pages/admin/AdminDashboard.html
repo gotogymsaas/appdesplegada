@@ -23,6 +23,9 @@
                 <div class="range-control">
                     <label for="rangeSelect" class="range-label">Rango</label>
                     <select id="rangeSelect" class="input-field range-select">
+                        <option value="1">Día</option>
+                        <option value="7">Semana</option>
+                        <option value="30">Mes</option>
                         <option value="90" selected>90 días</option>
                         <option value="180">180 días</option>
                         <option value="270">270 días</option>
@@ -206,6 +209,10 @@
                             <div style="display: flex; gap: 10px;">
                                 <input type="text" id="searchInput" class="search-input"
                                     placeholder="Buscar por nombre o email..." onkeyup="filterUsers()">
+                                <span class="selected-count" id="selectedCount">0 seleccionados</span>
+                                <button class="btn btn-outline-teal btn-sm" onclick="bulkSetPlan('Premium')">Dar Premium</button>
+                                <button class="btn btn-outline-gold btn-sm" onclick="bulkSetPlan('Gratis')">Quitar Premium</button>
+                                <button class="btn btn-outline-gold btn-sm" style="border-color: var(--error); color: var(--error);" onclick="bulkDeleteUsers()">Eliminar</button>
                                 <input type="file" id="bulkCreateInput" accept=".csv,text/csv" style="display:none" />
                                 <input type="file" id="bulkPlanInput" accept=".csv,text/csv" style="display:none" />
                                 <button class="btn btn-outline-teal btn-sm" onclick="triggerBulkCreate()">Carga masiva</button>
@@ -224,6 +231,7 @@
                             <table id="usersTable">
                                 <thead>
                                     <tr>
+                                        <th style="width: 34px;"><input id="selectAllUsers" type="checkbox" title="Seleccionar todos" /></th>
                                         <th>ID</th>
                                         <th>Usuario</th>
                                         <th>Email</th>
