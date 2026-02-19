@@ -26,7 +26,7 @@ from .serializers import UserSerializer
 # Importar el servicio ML
 from datetime import date, datetime, timedelta
 from django.utils import timezone
-from django.db.models import Avg
+from django.db.models import Avg, Q
 from django.db import IntegrityError
 from django.db.models.functions import TruncDate
 import sys
@@ -62,7 +62,8 @@ import base64
 from pathlib import Path
 from urllib.parse import quote, unquote, urlparse
 from django.conf import settings
-from django.core.mail import EmailMessage
+from django.core import signing
+from django.core.mail import EmailMessage, EmailMultiAlternatives
 from django.utils.text import get_valid_filename
 from zoneinfo import ZoneInfo
 try:
@@ -181,6 +182,75 @@ def _as_bool(value):
     if value is None:
         return False
     return str(value).strip().lower() in ("1", "true", "yes", "y", "on")
+
+
+def _password_meets_policy(password: str) -> bool:
+    if not password:
+        return False
+    if len(password) < 8:
+        return False
+    if not re.search(r"[A-Z]", password):
+        return False
+    if not re.search(r"[0-9]", password):
+        return False
+    return True
+
+
+def _frontend_base_url(request) -> str:
+    base = (os.getenv("PASSWORD_RESET_FRONTEND_URL", "") or os.getenv("FRONTEND_BASE_URL", "")).strip()
+    if base:
+        return base.rstrip("/")
+    try:
+        return request.build_absolute_uri("/").rstrip("/")
+    except Exception:
+        return ""
+
+
+def _send_password_reset_email(to_email: str, reset_url: str) -> bool:
+    subject = "Recupera tu contraseña - GoToGym"
+    plain = (
+        "Hola,\n\n"
+        "Recibimos una solicitud para recuperar tu contraseña.\n"
+        "Abre este enlace para crear una nueva contraseña:\n\n"
+        f"{reset_url}\n\n"
+        "Si tú no solicitaste esto, puedes ignorar este correo.\n"
+    )
+    html = (
+        "<p>Hola,</p>"
+        "<p>Recibimos una solicitud para recuperar tu contraseña.</p>"
+        "<p>Abre este enlace para crear una nueva contraseña:</p>"
+        f"<p><a href=\"{reset_url}\">{reset_url}</a></p>"
+        "<p>Si tú no solicitaste esto, puedes ignorar este correo.</p>"
+    )
+
+    sender = (getattr(settings, "CONTACT_EMAIL_FROM", "") or getattr(settings, "DEFAULT_FROM_EMAIL", "") or "").strip()
+    if not sender:
+        sender = "DoNotReply@gotogym.store"
+
+    # ACS si está configurado
+    try:
+        conn_str = (getattr(settings, "ACS_EMAIL_CONNECTION_STRING", "") or "").strip()
+        if conn_str and EmailClient is not None:
+            client = EmailClient.from_connection_string(conn_str)
+            message = {
+                "senderAddress": sender,
+                "recipients": {"to": [{"address": to_email}]},
+                "content": {"subject": subject, "plainText": plain, "html": html},
+            }
+            poller = client.begin_send(message)
+            poller.result()
+            return True
+    except Exception:
+        pass
+
+    # SMTP / backend Django
+    try:
+        msg = EmailMultiAlternatives(subject=subject, body=plain, from_email=sender, to=[to_email])
+        msg.attach_alternative(html, "text/html")
+        msg.send(fail_silently=False)
+        return True
+    except Exception:
+        return False
 
 
 def _clean_extracted_text(text):
@@ -969,17 +1039,19 @@ def login(request):
     try:
         data = request.data
 
-        username = (data.get('username') or '').strip()
+        identifier = (data.get('username') or '').strip()
         password = data.get('password') or ''
 
-        if not username or not password:
+        if not identifier or not password:
             return Response({
                 'success': False,
                 'error': 'Usuario y contraseña son requeridos'
             }, status=status.HTTP_400_BAD_REQUEST)
 
-        # Optimización: una sola consulta a DB (evita authenticate + exists)
-        user = User.objects.filter(username=username).first()
+        # Acepta username o email (en el frontend, username técnico = email)
+        user = User.objects.filter(
+            Q(username__iexact=identifier) | Q(email__iexact=identifier)
+        ).first()
         if not user:
             return Response({
                 'success': False,
@@ -998,24 +1070,93 @@ def login(request):
                 'error': 'Contrasena incorrecta'
             }, status=status.HTTP_400_BAD_REQUEST)
 
-            _apply_trial_status(user)
-            serializer = UserSerializer(user, context={"request": request})
-            refresh = RefreshToken.for_user(user)
-            access = refresh.access_token
-            response = Response({
-                'success': True,
-                'message': 'Inicio de sesion correcto', 
-                'user': serializer.data,
-                 'access': str(access),
-                'refresh': str(refresh)
-            })
-            response['Access-Control-Allow-Origin'] = '*'
-            return response
+        _apply_trial_status(user)
+        serializer = UserSerializer(user, context={"request": request})
+        refresh = RefreshToken.for_user(user)
+        access = refresh.access_token
+        response = Response({
+            'success': True,
+            'message': 'Inicio de sesion correcto',
+            'user': serializer.data,
+            'access': str(access),
+            'refresh': str(refresh)
+        })
+        response['Access-Control-Allow-Origin'] = '*'
+        return response
         
             
     except Exception as e:
         print('Error en login:', str(e))
         return Response({'error': 'Error interno del servidor'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(["POST", "OPTIONS"])
+@permission_classes([AllowAny])
+def password_reset_request(request):
+    if request.method == "OPTIONS":
+        return Response(status=status.HTTP_200_OK)
+
+    payload = request.data if isinstance(request.data, dict) else {}
+    email = (payload.get("email") or "").strip().lower()
+
+    generic = {
+        "ok": True,
+        "message": "Si el correo existe en GoToGym, enviaremos instrucciones para recuperar tu contraseña.",
+    }
+
+    if not email or not re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", email):
+        return Response(generic, status=status.HTTP_200_OK)
+
+    user = User.objects.filter(email__iexact=email).first()
+    if not user:
+        return Response(generic, status=status.HTTP_200_OK)
+
+    ttl = int(os.getenv("PASSWORD_RESET_TTL_SECONDS", str(60 * 60)) or (60 * 60))
+    signer = signing.TimestampSigner(salt="pwd-reset")
+    token_data = json.dumps({"uid": user.id, "nonce": secrets.token_hex(8)}, separators=(",", ":"))
+    token = signer.sign(token_data)
+
+    base = _frontend_base_url(request)
+    if not base:
+        return Response(generic, status=status.HTTP_200_OK)
+
+    reset_url = f"{base}/pages/auth/indexInicioDeSesion.html?reset={quote(token)}"
+    _send_password_reset_email(email, reset_url)
+    return Response({**generic, "ttl_seconds": ttl}, status=status.HTTP_200_OK)
+
+
+@api_view(["POST", "OPTIONS"])
+@permission_classes([AllowAny])
+def password_reset_confirm(request):
+    if request.method == "OPTIONS":
+        return Response(status=status.HTTP_200_OK)
+
+    payload = request.data if isinstance(request.data, dict) else {}
+    token = (payload.get("token") or "").strip()
+    new_password = payload.get("password") or ""
+
+    if not token or not _password_meets_policy(new_password):
+        return Response({"ok": False, "error": "invalid_request"}, status=400)
+
+    ttl = int(os.getenv("PASSWORD_RESET_TTL_SECONDS", str(60 * 60)) or (60 * 60))
+    signer = signing.TimestampSigner(salt="pwd-reset")
+
+    try:
+        raw = signer.unsign(token, max_age=ttl)
+        data = json.loads(raw)
+        uid = int(data.get("uid"))
+    except signing.SignatureExpired:
+        return Response({"ok": False, "error": "token_expired"}, status=400)
+    except Exception:
+        return Response({"ok": False, "error": "token_invalid"}, status=400)
+
+    user = User.objects.filter(id=uid).first()
+    if not user:
+        return Response({"ok": False, "error": "token_invalid"}, status=400)
+
+    user.set_password(new_password)
+    user.save()
+    return Response({"ok": True}, status=200)
 
 @api_view(['POST', 'OPTIONS'])
 def contact_message(request):

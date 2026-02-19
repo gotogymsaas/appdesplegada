@@ -143,16 +143,24 @@
     return res.ok;
   };
 
-  const ensureWebPushReady = async () => {
+  const ensureWebPushReady = async (options = {}) => {
+    const { requestPermission = false } = options;
     if (!isWebPushSupported()) {
       showToast('Tu navegador no soporta notificaciones web.', 'error');
       return false;
     }
 
-    const permission = await Notification.requestPermission();
-    if (permission !== 'granted') {
-      showToast('Necesitamos permiso para notificaciones.', 'error');
-      return false;
+    // IMPORTANTE: requestPermission() debe ejecutarse desde un gesto del usuario.
+    // En auto-init, no solicitamos permiso; solo continuamos si ya está concedido.
+    if (Notification.permission !== 'granted') {
+      if (!requestPermission) {
+        return false;
+      }
+      const permission = await Notification.requestPermission();
+      if (permission !== 'granted') {
+        showToast('Necesitamos permiso para notificaciones.', 'error');
+        return false;
+      }
     }
 
     const registration = await navigator.serviceWorker.register('/sw.js');
@@ -405,11 +413,12 @@
     localStorage.setItem(NOTIF_ENABLED_KEY, 'true');
     if (isNative()) {
       await scheduleNext24Hours();
+      // En nativo, pedir permisos solo cuando el usuario activó explícitamente.
       await ensurePushReady();
       return;
     }
     if (isWebPushSupported()) {
-      await ensureWebPushReady();
+      await ensureWebPushReady({ requestPermission: true });
       showToast('Listo. Te acompanare con recordatorios suaves.', 'success');
     }
   };
@@ -444,22 +453,41 @@
     disable: unregisterPushToken,
   };
 
+  const isAuthPage = (() => {
+    try {
+      const p = window.location && window.location.pathname ? window.location.pathname : '';
+      return p.includes('/pages/auth/') || p.includes('indexInicioDeSesion') || p.includes('indexRegistrar');
+    } catch (e) {
+      return false;
+    }
+  })();
+
+  const hasUser = !!getUser();
+
   if (
     typeof document !== 'undefined' &&
-    localStorage.getItem(NOTIF_ENABLED_KEY) !== 'false' &&
+    !isAuthPage &&
+    hasUser &&
+    localStorage.getItem(NOTIF_ENABLED_KEY) === 'true' &&
     isNative()
   ) {
+    // Auto-schedule solamente si el usuario ya lo activó antes.
     scheduleNext24Hours();
-    ensurePushReady();
+    // No pedir permisos aquí: evitar prompts/errores fuera de gesto de usuario.
   }
 
   if (
     typeof document !== 'undefined' &&
-    localStorage.getItem(NOTIF_ENABLED_KEY) !== 'false' &&
+    !isAuthPage &&
+    hasUser &&
+    localStorage.getItem(NOTIF_ENABLED_KEY) === 'true' &&
     !isNative() &&
-    isWebPushSupported()
+    isWebPushSupported() &&
+    typeof Notification !== 'undefined' &&
+    Notification.permission === 'granted'
   ) {
-    ensureWebPushReady();
+    // Si ya estaba concedido el permiso, podemos re-registrar subscription sin pedir permiso.
+    ensureWebPushReady({ requestPermission: false });
   }
 
   if (typeof navigator !== 'undefined' && navigator.serviceWorker) {

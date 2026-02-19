@@ -115,8 +115,8 @@
 
             <form id="loginForm" onsubmit="event.preventDefault();" style="width: 100%; padding: 20px;">
                 <div class="form-group">
-                    <input type="text" id="username" class="input-field" placeholder=" " required>
-                    <label for="username" class="input-label">Usuario o Email</label>
+                    <input type="email" id="username" class="input-field" placeholder=" " required>
+                    <label for="username" class="input-label">Email</label>
                 </div>
 
                 <div class="form-group" style="position: relative;">
@@ -134,10 +134,80 @@
                     </button>
                 </div>
 
+                <div style="margin-top: 14px; text-align: center;">
+                    <a href="#" id="forgotPasswordLink"
+                        style="color: var(--primary); text-decoration: none; font-weight: 600; font-size: 13px;">
+                        ¿Olvidaste tu contraseña?
+                    </a>
+                </div>
+
                 <div style="margin-top: 20px; text-align: center;">
                     <span style="color: var(--text-muted);">¿No tienes cuenta? </span>
                     <a href="../auth/indexRegistrar.html"
                         style="color: var(--primary); text-decoration: none; font-weight: bold;">Regístrate</a>
+                </div>
+            </form>
+        </div>
+
+        <!-- PASSWORD RESET STATE (Hidden initially) -->
+        <div id="resetState" class="hidden" style="width: 100%;">
+
+            <div class="logo-container" style="margin: 0 auto 40px auto; transform: scale(0.8);">
+                <div class="logo-circle"
+                    style="overflow: hidden; padding: 0; display: flex; align-items: center; justify-content: center;">
+                    <img src="../../assets/images/recurso-16.png" alt="GoToGym Logo"
+                        style="width: 60%; height: 60%; object-fit: contain; object-position: center;">
+                </div>
+            </div>
+
+            <form id="resetRequestForm" onsubmit="event.preventDefault();" style="width: 100%; padding: 20px;">
+                <div id="resetRequestBlock">
+                    <div class="form-group">
+                        <input type="email" id="resetEmail" class="input-field" placeholder=" " required>
+                        <label for="resetEmail" class="input-label">Email</label>
+                    </div>
+
+                    <div style="margin-top: 26px;">
+                        <button type="submit" id="btnResetRequest" class="btn btn-primary">
+                            Enviar enlace
+                        </button>
+                    </div>
+
+                    <div style="margin-top: 16px; text-align: center;">
+                        <a href="#" id="backToLoginLink"
+                            style="color: var(--text-muted); text-decoration: none; font-weight: 600; font-size: 13px;">
+                            Volver a iniciar sesión
+                        </a>
+                    </div>
+                </div>
+
+                <div id="resetConfirmBlock" class="hidden">
+                    <div class="form-group" style="position: relative;">
+                        <input type="password" id="resetPassword" class="input-field" placeholder=" " required>
+                        <label for="resetPassword" class="input-label">Nueva contraseña</label>
+                    </div>
+
+                    <div class="form-group" style="position: relative;">
+                        <input type="password" id="resetPassword2" class="input-field" placeholder=" " required>
+                        <label for="resetPassword2" class="input-label">Confirmar contraseña</label>
+                    </div>
+
+                    <div style="color: var(--text-muted); font-size: 12px; margin-top: -6px;">
+                        Mínimo 8 caracteres, 1 mayúscula y 1 número.
+                    </div>
+
+                    <div style="margin-top: 26px;">
+                        <button type="submit" id="btnResetConfirm" class="btn btn-primary">
+                            Guardar contraseña
+                        </button>
+                    </div>
+
+                    <div style="margin-top: 16px; text-align: center;">
+                        <a href="#" id="backToLoginLink2"
+                            style="color: var(--text-muted); text-decoration: none; font-weight: 600; font-size: 13px;">
+                            Volver a iniciar sesión
+                        </a>
+                    </div>
                 </div>
             </form>
         </div>
@@ -173,6 +243,21 @@
             const btnLogin = document.getElementById("btnLogin");
             const usernameInput = document.getElementById("username");
             const passwordInput = document.getElementById("password");
+
+            const forgotPasswordLink = document.getElementById("forgotPasswordLink");
+            const resetState = document.getElementById("resetState");
+            const resetEmailInput = document.getElementById("resetEmail");
+            const resetPasswordInput = document.getElementById("resetPassword");
+            const resetPassword2Input = document.getElementById("resetPassword2");
+            const btnResetRequest = document.getElementById("btnResetRequest");
+            const btnResetConfirm = document.getElementById("btnResetConfirm");
+            const resetRequestBlock = document.getElementById("resetRequestBlock");
+            const resetConfirmBlock = document.getElementById("resetConfirmBlock");
+            const backToLoginLink = document.getElementById("backToLoginLink");
+            const backToLoginLink2 = document.getElementById("backToLoginLink2");
+
+            const urlParams = new URLSearchParams(window.location.search);
+            const resetToken = urlParams.get("reset");
 
             const toggleBtn = document.getElementById("togglePasswordBtn");
             let isVisible = false;
@@ -263,9 +348,11 @@
                         btnLogin.disabled = false;
                     }
                 } catch (error) {
-                    console.error(error);
-                    // Show detailed error for debugging
                     const isTimeout = error && (error.name === 'AbortError');
+                    if (!isTimeout) {
+                        console.error(error);
+                    }
+                    // Show detailed error for debugging
                     showToast(
                         isTimeout
                             ? `Tiempo de espera agotado. Intenta de nuevo.`
@@ -279,6 +366,143 @@
 
             btnLogin.addEventListener("click", handleLogin);
 
+            function showResetRequest() {
+                document.getElementById('welcomeState').style.display = 'none';
+                document.getElementById('loginState').classList.add('hidden');
+                resetState.classList.remove('hidden');
+                resetState.classList.add('fade-in');
+                resetRequestBlock.classList.remove('hidden');
+                resetConfirmBlock.classList.add('hidden');
+                if (resetEmailInput) {
+                    resetEmailInput.value = (usernameInput?.value || "").trim();
+                    resetEmailInput.focus();
+                }
+            }
+
+            function showResetConfirm() {
+                document.getElementById('welcomeState').style.display = 'none';
+                document.getElementById('loginState').classList.add('hidden');
+                resetState.classList.remove('hidden');
+                resetState.classList.add('fade-in');
+                resetRequestBlock.classList.add('hidden');
+                resetConfirmBlock.classList.remove('hidden');
+                if (resetPasswordInput) resetPasswordInput.focus();
+            }
+
+            function showLoginState() {
+                resetState.classList.add('hidden');
+                showLogin();
+            }
+
+            function passwordStrong(pw) {
+                return pw.length >= 8 && /[A-Z]/.test(pw) && /[0-9]/.test(pw);
+            }
+
+            async function handleResetRequest() {
+                const email = (resetEmailInput?.value || "").trim().toLowerCase();
+                if (!email) {
+                    showToast("Ingresa tu email", "error");
+                    return;
+                }
+                try {
+                    btnResetRequest.textContent = "Enviando...";
+                    btnResetRequest.disabled = true;
+                    const res = await fetch(API_URL + "password/reset/request/", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ email }),
+                    });
+                    const data = await res.json().catch(() => ({}));
+                    showToast(data.message || "Si el correo existe, enviaremos instrucciones.", "success");
+                } catch (e) {
+                    showToast("No se pudo enviar el enlace. Intenta de nuevo.", "error");
+                } finally {
+                    btnResetRequest.textContent = "Enviar enlace";
+                    btnResetRequest.disabled = false;
+                }
+            }
+
+            async function handleResetConfirm() {
+                const pw1 = (resetPasswordInput?.value || "").trim();
+                const pw2 = (resetPassword2Input?.value || "").trim();
+                if (!pw1 || !pw2) {
+                    showToast("Completa los campos", "error");
+                    return;
+                }
+                if (pw1 !== pw2) {
+                    showToast("Las contraseñas no coinciden", "error");
+                    return;
+                }
+                if (!passwordStrong(pw1)) {
+                    showToast("La contraseña no cumple los requisitos", "error");
+                    return;
+                }
+                if (!resetToken) {
+                    showToast("Token inválido", "error");
+                    return;
+                }
+                try {
+                    btnResetConfirm.textContent = "Guardando...";
+                    btnResetConfirm.disabled = true;
+                    const res = await fetch(API_URL + "password/reset/confirm/", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ token: resetToken, password: pw1 }),
+                    });
+                    const data = await res.json().catch(() => ({}));
+                    if (res.ok && data.ok) {
+                        showToast("Contraseña actualizada. Inicia sesión.", "success");
+                        // Limpiar token de la URL
+                        try {
+                            const cleanUrl = window.location.pathname;
+                            window.history.replaceState({}, document.title, cleanUrl);
+                        } catch (_) { }
+                        setTimeout(() => showLoginState(), 600);
+                    } else {
+                        const err = data.error || "No se pudo actualizar la contraseña";
+                        showToast(err === "token_expired" ? "El enlace expiró. Solicita uno nuevo." : "Enlace inválido.", "error");
+                        if (err === "token_expired" || err === "token_invalid") {
+                            setTimeout(() => showResetRequest(), 600);
+                        }
+                    }
+                } catch (e) {
+                    showToast("No se pudo actualizar la contraseña", "error");
+                } finally {
+                    btnResetConfirm.textContent = "Guardar contraseña";
+                    btnResetConfirm.disabled = false;
+                }
+            }
+
+            if (forgotPasswordLink) {
+                forgotPasswordLink.addEventListener("click", (e) => {
+                    e.preventDefault();
+                    showResetRequest();
+                });
+            }
+            if (backToLoginLink) {
+                backToLoginLink.addEventListener("click", (e) => {
+                    e.preventDefault();
+                    showLoginState();
+                });
+            }
+            if (backToLoginLink2) {
+                backToLoginLink2.addEventListener("click", (e) => {
+                    e.preventDefault();
+                    showLoginState();
+                });
+            }
+            const resetForm = document.getElementById("resetRequestForm");
+            if (resetForm) {
+                resetForm.addEventListener("submit", (e) => {
+                    e.preventDefault();
+                    if (resetToken) {
+                        handleResetConfirm();
+                    } else {
+                        handleResetRequest();
+                    }
+                });
+            }
+
             function showToast(message, type = "success") {
                 const toast = document.getElementById("toast");
                 toast.textContent = message;
@@ -287,9 +511,14 @@
                 setTimeout(() => toast.style.display = "none", 3000);
             }
 
-            // Auto redirect if logged in
-            if (localStorage.getItem('isLoggedIn') === 'true') {
+            // Auto redirect if logged in (no interrumpir recuperación)
+            if (!resetToken && localStorage.getItem('isLoggedIn') === 'true') {
                 window.location.href = '../profile/Perfil.html';
+            }
+
+            // Si viene con token de recuperación, mostrar flujo de nueva contraseña
+            if (resetToken) {
+                showResetConfirm();
             }
         });
     </script>

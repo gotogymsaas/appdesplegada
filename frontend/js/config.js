@@ -199,9 +199,14 @@
     script.async = true;
     document.body.appendChild(script);
 
-    const notifScript = document.createElement('script');
-    notifScript.src = window.location.origin + '/js/notifications.js';
-    notifScript.async = true;
-    document.body.appendChild(notifScript);
+    // Notifications: no cargar en páginas de autenticación.
+    const path = (window.location && window.location.pathname) ? window.location.pathname : '';
+    const isAuthPage = path.includes('/pages/auth/') || path.includes('indexInicioDeSesion') || path.includes('indexRegistrar');
+    if (!isAuthPage) {
+      const notifScript = document.createElement('script');
+      notifScript.src = window.location.origin + '/js/notifications.js';
+      notifScript.async = true;
+      document.body.appendChild(notifScript);
+    }
 }
 })();
