@@ -25,6 +25,29 @@
   justify-content: flex-end;
 }
 
+.compare-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--text-muted);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 999px;
+  padding: 8px 10px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.compare-toggle input {
+  accent-color: var(--primary);
+}
+
+.last-updated {
+  font-size: 12px;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
 .range-control {
   display: flex;
   align-items: center;
@@ -110,6 +133,47 @@
 .kpi-label {
   font-size: 14px;
   color: var(--text-muted);
+}
+
+.mini-metrics-grid {
+  margin-top: 16px;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 14px;
+}
+
+.mini-metric {
+  background: var(--card-bg);
+  border-radius: var(--radius-lg);
+  padding: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.mini-value {
+  font-size: 20px;
+  font-weight: 800;
+  color: var(--text-main);
+}
+
+.mini-label {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.mini-delta {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.delta-positive {
+  color: var(--primary);
+}
+
+.delta-negative {
+  color: var(--error);
 }
 
 /* MAIN DASHBOARD LAYOUT */

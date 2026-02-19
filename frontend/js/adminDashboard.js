@@ -5,6 +5,7 @@
 (() => {
   const DEFAULT_DAYS_WINDOW = 90;
   const RANGE_STORAGE_KEY = 'adminDashboardRangeDays';
+  const COMPARE_STORAGE_KEY = 'adminDashboardCompareEnabled';
 
   const els = {
     kpiTotal: () => document.getElementById('kpi-total'),
@@ -25,6 +26,19 @@
 
     rangeSelect: () => document.getElementById('rangeSelect'),
     rangeLabel: () => document.getElementById('rangeLabel'),
+
+    compareToggle: () => document.getElementById('compareToggle'),
+    lastUpdated: () => document.getElementById('lastUpdated'),
+
+    kpiActiveUsers7d: () => document.getElementById('kpi-active-users-7d'),
+    kpiRangeSignups: () => document.getElementById('kpi-range-signups'),
+    kpiRangePremiumSignups: () => document.getElementById('kpi-range-premium-signups'),
+    kpiRangeConversion: () => document.getElementById('kpi-range-conversion'),
+
+    deltaActiveUsers7d: () => document.getElementById('delta-active-users-7d'),
+    deltaRangeSignups: () => document.getElementById('delta-range-signups'),
+    deltaRangePremiumSignups: () => document.getElementById('delta-range-premium-signups'),
+    deltaRangeConversion: () => document.getElementById('delta-range-conversion'),
 
     bulkCreateInput: () => document.getElementById('bulkCreateInput'),
     bulkPlanInput: () => document.getElementById('bulkPlanInput'),
@@ -47,6 +61,7 @@
   let signupsSeriesCache = null;
 
   let daysWindow = DEFAULT_DAYS_WINDOW;
+  let compareEnabled = true;
   let globalHistoryCache = null;
 
   let globalChartInstance = null;
@@ -85,6 +100,126 @@
 
     const selectEl = els.rangeSelect();
     if (selectEl) selectEl.value = String(daysWindow);
+  }
+
+  function loadStoredCompareEnabled() {
+    const raw = localStorage.getItem(COMPARE_STORAGE_KEY);
+    if (raw === null || raw === undefined || raw === '') {
+      compareEnabled = true;
+      return;
+    }
+    compareEnabled = raw === 'true';
+  }
+
+  function setCompareEnabled(next) {
+    compareEnabled = !!next;
+    localStorage.setItem(COMPARE_STORAGE_KEY, String(compareEnabled));
+
+    const toggleEl = els.compareToggle();
+    if (toggleEl) toggleEl.checked = compareEnabled;
+
+    overviewCache = null;
+    fetchUsers();
+  }
+
+  function bindCompareToggle() {
+    const toggleEl = els.compareToggle();
+    if (!toggleEl) return;
+    toggleEl.addEventListener('change', (e) => {
+      setCompareEnabled(!!e.target.checked);
+    });
+  }
+
+  function setLastUpdatedNow() {
+    const el = els.lastUpdated();
+    if (!el) return;
+    const d = new Date();
+    const hh = String(d.getHours()).padStart(2, '0');
+    const mm = String(d.getMinutes()).padStart(2, '0');
+    el.textContent = `Actualizado: ${hh}:${mm}`;
+  }
+
+  function formatDeltaText(deltaObj, { isPercentPoints = false } = {}) {
+    if (!deltaObj || typeof deltaObj !== 'object') return '—';
+
+    const abs = deltaObj.abs;
+    const pct = deltaObj.pct;
+    if (abs === null || abs === undefined) return '—';
+
+    const absNum = Number(abs);
+    if (Number.isNaN(absNum)) return '—';
+
+    const sign = absNum > 0 ? '+' : '';
+
+    let absText;
+    if (isPercentPoints) {
+      absText = `${sign}${(absNum * 100).toFixed(1)} pp`;
+    } else {
+      absText = `${sign}${Math.round(absNum)}`;
+    }
+
+    let pctText = '';
+    if (pct !== null && pct !== undefined) {
+      const pctNum = Number(pct);
+      if (!Number.isNaN(pctNum)) {
+        const pctSign = pctNum > 0 ? '+' : '';
+        pctText = ` (${pctSign}${pctNum.toFixed(1)}%)`;
+      }
+    }
+
+    return `${absText}${pctText} vs período anterior`;
+  }
+
+  function applyDeltaClass(el, deltaObj) {
+    if (!el) return;
+    el.classList.remove('delta-positive');
+    el.classList.remove('delta-negative');
+    const abs = deltaObj && typeof deltaObj === 'object' ? Number(deltaObj.abs) : NaN;
+    if (Number.isNaN(abs) || abs === 0) return;
+    el.classList.add(abs > 0 ? 'delta-positive' : 'delta-negative');
+  }
+
+  function renderPeriodComparatives() {
+    if (!overviewCache) return;
+    const d = overviewCache.data || {};
+    const m = overviewCache.meta || {};
+
+    if (els.kpiActiveUsers7d()) els.kpiActiveUsers7d().innerText = String(d.active_users_7d ?? '--');
+    if (els.kpiRangeSignups()) els.kpiRangeSignups().innerText = String(d.signups_total ?? '--');
+    if (els.kpiRangePremiumSignups()) els.kpiRangePremiumSignups().innerText = String(d.signups_premium ?? '--');
+    if (els.kpiRangeConversion()) {
+      const conv = Number(d.conversion_premium);
+      els.kpiRangeConversion().innerText = Number.isFinite(conv) ? `${(conv * 100).toFixed(1)}%` : '--';
+    }
+
+    if (els.deltaActiveUsers7d()) {
+      els.deltaActiveUsers7d().innerText = 'Fuente: last_login';
+    }
+
+    if (!compareEnabled || !m.compare || !m.deltas) {
+      if (els.deltaRangeSignups()) els.deltaRangeSignups().innerText = 'Comparación desactivada';
+      if (els.deltaRangePremiumSignups()) els.deltaRangePremiumSignups().innerText = 'Comparación desactivada';
+      if (els.deltaRangeConversion()) els.deltaRangeConversion().innerText = 'Comparación desactivada';
+      return;
+    }
+
+    const deltas = m.deltas || {};
+
+    if (els.deltaRangeSignups()) {
+      const el = els.deltaRangeSignups();
+      el.innerText = formatDeltaText(deltas.signups_total);
+      applyDeltaClass(el, deltas.signups_total);
+    }
+    if (els.deltaRangePremiumSignups()) {
+      const el = els.deltaRangePremiumSignups();
+      el.innerText = formatDeltaText(deltas.signups_premium);
+      applyDeltaClass(el, deltas.signups_premium);
+    }
+    if (els.deltaRangeConversion()) {
+      const el = els.deltaRangeConversion();
+      el.innerText = formatDeltaText(deltas.conversion_premium, { isPercentPoints: true });
+      applyDeltaClass(el, deltas.conversion_premium);
+    }
   }
 
   function showToast(message, type = 'success') {
@@ -619,11 +754,14 @@
 
     loadUserCharts(allUsers);
     loadGlobalChart();
+
+    renderPeriodComparatives();
+    setLastUpdatedNow();
   }
 
   async function fetchOverview() {
     try {
-      const res = await authFetch(`${API_URL}admin/dashboard/overview/?days=${daysWindow}&timezone=America/Bogota&compare=true`);
+      const res = await authFetch(`${API_URL}admin/dashboard/overview/?days=${daysWindow}&timezone=America/Bogota&compare=${compareEnabled ? 'true' : 'false'}`);
       if (!res.ok) return false;
       overviewCache = await res.json();
       return true;
@@ -1233,6 +1371,10 @@
     }
   }
 
+  function refreshDashboard() {
+    fetchUsers();
+  }
+
   // Expose minimal functions used by inline HTML handlers
   window.filterUsers = filterUsers;
   window.deleteUser = deleteUser;
@@ -1248,14 +1390,20 @@
   window.requestPermission = requestPermission;
   window.sendDashboardNotification = sendDashboardNotification;
   window.logout = logout;
+  window.refreshDashboard = refreshDashboard;
 
   document.addEventListener('DOMContentLoaded', () => {
     if (!requireAdminSessionOrRedirect()) return;
 
     loadStoredDaysWindow();
+    loadStoredCompareEnabled();
     bindRangeSelect();
+    bindCompareToggle();
     syncRangeUI();
     bindBulkInputs();
+
+    const toggleEl = els.compareToggle();
+    if (toggleEl) toggleEl.checked = compareEnabled;
 
     fetchUsers();
 

@@ -30,6 +30,15 @@
                         <option value="730">2 años</option>
                     </select>
                 </div>
+
+                <label class="compare-toggle" title="Muestra deltas vs el período inmediatamente anterior">
+                    <input id="compareToggle" type="checkbox" checked />
+                    <span>Comparar</span>
+                </label>
+
+                <button class="btn btn-outline-teal btn-sm" onclick="refreshDashboard()">Actualizar</button>
+                <span id="lastUpdated" class="last-updated">—</span>
+
             <button class="btn btn-outline-gold btn-sm" style="border-color: var(--error); color: var(--error);"
                 onclick="logout()">Cerrar Sesión</button>
             </div>
@@ -40,7 +49,7 @@
             <div class="layer-header">
                 <div>
                     <div class="layer-title">Estratégico</div>
-                    <div class="layer-subtitle">Indicadores de dirección y salud del producto (visión ejecutiva).</div>
+                    <div class="layer-subtitle">Mensual/Trimestral: salud del negocio (crecimiento, monetización y engagement) con datos agregados.</div>
                 </div>
                 <span class="layer-chip" data-range-chip>Últimos 30 días</span>
             </div>
@@ -73,6 +82,29 @@
                     <div class="kpi-label">Felicidad prom. (7 días)</div>
                 </div>
             </div>
+
+            <div class="mini-metrics-grid">
+                <div class="mini-metric">
+                    <div class="mini-value" id="kpi-active-users-7d">--</div>
+                    <div class="mini-label">Engagement: activos (7d)</div>
+                    <div class="mini-delta" id="delta-active-users-7d">Fuente: last_login</div>
+                </div>
+                <div class="mini-metric">
+                    <div class="mini-value" id="kpi-range-signups">--</div>
+                    <div class="mini-label">Crecimiento: altas (rango)</div>
+                    <div class="mini-delta" id="delta-range-signups">—</div>
+                </div>
+                <div class="mini-metric">
+                    <div class="mini-value" id="kpi-range-premium-signups">--</div>
+                    <div class="mini-label">Monetización: altas Premium</div>
+                    <div class="mini-delta" id="delta-range-premium-signups">—</div>
+                </div>
+                <div class="mini-metric">
+                    <div class="mini-value" id="kpi-range-conversion">--</div>
+                    <div class="mini-label">Monetización: conversión Premium</div>
+                    <div class="mini-delta" id="delta-range-conversion">—</div>
+                </div>
+            </div>
         </section>
 
         <!-- TÁCTICO: por qué / palancas -->
@@ -80,7 +112,7 @@
             <div class="layer-header">
                 <div>
                     <div class="layer-title">Táctico</div>
-                    <div class="layer-subtitle">Tendencias, conversión y composición (palancas para decidir qué hacer).</div>
+                    <div class="layer-subtitle">Semanal: palancas (tendencias, composición y comparativos vs período anterior).</div>
                 </div>
                 <span class="layer-chip" data-range-chip>Últimos 30 días</span>
             </div>
@@ -160,7 +192,7 @@
             <div class="layer-header">
                 <div>
                     <div class="layer-title">Operativo</div>
-                    <div class="layer-subtitle">Acciones del día a día (usuarios, planes y notificaciones). Requiere motivo en acciones sensibles.</div>
+                    <div class="layer-subtitle">Diario: ejecución (usuarios, planes y notificaciones). Acciones sensibles piden motivo y quedan auditadas.</div>
                 </div>
                 <span class="layer-chip">Administración</span>
             </div>
