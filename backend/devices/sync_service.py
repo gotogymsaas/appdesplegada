@@ -395,6 +395,19 @@ def sync_device(user: User, provider: str) -> SyncResult:
                 },
             )
 
+        except requests.RequestException as exc:
+            return SyncResult(
+                False,
+                502,
+                {"ok": False, "error": "google_fit_request_failed", "detail": str(exc)},
+            )
+        except Exception as exc:
+            return SyncResult(
+                False,
+                500,
+                {"ok": False, "error": "google_fit_unexpected_error", "detail": str(exc)},
+            )
+
     if provider == "whoop":
         if conn.status != "connected" or not conn.access_token:
             return SyncResult(False, 400, {"ok": False, "error": "WHOOP no conectado"})
@@ -491,8 +504,6 @@ def sync_device(user: User, provider: str) -> SyncResult:
                 },
             },
         )
-        except requests.RequestException as exc:
-            return SyncResult(False, 500, {"ok": False, "error": "Google Fit request failed", "detail": str(exc)})
 
     if provider == "fitbit":
         if conn.status != "connected" or not conn.access_token:
