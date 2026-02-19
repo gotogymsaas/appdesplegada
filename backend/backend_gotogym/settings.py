@@ -395,6 +395,27 @@ GARMIN_FRONTEND_REDIRECT = os.getenv(
 )
 
 # ============================
+# WHOOP OAUTH (Developer API)
+# ============================
+WHOOP = {
+    "CLIENT_ID": os.getenv("WHOOP_CLIENT_ID", "").strip(),
+    "CLIENT_SECRET": os.getenv("WHOOP_CLIENT_SECRET", "").strip(),
+    "REDIRECT_URI": os.getenv("WHOOP_REDIRECT_URI", "").strip(),
+    "AUTH_URL": os.getenv("WHOOP_AUTH_URL", "https://api.prod.whoop.com/oauth/oauth2/auth").strip(),
+    "TOKEN_URL": os.getenv("WHOOP_TOKEN_URL", "https://api.prod.whoop.com/oauth/oauth2/token").strip(),
+    "API_BASE": os.getenv("WHOOP_API_BASE", "https://api.prod.whoop.com/developer").strip(),
+    "SCOPE": os.getenv(
+        "WHOOP_SCOPE",
+        "read:sleep read:recovery read:cycles read:workout read:profile read:body_measurement",
+    ).strip(),
+}
+
+WHOOP_FRONTEND_REDIRECT = os.getenv(
+    "WHOOP_FRONTEND_REDIRECT",
+    "http://127.0.0.1:5500/pages/settings/Dispositivos.html",
+)
+
+# ============================
 # AZURE COMMUNICATION SERVICES (EMAIL)
 # ============================
 ACS_EMAIL_CONNECTION_STRING = os.getenv("ACS_EMAIL_CONNECTION_STRING", "").strip()
