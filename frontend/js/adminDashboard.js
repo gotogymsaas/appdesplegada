@@ -3,7 +3,7 @@
 // Depende de: theme.css (variables), config.js (API_URL, authFetch).
 
 (() => {
-  const DEFAULT_DAYS_WINDOW = 30;
+  const DEFAULT_DAYS_WINDOW = 90;
   const RANGE_STORAGE_KEY = 'adminDashboardRangeDays';
 
   const els = {
@@ -25,6 +25,9 @@
 
     rangeSelect: () => document.getElementById('rangeSelect'),
     rangeLabel: () => document.getElementById('rangeLabel'),
+
+    bulkCreateInput: () => document.getElementById('bulkCreateInput'),
+    bulkPlanInput: () => document.getElementById('bulkPlanInput'),
 
     createModal: () => document.getElementById('createModal'),
     editModal: () => document.getElementById('editModal'),
@@ -60,11 +63,12 @@
 
   function clampDaysWindow(value) {
     const v = Number(value);
-    if (v === 7 || v === 30 || v === 90) return v;
+    if (v === 90 || v === 180 || v === 270 || v === 365 || v === 730) return v;
     return DEFAULT_DAYS_WINDOW;
   }
 
   function rangeLabelText(days) {
+    if (days === 730) return 'últimos 2 años';
     return `últimos ${days} días`;
   }
 
@@ -161,6 +165,8 @@
       const date = user.date_joined ? new Date(user.date_joined).toLocaleDateString() : '-';
       const badgeClass = user.plan === 'Premium' ? 'badge-premium' : 'badge-free';
 
+      const nextPlan = user.plan === 'Premium' ? 'Gratis' : 'Premium';
+      const planBtnLabel = user.plan === 'Premium' ? 'Quitar Premium' : 'Dar Premium';
       row.innerHTML = `
         <td>#${user.id}</td>
         <td style="font-weight: bold; color: var(--text-main);">${user.username}</td>
@@ -171,6 +177,7 @@
           <button class="btn-delete" style="border-color: var(--secondary); color: var(--secondary); margin-right:5px;" onclick='window.openEditModal(${JSON.stringify(
             user,
           )})'>✏️</button>
+          <button class="btn-delete" style="border-color: var(--primary); color: var(--primary); margin-right:5px;" onclick="window.quickSetPlan(${user.id}, '${nextPlan}')">${planBtnLabel}</button>
           <button class="btn-delete" onclick="window.deleteUser(${user.id})">🗑️</button>
         </td>
       `;
@@ -612,6 +619,222 @@
     }
   }
 
+  async function quickSetPlan(userId, plan) {
+    const user = allUsers.find((u) => u && u.id === userId);
+    if (!user) {
+      showToast('Usuario no encontrado', 'error');
+      return;
+    }
+    const pretty = plan === 'Premium' ? 'Premium' : 'Gratis';
+    if (!confirm(`¿Cambiar plan a ${pretty} para ${user.email}?`)) return;
+
+    try {
+      const res = await authFetch(API_URL + `users/update_admin/${userId}/`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: user.username, email: user.email, plan: pretty }),
+      });
+      if (res.ok) {
+        showToast('Plan actualizado', 'success');
+        fetchUsers();
+      } else {
+        showToast('Error actualizando plan', 'error');
+      }
+    } catch (e) {
+      showToast('Error actualizando plan', 'error');
+    }
+  }
+
+  function parseCSV(text) {
+    const rows = [];
+    let row = [];
+    let cur = '';
+    let inQuotes = false;
+    for (let i = 0; i < text.length; i++) {
+      const ch = text[i];
+      const next = text[i + 1];
+      if (ch === '"') {
+        if (inQuotes && next === '"') {
+          cur += '"';
+          i++;
+        } else {
+          inQuotes = !inQuotes;
+        }
+      } else if (!inQuotes && ch === ',') {
+        row.push(cur.trim());
+        cur = '';
+      } else if (!inQuotes && (ch === '\n' || ch === '\r')) {
+        if (ch === '\r' && next === '\n') i++;
+        row.push(cur.trim());
+        cur = '';
+        if (row.some((c) => c !== '')) rows.push(row);
+        row = [];
+      } else {
+        cur += ch;
+      }
+    }
+    row.push(cur.trim());
+    if (row.some((c) => c !== '')) rows.push(row);
+    return rows;
+  }
+
+  function normalizeHeader(header) {
+    return String(header || '')
+      .trim()
+      .toLowerCase()
+      .replace(/\s+/g, '_');
+  }
+
+  function rowsToObjects(csvRows) {
+    if (!csvRows || csvRows.length < 2) return [];
+    const headers = csvRows[0].map(normalizeHeader);
+    const out = [];
+    for (let i = 1; i < csvRows.length; i++) {
+      const r = csvRows[i];
+      const obj = {};
+      headers.forEach((h, idx) => {
+        obj[h] = (r[idx] || '').trim();
+      });
+      out.push(obj);
+    }
+    return out;
+  }
+
+  async function readFileAsText(file) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result || ''));
+      reader.onerror = () => reject(new Error('file_read_error'));
+      reader.readAsText(file);
+    });
+  }
+
+  async function bulkCreateUsersFromCsv(file) {
+    const text = await readFileAsText(file);
+    const objs = rowsToObjects(parseCSV(text));
+    if (objs.length === 0) {
+      showToast('CSV vacío', 'error');
+      return;
+    }
+
+    const required = ['username', 'email', 'password'];
+    const missing = required.filter((k) => !(k in objs[0]));
+    if (missing.length) {
+      showToast(`Faltan columnas: ${missing.join(', ')}`, 'error');
+      return;
+    }
+
+    if (!confirm(`Se crearán ${objs.length} usuarios. ¿Continuar?`)) return;
+
+    let ok = 0;
+    let fail = 0;
+    for (const u of objs) {
+      const username = (u.username || '').trim();
+      const email = (u.email || '').trim();
+      const password = (u.password || '').trim();
+      const plan = ((u.plan || 'Gratis') || 'Gratis').trim();
+      if (!username || !email || !password) {
+        fail += 1;
+        continue;
+      }
+      try {
+        const res = await authFetch(API_URL + 'users/create/', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username, email, password, plan }),
+        });
+        if (res.ok) ok += 1;
+        else fail += 1;
+      } catch (e) {
+        fail += 1;
+      }
+    }
+
+    showToast(`Carga masiva: ${ok} ok, ${fail} fallidos`, fail ? 'error' : 'success');
+    fetchUsers();
+  }
+
+  async function bulkUpdatePlansFromCsv(file) {
+    const text = await readFileAsText(file);
+    const objs = rowsToObjects(parseCSV(text));
+    if (objs.length === 0) {
+      showToast('CSV vacío', 'error');
+      return;
+    }
+
+    const required = ['email', 'plan'];
+    const missing = required.filter((k) => !(k in objs[0]));
+    if (missing.length) {
+      showToast(`Faltan columnas: ${missing.join(', ')}`, 'error');
+      return;
+    }
+
+    if (!confirm(`Se actualizarán planes para ${objs.length} registros. ¿Continuar?`)) return;
+
+    const byEmail = new Map(allUsers.map((u) => [String(u.email || '').toLowerCase(), u]));
+    let ok = 0;
+    let fail = 0;
+
+    for (const row of objs) {
+      const email = String(row.email || '').trim().toLowerCase();
+      const plan = String(row.plan || '').trim();
+      const target = byEmail.get(email);
+      if (!email || !target) {
+        fail += 1;
+        continue;
+      }
+      const normalizedPlan = plan.toLowerCase() === 'premium' ? 'Premium' : 'Gratis';
+      try {
+        const res = await authFetch(API_URL + `users/update_admin/${target.id}/`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username: target.username, email: target.email, plan: normalizedPlan }),
+        });
+        if (res.ok) ok += 1;
+        else fail += 1;
+      } catch (e) {
+        fail += 1;
+      }
+    }
+
+    showToast(`Planes: ${ok} ok, ${fail} fallidos`, fail ? 'error' : 'success');
+    fetchUsers();
+  }
+
+  function triggerBulkCreate() {
+    const input = els.bulkCreateInput();
+    if (!input) return;
+    input.value = '';
+    input.click();
+  }
+
+  function triggerBulkPlanUpdate() {
+    const input = els.bulkPlanInput();
+    if (!input) return;
+    input.value = '';
+    input.click();
+  }
+
+  function bindBulkInputs() {
+    const createInput = els.bulkCreateInput();
+    if (createInput) {
+      createInput.addEventListener('change', async (e) => {
+        const file = e.target.files && e.target.files[0];
+        if (!file) return;
+        await bulkCreateUsersFromCsv(file);
+      });
+    }
+
+    const planInput = els.bulkPlanInput();
+    if (planInput) {
+      planInput.addEventListener('change', async (e) => {
+        const file = e.target.files && e.target.files[0];
+        if (!file) return;
+        await bulkUpdatePlansFromCsv(file);
+      });
+    }
+  }
+
   function openModal() {
     const m = els.createModal();
     if (m) m.style.display = 'flex';
@@ -758,6 +981,9 @@
   window.closeEditModal = closeEditModal;
   window.handleCreate = handleCreate;
   window.handleEdit = handleEdit;
+  window.quickSetPlan = quickSetPlan;
+  window.triggerBulkCreate = triggerBulkCreate;
+  window.triggerBulkPlanUpdate = triggerBulkPlanUpdate;
   window.requestPermission = requestPermission;
   window.sendDashboardNotification = sendDashboardNotification;
   window.logout = logout;
@@ -768,6 +994,7 @@
     loadStoredDaysWindow();
     bindRangeSelect();
     syncRangeUI();
+    bindBulkInputs();
 
     fetchUsers();
 

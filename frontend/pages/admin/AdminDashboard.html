@@ -23,9 +23,11 @@
                 <div class="range-control">
                     <label for="rangeSelect" class="range-label">Rango</label>
                     <select id="rangeSelect" class="input-field range-select">
-                        <option value="7">7 días</option>
-                        <option value="30" selected>30 días</option>
-                        <option value="90">90 días</option>
+                        <option value="90" selected>90 días</option>
+                        <option value="180">180 días</option>
+                        <option value="270">270 días</option>
+                        <option value="365">365 días</option>
+                        <option value="730">2 años</option>
                     </select>
                 </div>
             <button class="btn btn-outline-gold btn-sm" style="border-color: var(--error); color: var(--error);"
@@ -77,6 +79,7 @@
                         <div class="chart-canvas-wrap chart-tall">
                             <canvas id="globalChart"></canvas>
                         </div>
+                        <div class="chart-explainer">Promedio diario (0–10). Sirve para ver tendencia y cambios a lo largo del tiempo.</div>
                     </div>
 
                     <div class="table-section">
@@ -87,6 +90,7 @@
                         <div class="chart-canvas-wrap chart-tall">
                             <canvas id="planChart"></canvas>
                         </div>
+                        <div class="chart-explainer">Distribución actual según el plan mostrado en la tabla de usuarios.</div>
                     </div>
 
                     <div class="table-section">
@@ -97,6 +101,7 @@
                         <div class="chart-canvas-wrap chart-tall">
                             <canvas id="signupsChart"></canvas>
                         </div>
+                        <div class="chart-explainer">Altas por día separadas por plan. Útil para medir adquisición y conversión a Premium.</div>
                     </div>
 
                     <div class="table-section">
@@ -107,6 +112,7 @@
                         <div class="chart-canvas-wrap chart-tall">
                             <canvas id="signupsTrendChart"></canvas>
                         </div>
+                        <div class="chart-explainer">Suaviza el ruido diario para ver la tendencia real del crecimiento.</div>
                     </div>
 
                     <div class="table-section">
@@ -117,6 +123,7 @@
                         <div class="chart-canvas-wrap chart-tall">
                             <canvas id="usersCumulativeChart"></canvas>
                         </div>
+                        <div class="chart-explainer">Acumulado de usuarios creados dentro del rango. Refleja el ritmo de crecimiento.</div>
                     </div>
 
                     <div class="table-section">
@@ -127,6 +134,7 @@
                         <div class="chart-canvas-wrap chart-tall">
                             <canvas id="premiumShareChart"></canvas>
                         </div>
+                        <div class="chart-explainer">Porcentaje Premium acumulado. Ayuda a ver si la monetización mejora o empeora.</div>
                     </div>
                 </div>
 
@@ -137,8 +145,17 @@
                         <div style="display: flex; gap: 10px;">
                             <input type="text" id="searchInput" class="search-input"
                                 placeholder="Buscar por nombre o email..." onkeyup="filterUsers()">
+                            <input type="file" id="bulkCreateInput" accept=".csv,text/csv" style="display:none" />
+                            <input type="file" id="bulkPlanInput" accept=".csv,text/csv" style="display:none" />
+                            <button class="btn btn-outline-teal btn-sm" onclick="triggerBulkCreate()">Carga masiva</button>
+                            <button class="btn btn-outline-gold btn-sm" onclick="triggerBulkPlanUpdate()">Carga planes</button>
                             <button class="btn btn-primary btn-sm" onclick="openModal()">+ Nuevo</button>
                         </div>
+                    </div>
+
+                    <div class="bulk-help">
+                        <div><strong>Carga masiva:</strong> CSV con columnas <code>username,email,password,plan</code> (plan: Gratis|Premium).</div>
+                        <div><strong>Carga planes:</strong> CSV con columnas <code>email,plan</code> para activar/desactivar Premium manualmente.</div>
                     </div>
 
                     <div class="table-wrapper">
