@@ -299,9 +299,17 @@
 
                     clearTimeout(timeoutId);
 
-                    const data = await res.json();
+                    // El backend puede devolver HTML (App Service 503) u otros formatos.
+                    // Parseo tolerante para no caer en catch por JSON inválido.
+                    const raw = await res.text();
+                    let data = null;
+                    try {
+                        data = raw ? JSON.parse(raw) : null;
+                    } catch (_) {
+                        data = null;
+                    }
 
-                    if (res.ok && data.success) {
+                    if (res.ok && data && data.success) {
                         showToast(`Bienvenido ${data.user.username}`, "success");
                         localStorage.setItem("user", JSON.stringify(data.user));
                         localStorage.setItem("isLoggedIn", "true");
@@ -343,7 +351,11 @@
                             }, 1000);
                         }
                     } else {
-                        showToast(data.error || "Error al iniciar sesión", "error");
+                        if (res.status === 503) {
+                            showToast("Servidor temporalmente no disponible. Intenta de nuevo en 1 minuto.", "error");
+                        } else {
+                            showToast((data && data.error) || "Error al iniciar sesión", "error");
+                        }
                         btnLogin.textContent = "Iniciar Sesión";
                         btnLogin.disabled = false;
                     }
