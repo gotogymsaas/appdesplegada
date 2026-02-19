@@ -1,6 +1,9 @@
 name: Deploy GoToGym Frontend
 
 on:
+  push:
+    branches:
+      - main
   workflow_dispatch:
 
 jobs:
