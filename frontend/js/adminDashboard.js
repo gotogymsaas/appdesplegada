@@ -1021,33 +1021,86 @@
   }
 
   async function requestPermission() {
-    const permission = await Notification.requestPermission();
-    if (permission === 'granted') {
-      showToast('Permisos activados ✅');
-      return true;
+    if (!('Notification' in window)) {
+      showToast('Este navegador no soporta notificaciones', 'error');
+      return false;
     }
-    showToast('Permiso denegado ❌', 'error');
-    return false;
+
+    const permission = await Notification.requestPermission();
+    if (permission !== 'granted') {
+      showToast('Permiso denegado ❌', 'error');
+      return false;
+    }
+
+    // Registrar SW a nivel raíz y suscribir Web Push (para que el admin también pueda recibir pruebas)
+    try {
+      if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
+        showToast('Web Push no soportado en este navegador', 'error');
+        return true;
+      }
+
+      const reg = await navigator.serviceWorker.register('/sw.js');
+      const existing = await reg.pushManager.getSubscription();
+      if (existing && existing.endpoint) {
+        await authFetch(API_URL + 'push/web/subscribe/', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            endpoint: existing.endpoint,
+            keys: existing.toJSON().keys,
+            device_id: localStorage.getItem('gtg_device_id') || '',
+          }),
+        });
+        showToast('Permisos activados ✅');
+        return true;
+      }
+
+      const keyRes = await authFetch(API_URL + 'push/web/key/');
+      if (!keyRes.ok) {
+        showToast('VAPID no configurado en el servidor', 'error');
+        return true;
+      }
+      const keyData = await keyRes.json();
+      const publicKey = keyData && keyData.public_key ? keyData.public_key : '';
+      if (!publicKey) {
+        showToast('VAPID no configurado', 'error');
+        return true;
+      }
+
+      const urlBase64ToUint8Array = (base64String) => {
+        const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
+        const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+        const raw = window.atob(base64);
+        const output = new Uint8Array(raw.length);
+        for (let i = 0; i < raw.length; i += 1) output[i] = raw.charCodeAt(i);
+        return output;
+      };
+
+      const sub = await reg.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8Array(publicKey),
+      });
+
+      await authFetch(API_URL + 'push/web/subscribe/', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          endpoint: sub.endpoint,
+          keys: sub.toJSON().keys,
+          device_id: localStorage.getItem('gtg_device_id') || '',
+        }),
+      });
+    } catch (e) {
+      console.error('web push subscribe error', e);
+    }
+
+    showToast('Permisos activados ✅');
+    return true;
   }
 
   async function sendDashboardNotification() {
-    if (!('serviceWorker' in navigator)) {
-      showToast('❌ Las alertas solo funcionan en localhost o HTTPS (no en IP numérica)', 'error');
-      return;
-    }
-
-    if (Notification.permission !== 'granted') {
-      const ok = await requestPermission();
-      if (!ok) {
-        showToast('🚫 Permiso denegado', 'error');
-        return;
-      }
-    }
-
     try {
       const variable = document.getElementById('notifVariable').value;
-      const reg = await navigator.serviceWorker.ready;
-
       const questions = {
         s_sleep: '¿Cómo dormiste?',
         s_stress_inv: '¿Cómo está tu estrés?',
@@ -1055,17 +1108,29 @@
       };
       const questionBody = questions[variable] || '¿Cómo te sientes?';
 
-      const options = {
-        body: questionBody,
-        icon: '../../assets/images/recurso-14.png',
-        actions: [
-          { action: `${variable}-2`, title: 'Mal (2)' },
-          { action: `${variable}-10`, title: 'Bien (10)' },
-        ],
-      };
+      const res = await authFetch(API_URL + 'push/admin/broadcast/', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: 'GoToGym Alerta 🔔',
+          body: questionBody,
+          data: {
+            source: 'admin_dashboard',
+            variable,
+          },
+        }),
+      });
 
-      reg.showNotification('GoToGym Alerta 🔔', options);
-      showToast('Notificación enviada');
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        showToast(err.error || 'Error enviando broadcast', 'error');
+        return;
+      }
+
+      const out = await res.json().catch(() => ({}));
+      const webSent = out?.result?.web?.sent || 0;
+      const fcmSent = out?.result?.fcm?.sent || 0;
+      showToast(`Broadcast enviado ✅ (Web: ${webSent} | Móvil: ${fcmSent})`, 'success');
     } catch (e) {
       console.error(e);
       showToast('Error al enviar', 'error');
@@ -1107,7 +1172,7 @@
     fetchUsers();
 
     if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register('../../sw.js').catch((err) => console.error('SW Fail', err));
+      navigator.serviceWorker.register('/sw.js').catch((err) => console.error('SW Fail', err));
     }
   });
 })();

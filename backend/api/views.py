@@ -1376,6 +1376,34 @@ def _send_fcm(tokens, title, body, data=None):
         return False, str(e)
 
 
+def _chunk_list(values, size):
+    size = int(size) if size else 1000
+    if size <= 0:
+        size = 1000
+    for i in range(0, len(values), size):
+        yield values[i:i + size]
+
+
+def _send_fcm_bulk(tokens, title, body, data=None):
+    tokens = list(tokens or [])
+    if not tokens:
+        return False, "No hay tokens"
+
+    total_sent = 0
+    chunk_results = []
+    any_ok = False
+    for chunk in _chunk_list(tokens, 1000):
+        ok, info = _send_fcm(chunk, title, body, data=data)
+        chunk_results.append({"ok": ok, "info": info, "count": len(chunk)})
+        if ok:
+            any_ok = True
+            total_sent += len(chunk)
+
+    if not any_ok:
+        return False, {"sent": 0, "chunks": chunk_results}
+    return True, {"sent": total_sent, "chunks": chunk_results}
+
+
 def _get_vapid_keys():
     public_key = os.getenv("VAPID_PUBLIC_KEY", "").strip()
     private_key = os.getenv("VAPID_PRIVATE_KEY", "").strip()
@@ -1420,6 +1448,78 @@ def _send_web_push(subscriptions, title, body, data=None):
     if sent == 0:
         return False, errors or "No se pudo enviar"
     return True, {"sent": sent, "errors": errors}
+
+
+@api_view(['POST', 'OPTIONS'])
+@authentication_classes([JWTAuthentication])
+@permission_classes([IsAuthenticatedOrOptions])
+def push_admin_broadcast(request):
+    """Envía una notificación a TODOS los dispositivos registrados.
+
+    - Web Push: WebPushSubscription
+    - Mobile (Capacitor/FCM): PushToken
+
+    Requiere: usuario superuser.
+    """
+    if request.method == 'OPTIONS':
+        response = Response()
+        response['Access-Control-Allow-Origin'] = '*'
+        response['Access-Control-Allow-Methods'] = 'POST, OPTIONS'
+        response['Access-Control-Allow-Headers'] = 'Content-Type, Authorization'
+        return response
+
+    if not getattr(request, 'user', None) or not request.user.is_authenticated:
+        return Response({'error': 'No autenticado'}, status=status.HTTP_401_UNAUTHORIZED)
+
+    if not getattr(request.user, 'is_superuser', False):
+        return Response({'error': 'Solo administradores'}, status=status.HTTP_403_FORBIDDEN)
+
+    data = request.data or {}
+    title = (data.get('title') or 'GoToGym').strip()
+    body = (data.get('body') or 'Tienes una notificación').strip()
+    payload_data = data.get('data') or {}
+
+    # Protección simple para evitar payloads gigantes.
+    try:
+        if json.dumps(payload_data).__len__() > 4000:
+            return Response({'error': 'data demasiado grande'}, status=status.HTTP_400_BAD_REQUEST)
+    except Exception:
+        payload_data = {}
+
+    tokens = list(
+        PushToken.objects.filter(active=True).values_list('token', flat=True)
+    )
+    subs = list(
+        WebPushSubscription.objects.filter(active=True)
+    )
+
+    ok_fcm, info_fcm = _send_fcm_bulk(tokens, title, body, data=payload_data)
+    ok_web, info_web = _send_web_push(subs, title, body, data=payload_data)
+
+    if not ok_fcm and not ok_web:
+        return Response(
+            {
+                'success': False,
+                'error': str(info_fcm or info_web),
+                'result': {'fcm': info_fcm, 'web': info_web},
+            },
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    return Response(
+        {
+            'success': True,
+            'counts': {
+                'tokens_total': len(tokens),
+                'subs_total': len(subs),
+            },
+            'result': {
+                'fcm': info_fcm,
+                'web': info_web,
+            },
+        },
+        status=status.HTTP_200_OK,
+    )
 
 
 @api_view(['POST', 'OPTIONS'])

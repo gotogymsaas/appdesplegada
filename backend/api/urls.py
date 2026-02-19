@@ -31,6 +31,7 @@ urlpatterns = [
     path('push/register/', views.push_register, name='push_register'),
     path('push/unregister/', views.push_unregister, name='push_unregister'),
     path('push/send_test/', views.push_send_test, name='push_send_test'),
+    path('push/admin/broadcast/', views.push_admin_broadcast, name='push_admin_broadcast'),
     path('push/web/key/', views.push_web_public_key, name='push_web_public_key'),
     path('push/web/subscribe/', views.push_web_subscribe, name='push_web_subscribe'),
     path('push/web/unsubscribe/', views.push_web_unsubscribe, name='push_web_unsubscribe'),

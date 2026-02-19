@@ -20,3 +20,5 @@ azure-communication-email
 azure-storage-blob
 
 python-dotenv
+
+pywebpush
