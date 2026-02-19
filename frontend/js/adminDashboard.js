@@ -717,36 +717,144 @@
       return;
     }
 
-    const required = ['username', 'email', 'password'];
-    const missing = required.filter((k) => !(k in objs[0]));
-    if (missing.length) {
-      showToast(`Faltan columnas: ${missing.join(', ')}`, 'error');
+    const hasEmail = 'email' in objs[0];
+    if (!hasEmail) {
+      showToast('Falta columna: email', 'error');
       return;
     }
 
-    if (!confirm(`Se crearán ${objs.length} usuarios. ¿Continuar?`)) return;
+    const hasUsername = 'username' in objs[0];
+    const hasPassword = 'password' in objs[0];
+    // plan es opcional
 
+    const modeText = hasUsername && hasPassword ? 'manual' : 'automático';
+    if (!confirm(`Se procesarán ${objs.length} usuarios (modo ${modeText}). ¿Continuar?`)) return;
+
+    const existingUsernames = new Set(allUsers.map((u) => String(u.username || '').toLowerCase()));
+    const stagedUsernames = new Set();
+
+    const sanitizeUsername = (value) => {
+      const v = String(value || '')
+        .trim()
+        .toLowerCase()
+        .replace(/[^a-z0-9_\-\.]/g, '_')
+        .replace(/_+/g, '_')
+        .replace(/^_+|_+$/g, '');
+      return v || 'user';
+    };
+
+    const uniqueUsername = (base) => {
+      let candidate = sanitizeUsername(base);
+      if (candidate.length > 28) candidate = candidate.slice(0, 28);
+
+      const isTaken = (name) => existingUsernames.has(name) || stagedUsernames.has(name);
+      if (!isTaken(candidate)) {
+        stagedUsernames.add(candidate);
+        return candidate;
+      }
+
+      for (let i = 1; i <= 9999; i++) {
+        const suffix = String(i);
+        const trimmed = candidate.slice(0, Math.max(1, 28 - suffix.length));
+        const attempt = `${trimmed}${suffix}`;
+        if (!isTaken(attempt)) {
+          stagedUsernames.add(attempt);
+          return attempt;
+        }
+      }
+
+      // fallback
+      const rand = String(Math.floor(Math.random() * 100000));
+      const fallback = `${candidate.slice(0, Math.max(1, 28 - rand.length))}${rand}`;
+      stagedUsernames.add(fallback);
+      return fallback;
+    };
+
+    const generatePassword = () => {
+      const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#$%';
+      const length = 12;
+      let out = '';
+      try {
+        const buf = new Uint32Array(length);
+        (window.crypto || window.msCrypto).getRandomValues(buf);
+        for (let i = 0; i < length; i++) out += alphabet[buf[i] % alphabet.length];
+        return out;
+      } catch (e) {
+        for (let i = 0; i < length; i++) out += alphabet[Math.floor(Math.random() * alphabet.length)];
+        return out;
+      }
+    };
+
+    const normalizePlan = (planValue) => {
+      const p = String(planValue || '').trim().toLowerCase();
+      if (p === 'premium') return 'Premium';
+      return 'Gratis';
+    };
+
+    const createdCreds = [];
     let ok = 0;
     let fail = 0;
+
     for (const u of objs) {
-      const username = (u.username || '').trim();
-      const email = (u.email || '').trim();
-      const password = (u.password || '').trim();
-      const plan = ((u.plan || 'Gratis') || 'Gratis').trim();
-      if (!username || !email || !password) {
+      const email = String(u.email || '').trim();
+      if (!email) {
         fail += 1;
         continue;
       }
+
+      const plan = normalizePlan(u.plan);
+      const username = hasUsername ? String(u.username || '').trim() : uniqueUsername(email.split('@')[0]);
+      const password = hasPassword ? String(u.password || '').trim() : generatePassword();
+
+      if (!username || !password) {
+        fail += 1;
+        continue;
+      }
+
       try {
         const res = await authFetch(API_URL + 'users/create/', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ username, email, password, plan }),
         });
-        if (res.ok) ok += 1;
-        else fail += 1;
+        if (res.ok) {
+          ok += 1;
+          createdCreds.push({ username, email, password, plan });
+        } else {
+          fail += 1;
+        }
       } catch (e) {
         fail += 1;
+      }
+    }
+
+    if (createdCreds.length) {
+      try {
+        const header = 'username,email,password,plan\n';
+        const lines = createdCreds
+          .map((c) => {
+            const esc = (s) => {
+              const v = String(s ?? '');
+              if (/[",\n\r]/.test(v)) return `"${v.replace(/"/g, '""')}"`;
+              return v;
+            };
+            return `${esc(c.username)},${esc(c.email)},${esc(c.password)},${esc(c.plan)}`;
+          })
+          .join('\n');
+        const csv = header + lines + '\n';
+
+        const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        const stamp = new Date().toISOString().slice(0, 10);
+        a.download = `credenciales_creadas_${stamp}.csv`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
+      } catch (e) {
+        // ignore
       }
     }
 
