@@ -5,6 +5,7 @@ from rest_framework_simplejwt.authentication import JWTAuthentication
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework.response import Response
 from rest_framework import status
+import logging
 import re
 import threading
 import secrets
@@ -80,6 +81,9 @@ except Exception:
     ContentSettings = None
     generate_blob_sas = None
     BlobSasPermissions = None
+
+
+logger = logging.getLogger(__name__)
 
 
 class IsAuthenticatedOrOptions(IsAuthenticated):
@@ -240,8 +244,9 @@ def _send_password_reset_email(to_email: str, reset_url: str) -> bool:
             poller = client.begin_send(message)
             poller.result()
             return True
-    except Exception:
-        pass
+    except Exception as exc:
+        # No exponer detalles al usuario; dejar evidencia en Log Stream.
+        logger.exception("password_reset: ACS send failed")
 
     # SMTP / backend Django
     try:
@@ -249,7 +254,8 @@ def _send_password_reset_email(to_email: str, reset_url: str) -> bool:
         msg.attach_alternative(html, "text/html")
         msg.send(fail_silently=False)
         return True
-    except Exception:
+    except Exception as exc:
+        logger.exception("password_reset: SMTP send failed")
         return False
 
 
