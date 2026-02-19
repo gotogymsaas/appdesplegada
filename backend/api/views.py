@@ -25,7 +25,7 @@ from .serializers import UserSerializer
 # Importar el servicio ML
 from .serializers import UserSerializer
 # Importar el servicio ML
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone as dt_timezone
 from django.utils import timezone
 from django.db.models import Avg, Q, Count
 from django.db import IntegrityError
@@ -133,8 +133,8 @@ def _date_range_from_request(request, default_days=90):
     # convertimos a datetimes aware en UTC
     start_local = datetime(date_from.year, date_from.month, date_from.day, 0, 0, 0, tzinfo=tz)
     end_local = datetime(date_to.year, date_to.month, date_to.day, 23, 59, 59, tzinfo=tz)
-    start_utc = start_local.astimezone(timezone.utc)
-    end_utc = end_local.astimezone(timezone.utc)
+    start_utc = start_local.astimezone(dt_timezone.utc)
+    end_utc = end_local.astimezone(dt_timezone.utc)
 
     return {
         "tz": tz,
@@ -159,8 +159,8 @@ def _previous_period(range_info):
         "tz": tz,
         "date_from": prev_from,
         "date_to": prev_to,
-        "start_utc": start_local.astimezone(timezone.utc),
-        "end_utc": end_local.astimezone(timezone.utc),
+        "start_utc": start_local.astimezone(dt_timezone.utc),
+        "end_utc": end_local.astimezone(dt_timezone.utc),
         "days": days,
     }
 
