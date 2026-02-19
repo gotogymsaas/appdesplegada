@@ -47,6 +47,43 @@
   margin-top: 6px;
 }
 
+/* Capas: Estratégico / Táctico / Operativo */
+.layer-section {
+  margin-bottom: 22px;
+}
+
+.layer-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 14px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.layer-title {
+  font-size: 16px;
+  font-weight: 800;
+  color: var(--text-main);
+}
+
+.layer-subtitle {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-top: 4px;
+  line-height: 1.35;
+}
+
+.layer-chip {
+  font-size: 12px;
+  color: var(--text-muted);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 999px;
+  padding: 6px 10px;
+}
+
 /* KPI GRID */
 .kpi-grid {
   display: grid;

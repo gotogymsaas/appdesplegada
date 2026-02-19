@@ -35,186 +35,216 @@
             </div>
         </div>
 
-        <!-- KPI CARDS -->
-        <div class="kpi-grid">
-            <div class="kpi-card">
-                <div class="kpi-value" id="kpi-total">--</div>
-                <div class="kpi-label">Usuarios Totales</div>
-            </div>
-            <div class="kpi-card">
-                <div class="kpi-value" style="color: var(--secondary);" id="kpi-premium">--</div>
-                <div class="kpi-label">Usuarios Premium</div>
-            </div>
-            <div class="kpi-card">
-                <div class="kpi-value" style="color: var(--primary);" id="kpi-today">--</div>
-                <div class="kpi-label">Nuevos Hoy</div>
+        <!-- ESTRATÉGICO: qué está pasando (dirección) -->
+        <section class="layer-section" id="estrategico">
+            <div class="layer-header">
+                <div>
+                    <div class="layer-title">Estratégico</div>
+                    <div class="layer-subtitle">Indicadores de dirección y salud del producto (visión ejecutiva).</div>
+                </div>
+                <span class="layer-chip" data-range-chip>Últimos 30 días</span>
             </div>
 
-            <div class="kpi-card">
-                <div class="kpi-value" id="kpi-7d">--</div>
-                <div class="kpi-label">Altas (7 días)</div>
-            </div>
-            <div class="kpi-card">
-                <div class="kpi-value" style="color: var(--primary);" id="kpi-30d">--</div>
-                <div class="kpi-label">Altas (30 días)</div>
-            </div>
-            <div class="kpi-card">
-                <div class="kpi-value" style="color: var(--secondary);" id="kpi-happy-7d">--</div>
-                <div class="kpi-label">Felicidad prom. (7 días)</div>
-            </div>
-        </div>
-
-        <!-- DASHBOARD CONTENT -->
-        <div class="dashboard-main">
-            <!-- LEFT: USERS -->
-            <!-- LEFT: USERS -->
-            <div style="display:flex; flex-direction:column; gap:20px;">
-                <!-- Charts (mínimo 6) -->
-                <div class="charts-grid">
-                    <div class="table-section">
-                        <div class="meta-row" style="margin-bottom: 10px;">
-                            <h2 style="margin: 0; color: var(--text-main); font-size: 18px;">Felicidad Global</h2>
-                            <span class="meta-chip" data-range-chip>Últimos 30 días</span>
-                        </div>
-                        <div class="chart-canvas-wrap chart-tall">
-                            <canvas id="globalChart"></canvas>
-                        </div>
-                        <div class="chart-explainer">Promedio diario (0–10). Sirve para ver tendencia y cambios a lo largo del tiempo.</div>
-                    </div>
-
-                    <div class="table-section">
-                        <div class="meta-row" style="margin-bottom: 10px;">
-                            <h2 style="margin: 0; color: var(--text-main); font-size: 18px;">Distribución de plan</h2>
-                            <span class="meta-chip">Actual</span>
-                        </div>
-                        <div class="chart-canvas-wrap chart-tall">
-                            <canvas id="planChart"></canvas>
-                        </div>
-                        <div class="chart-explainer">Distribución actual según el plan mostrado en la tabla de usuarios.</div>
-                    </div>
-
-                    <div class="table-section">
-                        <div class="meta-row" style="margin-bottom: 10px;">
-                            <h2 style="margin: 0; color: var(--text-main); font-size: 18px;">Altas (Premium vs Gratis)</h2>
-                            <span class="meta-chip" data-range-chip>Últimos 30 días</span>
-                        </div>
-                        <div class="chart-canvas-wrap chart-tall">
-                            <canvas id="signupsChart"></canvas>
-                        </div>
-                        <div class="chart-explainer">Altas por día separadas por plan. Útil para medir adquisición y conversión a Premium.</div>
-                    </div>
-
-                    <div class="table-section">
-                        <div class="meta-row" style="margin-bottom: 10px;">
-                            <h2 style="margin: 0; color: var(--text-main); font-size: 18px;">Tendencia de altas (prom. móvil 7d)</h2>
-                            <span class="meta-chip" data-range-chip>Últimos 30 días</span>
-                        </div>
-                        <div class="chart-canvas-wrap chart-tall">
-                            <canvas id="signupsTrendChart"></canvas>
-                        </div>
-                        <div class="chart-explainer">Suaviza el ruido diario para ver la tendencia real del crecimiento.</div>
-                    </div>
-
-                    <div class="table-section">
-                        <div class="meta-row" style="margin-bottom: 10px;">
-                            <h2 style="margin: 0; color: var(--text-main); font-size: 18px;">Usuarios acumulados</h2>
-                            <span class="meta-chip" data-range-chip>Últimos 30 días</span>
-                        </div>
-                        <div class="chart-canvas-wrap chart-tall">
-                            <canvas id="usersCumulativeChart"></canvas>
-                        </div>
-                        <div class="chart-explainer">Acumulado de usuarios creados dentro del rango. Refleja el ritmo de crecimiento.</div>
-                    </div>
-
-                    <div class="table-section">
-                        <div class="meta-row" style="margin-bottom: 10px;">
-                            <h2 style="margin: 0; color: var(--text-main); font-size: 18px;">% Premium (acumulado)</h2>
-                            <span class="meta-chip" data-range-chip>Últimos 30 días</span>
-                        </div>
-                        <div class="chart-canvas-wrap chart-tall">
-                            <canvas id="premiumShareChart"></canvas>
-                        </div>
-                        <div class="chart-explainer">Porcentaje Premium acumulado. Ayuda a ver si la monetización mejora o empeora.</div>
-                    </div>
+            <!-- KPI CARDS -->
+            <div class="kpi-grid" style="margin-bottom: 0;">
+                <div class="kpi-card">
+                    <div class="kpi-value" id="kpi-total">--</div>
+                    <div class="kpi-label">Usuarios Totales</div>
+                </div>
+                <div class="kpi-card">
+                    <div class="kpi-value" style="color: var(--secondary);" id="kpi-premium">--</div>
+                    <div class="kpi-label">Usuarios Premium</div>
+                </div>
+                <div class="kpi-card">
+                    <div class="kpi-value" style="color: var(--primary);" id="kpi-today">--</div>
+                    <div class="kpi-label">Nuevos Hoy</div>
                 </div>
 
-                <!-- Users Table -->
+                <div class="kpi-card">
+                    <div class="kpi-value" id="kpi-7d">--</div>
+                    <div class="kpi-label">Altas (7 días)</div>
+                </div>
+                <div class="kpi-card">
+                    <div class="kpi-value" style="color: var(--primary);" id="kpi-30d">--</div>
+                    <div class="kpi-label">Altas (30 días)</div>
+                </div>
+                <div class="kpi-card">
+                    <div class="kpi-value" style="color: var(--secondary);" id="kpi-happy-7d">--</div>
+                    <div class="kpi-label">Felicidad prom. (7 días)</div>
+                </div>
+            </div>
+        </section>
+
+        <!-- TÁCTICO: por qué / palancas -->
+        <section class="layer-section" id="tactico">
+            <div class="layer-header">
+                <div>
+                    <div class="layer-title">Táctico</div>
+                    <div class="layer-subtitle">Tendencias, conversión y composición (palancas para decidir qué hacer).</div>
+                </div>
+                <span class="layer-chip" data-range-chip>Últimos 30 días</span>
+            </div>
+
+            <!-- Charts (mínimo 6) -->
+            <div class="charts-grid">
                 <div class="table-section">
-                    <div class="toolbar">
-                        <h2 style="margin: 0; color: var(--text-main); font-size: 18px;">Usuarios</h2>
-                        <div style="display: flex; gap: 10px;">
-                            <input type="text" id="searchInput" class="search-input"
-                                placeholder="Buscar por nombre o email..." onkeyup="filterUsers()">
-                            <input type="file" id="bulkCreateInput" accept=".csv,text/csv" style="display:none" />
-                            <input type="file" id="bulkPlanInput" accept=".csv,text/csv" style="display:none" />
-                            <button class="btn btn-outline-teal btn-sm" onclick="triggerBulkCreate()">Carga masiva</button>
-                            <button class="btn btn-outline-gold btn-sm" onclick="triggerBulkPlanUpdate()">Carga planes</button>
-                            <button class="btn btn-primary btn-sm" onclick="openModal()">+ Nuevo</button>
+                    <div class="meta-row" style="margin-bottom: 10px;">
+                        <h2 style="margin: 0; color: var(--text-main); font-size: 18px;">Felicidad Global</h2>
+                        <span class="meta-chip" data-range-chip>Últimos 30 días</span>
+                    </div>
+                    <div class="chart-canvas-wrap chart-tall">
+                        <canvas id="globalChart"></canvas>
+                    </div>
+                    <div class="chart-explainer">Promedio diario (0–10). Sirve para ver tendencia y cambios a lo largo del tiempo.</div>
+                </div>
+
+                <div class="table-section">
+                    <div class="meta-row" style="margin-bottom: 10px;">
+                        <h2 style="margin: 0; color: var(--text-main); font-size: 18px;">Distribución de plan</h2>
+                        <span class="meta-chip">Actual</span>
+                    </div>
+                    <div class="chart-canvas-wrap chart-tall">
+                        <canvas id="planChart"></canvas>
+                    </div>
+                    <div class="chart-explainer">Distribución actual según el plan mostrado en la tabla de usuarios.</div>
+                </div>
+
+                <div class="table-section">
+                    <div class="meta-row" style="margin-bottom: 10px;">
+                        <h2 style="margin: 0; color: var(--text-main); font-size: 18px;">Altas (Premium vs Gratis)</h2>
+                        <span class="meta-chip" data-range-chip>Últimos 30 días</span>
+                    </div>
+                    <div class="chart-canvas-wrap chart-tall">
+                        <canvas id="signupsChart"></canvas>
+                    </div>
+                    <div class="chart-explainer">Altas por día separadas por plan. Útil para medir adquisición y conversión a Premium.</div>
+                </div>
+
+                <div class="table-section">
+                    <div class="meta-row" style="margin-bottom: 10px;">
+                        <h2 style="margin: 0; color: var(--text-main); font-size: 18px;">Tendencia de altas (prom. móvil 7d)</h2>
+                        <span class="meta-chip" data-range-chip>Últimos 30 días</span>
+                    </div>
+                    <div class="chart-canvas-wrap chart-tall">
+                        <canvas id="signupsTrendChart"></canvas>
+                    </div>
+                    <div class="chart-explainer">Suaviza el ruido diario para ver la tendencia real del crecimiento.</div>
+                </div>
+
+                <div class="table-section">
+                    <div class="meta-row" style="margin-bottom: 10px;">
+                        <h2 style="margin: 0; color: var(--text-main); font-size: 18px;">Usuarios acumulados</h2>
+                        <span class="meta-chip" data-range-chip>Últimos 30 días</span>
+                    </div>
+                    <div class="chart-canvas-wrap chart-tall">
+                        <canvas id="usersCumulativeChart"></canvas>
+                    </div>
+                    <div class="chart-explainer">Acumulado de usuarios creados dentro del rango. Refleja el ritmo de crecimiento.</div>
+                </div>
+
+                <div class="table-section">
+                    <div class="meta-row" style="margin-bottom: 10px;">
+                        <h2 style="margin: 0; color: var(--text-main); font-size: 18px;">% Premium (acumulado)</h2>
+                        <span class="meta-chip" data-range-chip>Últimos 30 días</span>
+                    </div>
+                    <div class="chart-canvas-wrap chart-tall">
+                        <canvas id="premiumShareChart"></canvas>
+                    </div>
+                    <div class="chart-explainer">Porcentaje Premium acumulado. Ayuda a ver si la monetización mejora o empeora.</div>
+                </div>
+            </div>
+        </section>
+
+        <!-- OPERATIVO: ejecutar acciones -->
+        <section class="layer-section" id="operativo">
+            <div class="layer-header">
+                <div>
+                    <div class="layer-title">Operativo</div>
+                    <div class="layer-subtitle">Acciones del día a día (usuarios, planes y notificaciones). Requiere motivo en acciones sensibles.</div>
+                </div>
+                <span class="layer-chip">Administración</span>
+            </div>
+
+            <div class="dashboard-main">
+                <div style="display:flex; flex-direction:column; gap:20px;">
+                    <!-- Users Table -->
+                    <div class="table-section">
+                        <div class="toolbar">
+                            <h2 style="margin: 0; color: var(--text-main); font-size: 18px;">Usuarios</h2>
+                            <div style="display: flex; gap: 10px;">
+                                <input type="text" id="searchInput" class="search-input"
+                                    placeholder="Buscar por nombre o email..." onkeyup="filterUsers()">
+                                <input type="file" id="bulkCreateInput" accept=".csv,text/csv" style="display:none" />
+                                <input type="file" id="bulkPlanInput" accept=".csv,text/csv" style="display:none" />
+                                <button class="btn btn-outline-teal btn-sm" onclick="triggerBulkCreate()">Carga masiva</button>
+                                <button class="btn btn-outline-gold btn-sm" onclick="triggerBulkPlanUpdate()">Carga planes</button>
+                                <button class="btn btn-primary btn-sm" onclick="openModal()">+ Nuevo</button>
+                            </div>
+                        </div>
+
+                        <div class="bulk-help">
+                            <div><strong>Carga masiva:</strong> CSV con columnas <code>username,email,password,plan</code> (plan: Gratis|Premium).</div>
+                            <div><strong>Auto:</strong> También se acepta CSV con <code>email</code> (y <code>plan</code> opcional). Se generará usuario/contraseña y se descargará un CSV con credenciales creadas.</div>
+                            <div><strong>Carga planes:</strong> CSV con columnas <code>email,plan</code> para activar/desactivar Premium manualmente.</div>
+                        </div>
+
+                        <div class="table-wrapper">
+                            <table id="usersTable">
+                                <thead>
+                                    <tr>
+                                        <th>ID</th>
+                                        <th>Usuario</th>
+                                        <th>Email</th>
+                                        <th>Plan</th>
+                                        <th>Registro</th>
+                                        <th>Acción</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="usersBody">
+                                    <!-- Rows -->
+                                </tbody>
+                            </table>
                         </div>
                     </div>
+                </div>
 
-                    <div class="bulk-help">
-                        <div><strong>Carga masiva:</strong> CSV con columnas <code>username,email,password,plan</code> (plan: Gratis|Premium).</div>
-                        <div><strong>Auto:</strong> También se acepta CSV con <code>email</code> (y <code>plan</code> opcional). Se generará usuario/contraseña y se descargará un CSV con credenciales creadas.</div>
-                        <div><strong>Carga planes:</strong> CSV con columnas <code>email,plan</code> para activar/desactivar Premium manualmente.</div>
-                    </div>
+                <!-- RIGHT: WIDGET -->
+                <div class="widget-section">
+                    <div class="widget-title">🔔 Notificaciones</div>
+                    <p style="font-size: 12px; color: var(--text-muted); margin-bottom: 15px;">Envía un broadcast real a todos los
+                        dispositivos con notificaciones activas (PWA y móvil).</p>
 
-                    <div class="table-wrapper">
-                        <table id="usersTable">
-                            <thead>
-                                <tr>
-                                    <th>ID</th>
-                                    <th>Usuario</th>
-                                    <th>Email</th>
-                                    <th>Plan</th>
-                                    <th>Registro</th>
-                                    <th>Acción</th>
-                                </tr>
-                            </thead>
-                            <tbody id="usersBody">
-                                <!-- Rows -->
-                            </tbody>
-                        </table>
+                    <button class="btn btn-outline-teal" style="width: 100%; margin-bottom: 10px;"
+                        onclick="requestPermission()">Activar Permisos</button>
+
+                    <select id="notifVariable" class="input-field" style="margin-bottom: 10px;">
+                        <option value="s_sleep">Horas de sueño</option>
+                        <option value="s_stress_inv">Nivel de Estrés</option>
+                        <option value="s_energy">Nivel de Energía</option>
+                    </select>
+
+                    <button class="btn btn-primary" style="width: 100%;" onclick="sendDashboardNotification()">Enviar
+                        Alerta</button>
+
+                    <div class="privacy-card">
+                        <div class="widget-title" style="margin-top: 0;">🔒 Privacidad (resumen)</div>
+                        <p style="font-size: 12px; color: var(--text-muted); margin-bottom: 10px;">
+                            Este panel usa datos agregados cuando es posible y está restringido a administradores.
+                        </p>
+                        <ul>
+                            <li>Cuenta: nombre/usuario/email/plan.</li>
+                            <li>Técnicos: IP, sesión (JWT), tokens push.</li>
+                            <li>Bienestar: métricas de entrenamiento y progreso.</li>
+                            <li>Integraciones (opcional): sueño/actividad/FC/otras métricas.</li>
+                            <li>Archivos: perfil y adjuntos subidos voluntariamente.</li>
+                        </ul>
+                        <p style="font-size: 12px; color: var(--text-muted); margin-top: 10px;">
+                            Ver política: <a href="../info/PoliticaPrivacidad.html">Políticas de Privacidad</a>
+                        </p>
                     </div>
                 </div>
             </div>
-
-            <!-- RIGHT: WIDGET -->
-            <div class="widget-section">
-                <div class="widget-title">🔔 Notificaciones</div>
-                <p style="font-size: 12px; color: var(--text-muted); margin-bottom: 15px;">Envía un broadcast real a todos los
-                    dispositivos con notificaciones activas (PWA y móvil).</p>
-
-                <button class="btn btn-outline-teal" style="width: 100%; margin-bottom: 10px;"
-                    onclick="requestPermission()">Activar Permisos</button>
-
-                <select id="notifVariable" class="input-field" style="margin-bottom: 10px;">
-                    <option value="s_sleep">Horas de sueño</option>
-                    <option value="s_stress_inv">Nivel de Estrés</option>
-                    <option value="s_energy">Nivel de Energía</option>
-                </select>
-
-                <button class="btn btn-primary" style="width: 100%;" onclick="sendDashboardNotification()">Enviar
-                    Alerta</button>
-
-                <div class="privacy-card">
-                    <div class="widget-title" style="margin-top: 0;">🔒 Privacidad (resumen)</div>
-                    <p style="font-size: 12px; color: var(--text-muted); margin-bottom: 10px;">
-                        Este panel usa datos agregados cuando es posible y está restringido a administradores.
-                    </p>
-                    <ul>
-                        <li>Cuenta: nombre/usuario/email/plan.</li>
-                        <li>Técnicos: IP, sesión (JWT), tokens push.</li>
-                        <li>Bienestar: métricas de entrenamiento y progreso.</li>
-                        <li>Integraciones (opcional): sueño/actividad/FC/otras métricas.</li>
-                        <li>Archivos: perfil y adjuntos subidos voluntariamente.</li>
-                    </ul>
-                    <p style="font-size: 12px; color: var(--text-muted); margin-top: 10px;">
-                        Ver política: <a href="../info/PoliticaPrivacidad.html">Políticas de Privacidad</a>
-                    </p>
-                </div>
-            </div>
-        </div>
+        </section>
     </div>
 
     <!-- Create User Modal -->
