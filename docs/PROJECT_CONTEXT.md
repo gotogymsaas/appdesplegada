@@ -54,6 +54,9 @@ Según `STACK.md` y `ARCHITECTURE.md`:
 - Salud: Google Fit / HealthKit.
 - OCR/ML: procesamiento de PDFs e imágenes.
 
+### Integración WHOOP
+- Estado/pendientes: ver `docs/WHOOP_INTEGRATION.md`.
+
 ## Azure (recursos detectados en la suscripción actual)
 - App Service (API): `gotogym-api-ca-7581` (resource group `gotogym-prod-rg`).
 - App Service adicional: `gotogym-api-26237` (resource group `gotogym-prod-rg`).
