@@ -1,5 +1,6 @@
 from django.contrib import admin
 from .models import User, ContactMessage, PushToken, TermsAcceptance
+from .models import AuditLog
 
 @admin.register(User)
 class UserAdmin(admin.ModelAdmin):
@@ -19,6 +20,12 @@ class PushTokenAdmin(admin.ModelAdmin):
     list_display = ('id', 'platform', 'user', 'active', 'last_seen_at', 'created_at')
     list_filter = ('platform', 'active', 'created_at')
     search_fields = ('token', 'device_id', 'user__username', 'user__email')
+
+@admin.register(AuditLog)
+class AuditLogAdmin(admin.ModelAdmin):
+    list_display = ('occurred_at', 'action', 'actor', 'entity_type', 'entity_id', 'ip')
+    search_fields = ('action', 'entity_type', 'entity_id', 'actor__email', 'actor__username')
+    list_filter = ('action', 'entity_type')
 
 
 @admin.register(TermsAcceptance)

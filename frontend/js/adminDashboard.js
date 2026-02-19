@@ -43,6 +43,9 @@
 
   let allUsers = [];
 
+  let overviewCache = null;
+  let signupsSeriesCache = null;
+
   let daysWindow = DEFAULT_DAYS_WINDOW;
   let globalHistoryCache = null;
 
@@ -286,9 +289,24 @@
   function loadUserCharts(users) {
     const { primary, secondary, textMuted } = getThemeVars();
 
-    const labels = lastNDaysLabels(daysWindow);
-    const signups = countSignupsByDay(users, labels);
-    const signupsByPlan = countSignupsByDayAndPlan(users, labels);
+    let labels = lastNDaysLabels(daysWindow);
+    let signups = countSignupsByDay(users, labels);
+    let signupsByPlan = countSignupsByDayAndPlan(users, labels);
+
+    if (signupsSeriesCache && Array.isArray(signupsSeriesCache.data) && signupsSeriesCache.data.length) {
+      try {
+        const rows = signupsSeriesCache.data;
+        labels = rows.map((r) => r.date);
+        signups = rows.map((r) => Number(r.total || 0));
+        signupsByPlan = {
+          premium: rows.map((r) => Number(r.premium || 0)),
+          free: rows.map((r) => Number(r.free || 0)),
+        };
+      } catch (e) {
+        // fallback
+      }
+    }
+
     const trend = rollingAverage(signups, 7);
 
     // 1) Altas (Premium vs Gratis) - stacked bar
@@ -557,7 +575,9 @@
     daysWindow = clampDaysWindow(newDays);
     localStorage.setItem(RANGE_STORAGE_KEY, String(daysWindow));
     syncRangeUI();
-    renderDashboard();
+    overviewCache = null;
+    signupsSeriesCache = null;
+    fetchUsers();
   }
 
   function loadStoredDaysWindow() {
@@ -575,20 +595,67 @@
 
   function renderDashboard() {
     renderTable(allUsers);
-    calculateKPIs(allUsers);
+    // KPIs y series: preferir backend agregado; si falla, fallback local.
+    if (overviewCache) {
+      try {
+        const d = overviewCache.data || {};
+        if (els.kpiTotal()) els.kpiTotal().innerText = String(d.total_users ?? '--');
+        if (els.kpiPremium()) {
+          const premium = Number(d.premium_active || 0);
+          const total = Number(d.total_users || 0);
+          const pct = total > 0 ? Math.round((premium / total) * 100) : 0;
+          els.kpiPremium().innerText = `${premium} (${pct}%)`;
+        }
+        if (els.kpiToday()) {
+          // No existe KPI hoy en overview agregado; fallback local.
+          calculateKPIs(allUsers);
+        }
+      } catch (e) {
+        calculateKPIs(allUsers);
+      }
+    } else {
+      calculateKPIs(allUsers);
+    }
+
     loadUserCharts(allUsers);
     loadGlobalChart();
   }
 
+  async function fetchOverview() {
+    try {
+      const res = await authFetch(`${API_URL}admin/dashboard/overview/?days=${daysWindow}&timezone=America/Bogota&compare=true`);
+      if (!res.ok) return false;
+      overviewCache = await res.json();
+      return true;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  async function fetchSignupsSeries() {
+    try {
+      const res = await authFetch(`${API_URL}admin/dashboard/signups_series/?days=${daysWindow}&timezone=America/Bogota`);
+      if (!res.ok) return false;
+      signupsSeriesCache = await res.json();
+      return true;
+    } catch (e) {
+      return false;
+    }
+  }
+
   async function fetchUsers() {
     try {
-      const res = await authFetch(API_URL + 'users/');
+      // Paginación (MVP): primer page. Mantiene compatibilidad si backend responde array.
+      const res = await authFetch(API_URL + 'users/?page=1&pageSize=200');
       const users = await res.json();
       if (users.error) {
         showToast('Error cargando usuarios', 'error');
         return;
       }
-      allUsers = Array.isArray(users) ? users : [];
+      allUsers = Array.isArray(users) ? users : (users && Array.isArray(users.data) ? users.data : []);
+
+      await fetchOverview();
+      await fetchSignupsSeries();
       renderDashboard();
     } catch (e) {
       console.error(e);
@@ -605,9 +672,18 @@
   }
 
   async function deleteUser(id) {
-    if (!confirm('¿Eliminar usuario?')) return;
+    if (!confirm('¿Eliminar usuario? (borrado lógico)')) return;
+    const reason = (prompt('Motivo (requerido) para eliminar este usuario:') || '').trim();
+    if (!reason) {
+      showToast('Motivo requerido', 'error');
+      return;
+    }
     try {
-      const res = await authFetch(API_URL + `users/delete/${id}/`, { method: 'DELETE' });
+      const res = await authFetch(API_URL + `users/delete/${id}/`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reason }),
+      });
       if (res.ok) {
         showToast('Eliminado', 'success');
         fetchUsers();
@@ -627,12 +703,17 @@
     }
     const pretty = plan === 'Premium' ? 'Premium' : 'Gratis';
     if (!confirm(`¿Cambiar plan a ${pretty} para ${user.email}?`)) return;
+    const reason = (prompt('Motivo (requerido) para cambiar el plan:') || '').trim();
+    if (!reason) {
+      showToast('Motivo requerido', 'error');
+      return;
+    }
 
     try {
       const res = await authFetch(API_URL + `users/update_admin/${userId}/`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username: user.username, email: user.email, plan: pretty }),
+          body: JSON.stringify({ username: user.username, email: user.email, plan: pretty, reason }),
       });
       if (res.ok) {
         showToast('Plan actualizado', 'success');
@@ -1108,6 +1189,12 @@
       };
       const questionBody = questions[variable] || '¿Cómo te sientes?';
 
+      const reason = (prompt('Motivo (requerido) para enviar esta notificación masiva:') || '').trim();
+      if (!reason) {
+        showToast('Motivo requerido', 'error');
+        return;
+      }
+
       const res = await authFetch(API_URL + 'push/admin/broadcast/', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -1118,6 +1205,7 @@
             source: 'admin_dashboard',
             variable,
           },
+          reason,
         }),
       });
 

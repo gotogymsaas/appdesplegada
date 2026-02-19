@@ -181,3 +181,35 @@ class TermsAcceptance(models.Model):
     def __str__(self):
         return f"{self.user.username} - {self.version} ({self.accepted_at})"
 
+
+class AuditLog(models.Model):
+    actor = models.ForeignKey(
+        User,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="audit_logs",
+    )
+    occurred_at = models.DateTimeField(auto_now_add=True)
+
+    action = models.CharField(max_length=80)
+    entity_type = models.CharField(max_length=40, blank=True, default="")
+    entity_id = models.CharField(max_length=120, blank=True, default="")
+
+    before_json = models.JSONField(null=True, blank=True)
+    after_json = models.JSONField(null=True, blank=True)
+
+    reason = models.TextField(blank=True, default="")
+    ip = models.GenericIPAddressField(null=True, blank=True)
+    user_agent = models.TextField(blank=True, default="")
+
+    class Meta:
+        indexes = [
+            models.Index(fields=["occurred_at"]),
+            models.Index(fields=["action"]),
+            models.Index(fields=["entity_type", "entity_id"]),
+        ]
+
+    def __str__(self):
+        return f"{self.occurred_at} {self.action} {self.entity_type}:{self.entity_id}"
+

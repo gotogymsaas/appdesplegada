@@ -35,5 +35,9 @@ urlpatterns = [
     path('push/web/key/', views.push_web_public_key, name='push_web_public_key'),
     path('push/web/subscribe/', views.push_web_subscribe, name='push_web_subscribe'),
     path('push/web/unsubscribe/', views.push_web_unsubscribe, name='push_web_unsubscribe'),
+    # Admin dashboard aggregated endpoints (MVP, repo actual)
+    path('admin/dashboard/overview/', views.admin_dashboard_overview, name='admin_dashboard_overview'),
+    path('admin/dashboard/signups_series/', views.admin_dashboard_signups_series, name='admin_dashboard_signups_series'),
+    path('admin/audit/', views.admin_audit_list, name='admin_audit_list'),
     path('billing/webhook/mercadopago/', views.mercadopago_webhook, name='mercadopago_webhook'),
 ]

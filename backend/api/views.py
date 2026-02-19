@@ -19,7 +19,7 @@ import traceback
 import hashlib
 import ipaddress
 from django.contrib.auth import authenticate
-from .models import User, HappinessRecord, IFQuestion, IFAnswer, UserDocument, ContactMessage, PushToken, TermsAcceptance, WebPushSubscription
+from .models import User, HappinessRecord, IFQuestion, IFAnswer, UserDocument, ContactMessage, PushToken, TermsAcceptance, WebPushSubscription, AuditLog
 from .if_questions import IF_QUESTIONS
 from .serializers import UserSerializer
 # Importar el servicio ML
@@ -27,7 +27,7 @@ from .serializers import UserSerializer
 # Importar el servicio ML
 from datetime import date, datetime, timedelta
 from django.utils import timezone
-from django.db.models import Avg, Q
+from django.db.models import Avg, Q, Count
 from django.db import IntegrityError
 from django.db.models.functions import TruncDate
 import sys
@@ -91,6 +91,274 @@ class IsAuthenticatedOrOptions(IsAuthenticated):
         if request.method == "OPTIONS":
             return True
         return super().has_permission(request, view)
+
+
+def _parse_timezone(tz_str: str) -> ZoneInfo:
+    value = (tz_str or "").strip() or "America/Bogota"
+    try:
+        return ZoneInfo(value)
+    except Exception:
+        return ZoneInfo("America/Bogota")
+
+
+def _parse_date_yyyy_mm_dd(value: str):
+    raw = (value or "").strip()
+    if not raw:
+        return None
+    try:
+        return datetime.strptime(raw, "%Y-%m-%d").date()
+    except Exception:
+        return None
+
+
+def _date_range_from_request(request, default_days=90):
+    qs = request.query_params if hasattr(request, "query_params") else request.GET
+    tz = _parse_timezone(qs.get("timezone") or "")
+
+    date_from = _parse_date_yyyy_mm_dd(qs.get("dateFrom") or qs.get("from") or "")
+    date_to = _parse_date_yyyy_mm_dd(qs.get("dateTo") or qs.get("to") or "")
+
+    if date_to is None:
+        # hoy en TZ
+        now_local = timezone.now().astimezone(tz)
+        date_to = now_local.date()
+    if date_from is None:
+        try:
+            days = int(qs.get("days") or default_days)
+        except Exception:
+            days = default_days
+        days = max(1, min(days, 730))
+        date_from = date_to - timedelta(days=days - 1)
+
+    # convertimos a datetimes aware en UTC
+    start_local = datetime(date_from.year, date_from.month, date_from.day, 0, 0, 0, tzinfo=tz)
+    end_local = datetime(date_to.year, date_to.month, date_to.day, 23, 59, 59, tzinfo=tz)
+    start_utc = start_local.astimezone(timezone.utc)
+    end_utc = end_local.astimezone(timezone.utc)
+
+    return {
+        "tz": tz,
+        "date_from": date_from,
+        "date_to": date_to,
+        "start_utc": start_utc,
+        "end_utc": end_utc,
+        "days": (date_to - date_from).days + 1,
+    }
+
+
+def _previous_period(range_info):
+    days = int(range_info.get("days") or 1)
+    date_from = range_info["date_from"]
+    prev_to = date_from - timedelta(days=1)
+    prev_from = prev_to - timedelta(days=days - 1)
+
+    tz = range_info["tz"]
+    start_local = datetime(prev_from.year, prev_from.month, prev_from.day, 0, 0, 0, tzinfo=tz)
+    end_local = datetime(prev_to.year, prev_to.month, prev_to.day, 23, 59, 59, tzinfo=tz)
+    return {
+        "tz": tz,
+        "date_from": prev_from,
+        "date_to": prev_to,
+        "start_utc": start_local.astimezone(timezone.utc),
+        "end_utc": end_local.astimezone(timezone.utc),
+        "days": days,
+    }
+
+
+def _delta(current, previous):
+    try:
+        cur = float(current)
+        prev = float(previous)
+    except Exception:
+        return {"abs": None, "pct": None}
+    abs_delta = cur - prev
+    pct = None
+    if prev != 0:
+        pct = (abs_delta / prev) * 100.0
+    return {"abs": abs_delta, "pct": pct}
+
+
+@api_view(['GET', 'OPTIONS'])
+@authentication_classes([JWTAuthentication])
+@permission_classes([IsAuthenticatedOrOptions])
+def admin_dashboard_overview(request):
+    if request.method == 'OPTIONS':
+        return Response(status=status.HTTP_200_OK)
+
+    if not getattr(request, "user", None) or not request.user.is_superuser:
+        return Response({"error": "Forbidden"}, status=status.HTTP_403_FORBIDDEN)
+
+    range_info = _date_range_from_request(request, default_days=90)
+    qs = request.query_params
+    compare = _as_bool(qs.get("compare"))
+
+    users_all = User.objects.all()
+    total_users = users_all.count()
+    premium_active = users_all.filter(plan="Premium", is_active=True).count()
+
+    users_period = users_all.filter(date_joined__gte=range_info["start_utc"], date_joined__lte=range_info["end_utc"])
+    signups_total = users_period.count()
+    signups_premium = users_period.filter(plan="Premium").count()
+    conversion = (signups_premium / signups_total) if signups_total else 0.0
+
+    # Actividad aproximada MVP: last_login en 7 días (si existe)
+    last_7d_utc = timezone.now() - timedelta(days=7)
+    active_7d = users_all.filter(last_login__isnull=False, last_login__gte=last_7d_utc, is_active=True).count()
+
+    prev = None
+    deltas = None
+    if compare:
+        prev_range = _previous_period(range_info)
+        prev_period = users_all.filter(date_joined__gte=prev_range["start_utc"], date_joined__lte=prev_range["end_utc"])
+        prev_signups_total = prev_period.count()
+        prev_signups_premium = prev_period.filter(plan="Premium").count()
+        prev_conversion = (prev_signups_premium / prev_signups_total) if prev_signups_total else 0.0
+
+        prev = {
+            "signups_total": prev_signups_total,
+            "signups_premium": prev_signups_premium,
+            "conversion_premium": prev_conversion,
+        }
+        deltas = {
+            "signups_total": _delta(signups_total, prev_signups_total),
+            "signups_premium": _delta(signups_premium, prev_signups_premium),
+            "conversion_premium": _delta(conversion, prev_conversion),
+        }
+
+    return Response(
+        {
+            "data": {
+                "total_users": total_users,
+                "premium_active": premium_active,
+                "active_users_7d": active_7d,
+                "signups_total": signups_total,
+                "signups_premium": signups_premium,
+                "conversion_premium": round(conversion, 6),
+            },
+            "meta": {
+                "dateFrom": str(range_info["date_from"]),
+                "dateTo": str(range_info["date_to"]),
+                "timezone": str(range_info["tz"]),
+                "days": range_info["days"],
+                "compare": compare,
+                "previous": prev,
+                "deltas": deltas,
+            },
+        }
+    )
+
+
+@api_view(['GET', 'OPTIONS'])
+@authentication_classes([JWTAuthentication])
+@permission_classes([IsAuthenticatedOrOptions])
+def admin_dashboard_signups_series(request):
+    if request.method == 'OPTIONS':
+        return Response(status=status.HTTP_200_OK)
+
+    if not getattr(request, "user", None) or not request.user.is_superuser:
+        return Response({"error": "Forbidden"}, status=status.HTTP_403_FORBIDDEN)
+
+    range_info = _date_range_from_request(request, default_days=90)
+    tz = range_info["tz"]
+
+    base = User.objects.filter(date_joined__gte=range_info["start_utc"], date_joined__lte=range_info["end_utc"])
+    daily = (
+        base.annotate(day=TruncDate('date_joined', tzinfo=tz))
+        .values('day', 'plan')
+        .annotate(count=Count('id'))
+        .order_by('day')
+    )
+
+    # Construir mapa day -> {total,premium,free}
+    series_map = {}
+    for row in daily:
+        day = row.get('day')
+        plan = row.get('plan')
+        cnt = int(row.get('count') or 0)
+        if not day:
+            continue
+        key = day.isoformat()
+        if key not in series_map:
+            series_map[key] = {"date": key, "total": 0, "premium": 0, "free": 0}
+        series_map[key]["total"] += cnt
+        if plan == "Premium":
+            series_map[key]["premium"] += cnt
+        else:
+            series_map[key]["free"] += cnt
+
+    # Rellenar días faltantes
+    out = []
+    cur = range_info["date_from"]
+    while cur <= range_info["date_to"]:
+        k = cur.isoformat()
+        out.append(series_map.get(k) or {"date": k, "total": 0, "premium": 0, "free": 0})
+        cur += timedelta(days=1)
+
+    return Response({"data": out, "meta": {"dateFrom": str(range_info["date_from"]), "dateTo": str(range_info["date_to"]), "timezone": str(tz), "days": range_info["days"]}})
+
+
+@api_view(['GET', 'OPTIONS'])
+@authentication_classes([JWTAuthentication])
+@permission_classes([IsAuthenticatedOrOptions])
+def admin_audit_list(request):
+    if request.method == 'OPTIONS':
+        return Response(status=status.HTTP_200_OK)
+
+    if not getattr(request, "user", None) or not request.user.is_superuser:
+        return Response({"error": "Forbidden"}, status=status.HTTP_403_FORBIDDEN)
+
+    qs = request.query_params
+    action = (qs.get('action') or '').strip()
+    entity_type = (qs.get('entity_type') or '').strip()
+    entity_id = (qs.get('entity_id') or '').strip()
+
+    try:
+        page = int(qs.get('page') or 1)
+    except Exception:
+        page = 1
+    try:
+        page_size = int(qs.get('pageSize') or 50)
+    except Exception:
+        page_size = 50
+    page = max(1, page)
+    page_size = max(1, min(200, page_size))
+
+    logs = AuditLog.objects.all().select_related('actor').order_by('-occurred_at')
+    if action:
+        logs = logs.filter(action=action)
+    if entity_type:
+        logs = logs.filter(entity_type=entity_type)
+    if entity_id:
+        logs = logs.filter(entity_id=entity_id)
+
+    total = logs.count()
+    start = (page - 1) * page_size
+    items = logs[start:start + page_size]
+    data = []
+    for it in items:
+        data.append(
+            {
+                "occurred_at": _dt_iso(it.occurred_at),
+                "action": it.action,
+                "actor": {
+                    "id": it.actor.id if it.actor else None,
+                    "email": it.actor.email if it.actor else None,
+                    "username": it.actor.username if it.actor else None,
+                },
+                "entity_type": it.entity_type,
+                "entity_id": it.entity_id,
+                "reason": it.reason,
+                "ip": it.ip,
+            }
+        )
+
+    return Response(
+        {
+            "data": data,
+            "meta": {"page": page, "pageSize": page_size, "total": total},
+        }
+    )
+
 
 # Ajustar path para importar if_model (que está en la raíz del proyecto backend/if_model?) No, está en feature_engineer_v6.py path
 # Structure: backend/api/views.py. if_model is in c:/Users/PC/Desktop/GoToGym_Project/if_model
@@ -208,6 +476,47 @@ def _frontend_base_url(request) -> str:
         return request.build_absolute_uri("/").rstrip("/")
     except Exception:
         return ""
+
+
+def _audit_log(request, action, entity_type="", entity_id="", before=None, after=None, reason=""):
+    try:
+        actor = getattr(request, "user", None) if request else None
+        if actor and not getattr(actor, "is_authenticated", False):
+            actor = None
+        AuditLog.objects.create(
+            actor=actor,
+            action=str(action)[:80],
+            entity_type=(str(entity_type or "")[:40]),
+            entity_id=(str(entity_id or "")[:120]),
+            before_json=before,
+            after_json=after,
+            reason=(str(reason or "")[:2000]),
+            ip=_get_client_ip(request) if request else None,
+            user_agent=(request.META.get("HTTP_USER_AGENT", "")[:1000] if request else ""),
+        )
+    except Exception:
+        # Nunca debe romper la request por auditoría.
+        pass
+
+
+def _soft_delete_user(user: User):
+    """Borrado lógico básico sin cambiar el esquema: desactiva usuario y anonimiza credenciales visibles."""
+    if not user:
+        return
+    stamp = timezone.now().strftime("%Y%m%d%H%M%S")
+    original_email = user.email
+    original_username = user.username
+    user.is_active = False
+    try:
+        user.set_unusable_password()
+    except Exception:
+        pass
+    # Mantener unicidad: reemplazar email/username
+    user.email = f"deleted_{user.id}_{stamp}@example.invalid"
+    user.username = f"deleted_{user.id}_{stamp}"
+    user.full_name = None
+    user.save(update_fields=["is_active", "email", "username", "full_name", "password"])
+    return {"email": original_email, "username": original_username}
 
 
 def _send_password_reset_email(to_email: str, reset_url: str) -> bool:
@@ -1478,6 +1787,9 @@ def push_admin_broadcast(request):
     title = (data.get('title') or 'GoToGym').strip()
     body = (data.get('body') or 'Tienes una notificación').strip()
     payload_data = data.get('data') or {}
+    reason = (data.get('reason') or '').strip()
+    if not reason:
+        return Response({'error': 'reason requerido'}, status=status.HTTP_400_BAD_REQUEST)
 
     # Protección simple para evitar payloads gigantes.
     try:
@@ -1495,6 +1807,24 @@ def push_admin_broadcast(request):
 
     ok_fcm, info_fcm = _send_fcm_bulk(tokens, title, body, data=payload_data)
     ok_web, info_web = _send_web_push(subs, title, body, data=payload_data)
+
+    _audit_log(
+        request,
+        action="push.broadcast",
+        entity_type="push",
+        entity_id="all",
+        before=None,
+        after={
+            "title": title,
+            "body": body,
+            "data": payload_data,
+            "tokens_total": len(tokens),
+            "subs_total": len(subs),
+            "fcm": info_fcm,
+            "web": info_web,
+        },
+        reason=reason,
+    )
 
     if not ok_fcm and not ok_web:
         return Response(
@@ -1827,9 +2157,48 @@ def get_users(request):
     try:
         if not getattr(request, "user", None) or not request.user.is_superuser:
             return Response({"error": "Forbidden"}, status=status.HTTP_403_FORBIDDEN)
+
+        qs = request.query_params
+        q = (qs.get('q') or qs.get('query') or '').strip()
+        plan = (qs.get('plan') or '').strip()
+        status_filter = (qs.get('status') or '').strip().lower()
+
+        # Paginación opcional: si page/pageSize vienen, respondemos con {data,meta}
+        page_raw = qs.get('page')
+        page_size_raw = qs.get('pageSize') or qs.get('page_size')
+        use_paging = page_raw is not None or page_size_raw is not None
+
         users = User.objects.all().order_by('-date_joined')
-        serializer = UserSerializer(users, many=True, context={"request": request})
-        return Response(serializer.data)
+        if q:
+            users = users.filter(Q(username__icontains=q) | Q(email__icontains=q) | Q(full_name__icontains=q))
+        if plan in ("Gratis", "Premium"):
+            users = users.filter(plan=plan)
+        if status_filter:
+            if status_filter == 'active':
+                users = users.filter(is_active=True)
+            elif status_filter in ('inactive', 'disabled', 'deleted'):
+                users = users.filter(is_active=False)
+
+        if not use_paging:
+            serializer = UserSerializer(users, many=True, context={"request": request})
+            return Response(serializer.data)
+
+        try:
+            page = int(page_raw or 1)
+        except Exception:
+            page = 1
+        try:
+            page_size = int(page_size_raw or 100)
+        except Exception:
+            page_size = 100
+
+        page = max(1, page)
+        page_size = max(1, min(500, page_size))
+        total = users.count()
+        start = (page - 1) * page_size
+        items = users[start:start + page_size]
+        serializer = UserSerializer(items, many=True, context={"request": request})
+        return Response({"data": serializer.data, "meta": {"page": page, "pageSize": page_size, "total": total}})
     except Exception as e:
         print("Error fetching users:", str(e))
         return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
@@ -1848,9 +2217,16 @@ def delete_user(request, user_id):
             
         if user.is_superuser:
             return Response({'error': 'No se puede eliminar un superusuario'}, status=status.HTTP_403_FORBIDDEN)
-            
-        user.delete()
-        return Response({'success': True, 'message': 'Usuario eliminado correctamente'})
+
+        reason = (request.data.get('reason') or '').strip() if isinstance(request.data, dict) else ''
+        if not reason:
+            return Response({'error': 'reason requerido'}, status=status.HTTP_400_BAD_REQUEST)
+        before = {"id": user.id, "username": user.username, "email": user.email, "plan": user.plan, "is_active": getattr(user, "is_active", True)}
+        original = _soft_delete_user(user)
+        after = {"id": user_id, "is_active": False, "anonymized": True, "original": original}
+        _audit_log(request, action="users.soft_delete", entity_type="user", entity_id=str(user_id), before=before, after=after, reason=reason)
+
+        return Response({'success': True, 'message': 'Usuario eliminado (lógico) correctamente'})
     except Exception as e:
         return Response({'error': 'Error al eliminar usuario'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
@@ -1866,6 +2242,7 @@ def create_user_admin(request):
         email = data.get('email')
         password = data.get('password')
         plan = data.get('plan', 'Gratis')
+        reason = (data.get('reason') or '').strip() if isinstance(data, dict) else ''
 
         if not username or not email or not password:
             return Response({'error': 'Todos los campos son obligatorios'}, status=status.HTTP_400_BAD_REQUEST)
@@ -1873,11 +2250,24 @@ def create_user_admin(request):
         if User.objects.filter(username=username).exists():
             return Response({'error': 'El usuario ya existe'}, status=status.HTTP_400_BAD_REQUEST)
 
+        if plan not in ("Gratis", "Premium"):
+            plan = "Gratis"
+
         user = User.objects.create_user(
             username=username,
             email=email,
             password=password,
             plan=plan
+        )
+
+        _audit_log(
+            request,
+            action="users.create",
+            entity_type="user",
+            entity_id=str(user.id),
+            before=None,
+            after={"id": user.id, "username": user.username, "email": user.email, "plan": user.plan},
+            reason=reason,
         )
         
         serializer = UserSerializer(user)
@@ -2471,12 +2861,38 @@ def update_user_admin(request, user_id):
         except User.DoesNotExist:
             return Response({'error': 'Usuario no encontrado'}, status=status.HTTP_404_NOT_FOUND)
 
-        data = request.data
-        if 'username' in data: user.username = data['username']
-        if 'email' in data: user.email = data['email']
-        if 'plan' in data: user.plan = data['plan']
-        
+        data = request.data if isinstance(request.data, dict) else {}
+        reason = (data.get('reason') or '').strip()
+        before = {"id": user.id, "username": user.username, "email": user.email, "plan": user.plan, "is_active": getattr(user, "is_active", True)}
+
+        if 'username' in data and data['username']:
+            user.username = str(data['username']).strip()
+        if 'email' in data and data['email']:
+            user.email = str(data['email']).strip()
+        requested_plan = None
+        if 'plan' in data and data['plan']:
+            plan = str(data['plan']).strip()
+            if plan in ("Gratis", "Premium"):
+                requested_plan = plan
+
+        if requested_plan and requested_plan != before.get('plan'):
+            if not reason:
+                return Response({'error': 'reason requerido para cambio de plan'}, status=status.HTTP_400_BAD_REQUEST)
+            user.plan = requested_plan
+
         user.save()
+        after = {"id": user.id, "username": user.username, "email": user.email, "plan": user.plan, "is_active": getattr(user, "is_active", True)}
+
+        _audit_log(
+            request,
+            action="users.update_admin",
+            entity_type="user",
+            entity_id=str(user_id),
+            before=before,
+            after=after,
+            reason=reason,
+        )
+
         return Response({'success': True, 'message': 'Usuario actualizado'})
     except Exception as e:
         return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
@@ -2925,26 +3341,48 @@ def chat_n8n(request):
             print(f"Attachment fallback extraction warning: {ex}")
 
         # Vision para imágenes (comida/porciones): si sigue sin texto, generar descripción.
+        # Nota: por restricciones típicas (n8n/LLM no puede hacer fetch), preferimos mandar bytes como data URL.
         try:
             if attachment_url and not (attachment_text or "").strip():
                 filename_guess = os.path.basename(urlparse(str(attachment_url)).path or "")
                 if _is_image_filename(filename_guess):
-                    vision_desc, vision_diag = _describe_image_with_azure_openai(str(attachment_url))
+                    max_vision_bytes = int(os.getenv("CHAT_VISION_MAX_BYTES", str(4 * 1024 * 1024)) or (4 * 1024 * 1024))
 
-                    # Si el servicio no puede hacer fetch de la URL, intentamos mandarla embebida (data URL) hasta cierto tamaño.
-                    if not (vision_desc or "").strip() and vision_diag and attachment_url:
-                        try:
-                            resp = requests.get(str(attachment_url), timeout=20)
-                            if resp.status_code == 200 and resp.content and len(resp.content) <= 4 * 1024 * 1024:
-                                vision_desc2, vision_diag2 = _describe_image_with_azure_openai(
-                                    str(attachment_url),
-                                    image_bytes=resp.content,
-                                    content_type=(resp.headers.get("Content-Type") or "image/png"),
-                                )
-                                vision_desc = vision_desc2 or vision_desc
-                                vision_diag = vision_diag2 or vision_diag
-                        except Exception:
-                            pass
+                    image_bytes = None
+                    image_content_type = None
+
+                    # Intento seguro: solo descargamos bytes si es un blob de attachments del propio usuario.
+                    try:
+                        if user:
+                            container_name, blob_name = _extract_blob_ref_from_url(str(attachment_url))
+                            if container_name == _chat_attachment_container() and blob_name:
+                                safe_username = user.username.replace("/", "_")
+                                if blob_name.startswith(f"{safe_username}/"):
+                                    resp = requests.get(str(attachment_url), timeout=20)
+                                    if resp.status_code == 200 and resp.content and len(resp.content) <= max_vision_bytes:
+                                        image_bytes = resp.content
+                                        image_content_type = (resp.headers.get("Content-Type") or "image/png")
+                                    elif resp.status_code != 200 and not attachment_text_diagnostic:
+                                        attachment_text_diagnostic = f"vision_download_http_{resp.status_code}"[:350]
+                                    elif resp.status_code == 200 and resp.content and len(resp.content) > max_vision_bytes and not attachment_text_diagnostic:
+                                        attachment_text_diagnostic = "vision_download_too_large"[:350]
+                    except Exception as ex:
+                        if not attachment_text_diagnostic:
+                            attachment_text_diagnostic = f"vision_download_failed: {ex}"[:350]
+
+                    # 1) Preferimos bytes (data URL)
+                    vision_desc, vision_diag = _describe_image_with_azure_openai(
+                        str(attachment_url),
+                        image_bytes=image_bytes,
+                        content_type=image_content_type,
+                    )
+
+                    # 2) Fallback: si el intento con bytes/data URL falló, probamos con URL directa.
+                    # (Si no había bytes, el primer intento ya fue con URL, así que no repetimos.)
+                    if (not (vision_desc or "").strip()) and image_bytes:
+                        vision_desc2, vision_diag2 = _describe_image_with_azure_openai(str(attachment_url))
+                        vision_desc = vision_desc2 or vision_desc
+                        vision_diag = vision_diag2 or vision_diag
 
                     if (vision_desc or "").strip():
                         pretty = vision_desc.strip()
