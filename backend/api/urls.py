@@ -10,6 +10,7 @@ urlpatterns = [
     path('users/', views.get_users, name='get_users'),
     path('users/create/', views.create_user_admin, name='create_user_admin'),
     path('users/delete/<int:user_id>/', views.delete_user, name='delete_user'),
+    path('users/set_active/<int:user_id>/', views.set_user_active_admin, name='set_user_active_admin'),
     path('predict_if/', views.predict_happiness, name='predict_happiness'),
     path('if/question/', views.get_if_question, name='get_if_question'),
     path('if/answer/', views.submit_if_answer, name='submit_if_answer'),

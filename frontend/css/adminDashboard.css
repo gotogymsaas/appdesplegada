@@ -426,9 +426,128 @@ table {
 
 th,
 td {
-  padding: 12px;
+  padding: 9px 10px;
   text-align: left;
   border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+/* Tabla más compacta */
+td {
+  vertical-align: middle;
+}
+
+/* Toggle de plan */
+.plan-toggle-wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.switch {
+  position: relative;
+  display: inline-block;
+  width: 40px;
+  height: 22px;
+}
+
+.switch input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.slider {
+  position: absolute;
+  cursor: pointer;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(255, 255, 255, 0.10);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  transition: 0.2s;
+  border-radius: 999px;
+}
+
+.slider:before {
+  position: absolute;
+  content: "";
+  height: 16px;
+  width: 16px;
+  left: 3px;
+  bottom: 2.5px;
+  background-color: rgba(255, 255, 255, 0.9);
+  transition: 0.2s;
+  border-radius: 50%;
+}
+
+.switch input:checked + .slider {
+  background-color: rgba(212, 180, 106, 0.18);
+  border-color: rgba(212, 180, 106, 0.45);
+}
+
+.switch input:checked + .slider:before {
+  transform: translateX(18px);
+  background-color: rgba(212, 180, 106, 0.95);
+}
+
+.plan-label {
+  font-size: 12px;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+/* Menú contextual por fila */
+.actions-cell {
+  position: relative;
+  width: 52px;
+}
+
+.row-menu-btn {
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  color: var(--text-main);
+  border-radius: 10px;
+  cursor: pointer;
+  padding: 4px 8px;
+  line-height: 1;
+  font-size: 16px;
+}
+
+.row-menu {
+  display: none;
+  position: absolute;
+  right: 0;
+  top: 34px;
+  min-width: 180px;
+  background: var(--card-bg);
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  border-radius: var(--radius-lg);
+  z-index: 50;
+  overflow: hidden;
+}
+
+.row-menu.open {
+  display: block;
+}
+
+.row-menu button {
+  width: 100%;
+  text-align: left;
+  padding: 10px 12px;
+  background: transparent;
+  border: none;
+  color: var(--text-main);
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.row-menu button:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.row-menu .danger {
+  color: var(--error);
 }
 
 th {

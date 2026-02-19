@@ -2230,6 +2230,50 @@ def delete_user(request, user_id):
     except Exception as e:
         return Response({'error': 'Error al eliminar usuario'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
+
+@api_view(['PUT', 'OPTIONS'])
+@authentication_classes([JWTAuthentication])
+@permission_classes([IsAuthenticatedOrOptions])
+def set_user_active_admin(request, user_id):
+    if request.method == 'OPTIONS':
+        return Response(status=status.HTTP_200_OK)
+
+    if not getattr(request, "user", None) or not request.user.is_superuser:
+        return Response({"error": "Forbidden"}, status=status.HTTP_403_FORBIDDEN)
+
+    try:
+        user = User.objects.get(id=user_id)
+    except User.DoesNotExist:
+        return Response({'error': 'Usuario no encontrado'}, status=status.HTTP_404_NOT_FOUND)
+
+    if user.is_superuser:
+        return Response({'error': 'No se puede suspender/reactivar un superusuario'}, status=status.HTTP_403_FORBIDDEN)
+
+    data = request.data if isinstance(request.data, dict) else {}
+    if 'is_active' not in data:
+        return Response({'error': 'is_active requerido'}, status=status.HTTP_400_BAD_REQUEST)
+
+    reason = (data.get('reason') or '').strip()
+    if not reason:
+        return Response({'error': 'reason requerido'}, status=status.HTTP_400_BAD_REQUEST)
+
+    before = {"id": user.id, "username": user.username, "email": user.email, "plan": user.plan, "is_active": getattr(user, "is_active", True)}
+    user.is_active = _as_bool(data.get('is_active'))
+    user.save(update_fields=["is_active"])
+    after = {"id": user.id, "username": user.username, "email": user.email, "plan": user.plan, "is_active": getattr(user, "is_active", True)}
+
+    _audit_log(
+        request,
+        action="users.set_active",
+        entity_type="user",
+        entity_id=str(user_id),
+        before=before,
+        after=after,
+        reason=reason,
+    )
+
+    return Response({'success': True, 'message': 'Estado actualizado', 'user': after})
+
 @api_view(['POST', 'OPTIONS'])
 @authentication_classes([JWTAuthentication])
 @permission_classes([IsAuthenticatedOrOptions])

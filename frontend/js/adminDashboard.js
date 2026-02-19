@@ -572,23 +572,33 @@
       const checked = selectedUserIds.has(user.id) ? 'checked' : '';
 
       const nextPlan = user.plan === 'Premium' ? 'Gratis' : 'Premium';
-      const planBtnLabel = user.plan === 'Premium' ? 'Quitar Premium' : 'Dar Premium';
+      const planChecked = user.plan === 'Premium' ? 'checked' : '';
       row.innerHTML = `
         <td><input class="row-select" type="checkbox" data-user-id="${user.id}" ${checked} /></td>
         <td>#${user.id}</td>
         <td style="font-weight: bold; color: var(--text-main);">${user.username}</td>
         <td style="color: var(--text-muted);">${user.email}</td>
-        <td><span class="badge ${badgeClass}">${user.plan}</span></td>
+        <td>
+          <div class="plan-toggle-wrap">
+            <label class="switch" title="Cambiar plan con confirmación">
+              <input class="plan-toggle" type="checkbox" data-user-id="${user.id}" ${planChecked} />
+              <span class="slider"></span>
+            </label>
+            <span class="plan-label">${user.plan}</span>
+          </div>
+        </td>
         <td>${state.label}</td>
         <td>${lastAct}</td>
         <td><span class="${riskClass}" title="Risk score: ${risk.score}">${risk.label}</span></td>
         <td>${date}</td>
-        <td>
-          <button class="btn-delete" style="border-color: var(--secondary); color: var(--secondary); margin-right:5px;" onclick='window.openEditModal(${JSON.stringify(
-            user,
-          )})'>✏️</button>
-          <button class="btn-delete" style="border-color: var(--primary); color: var(--primary); margin-right:5px;" onclick="window.quickSetPlan(${user.id}, '${nextPlan}')">${planBtnLabel}</button>
-          <button class="btn-delete" onclick="window.deleteUser(${user.id})">🗑️</button>
+        <td class="actions-cell">
+          <button class="row-menu-btn" type="button" data-menu-btn="${user.id}" aria-label="Acciones">⋮</button>
+          <div class="row-menu" data-row-menu="${user.id}">
+            <button type="button" data-action="profile" data-user-id="${user.id}">Ver perfil</button>
+            <button type="button" data-action="plan" data-user-id="${user.id}">Cambiar plan</button>
+            <button type="button" data-action="toggle_active" data-user-id="${user.id}">${user.is_active === false ? 'Reactivar' : 'Suspender'}</button>
+            <button type="button" class="danger" data-action="delete" data-user-id="${user.id}">Eliminar</button>
+          </div>
         </td>
       `;
 
@@ -596,7 +606,173 @@
     });
 
     bindRowSelectionHandlers();
+    bindPlanToggles();
+    bindRowMenus();
     syncSelectionUI(users);
+  }
+
+  function closeAllRowMenus() {
+    document.querySelectorAll('.row-menu.open').forEach((m) => m.classList.remove('open'));
+  }
+
+  function bindRowMenus() {
+    document.querySelectorAll('button[data-menu-btn]').forEach((btn) => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const id = btn.getAttribute('data-menu-btn');
+        const menu = document.querySelector(`.row-menu[data-row-menu="${id}"]`);
+        if (!menu) return;
+        const isOpen = menu.classList.contains('open');
+        closeAllRowMenus();
+        if (!isOpen) menu.classList.add('open');
+      });
+    });
+
+    document.querySelectorAll('.row-menu button[data-action]').forEach((b) => {
+      b.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        const action = b.getAttribute('data-action');
+        const userId = Number(b.getAttribute('data-user-id'));
+        closeAllRowMenus();
+
+        if (action === 'profile') {
+          const u = allUsers.find((x) => x && x.id === userId);
+          if (u) window.openEditModal(u);
+          return;
+        }
+
+        if (action === 'plan') {
+          const u = allUsers.find((x) => x && x.id === userId);
+          if (!u) return;
+          const nextPlan = u.plan === 'Premium' ? 'Gratis' : 'Premium';
+          await setUserPlan(userId, nextPlan);
+          return;
+        }
+
+        if (action === 'toggle_active') {
+          const u = allUsers.find((x) => x && x.id === userId);
+          if (!u) return;
+          const nextActive = u.is_active === false;
+          await setUserActive(userId, nextActive);
+          return;
+        }
+
+        if (action === 'delete') {
+          await window.deleteUser(userId);
+        }
+      });
+    });
+  }
+
+  async function setUserPlan(userId, plan) {
+    const user = allUsers.find((u) => u && u.id === userId);
+    if (!user) {
+      showToast('Usuario no encontrado', 'error');
+      return false;
+    }
+    const pretty = plan === 'Premium' ? 'Premium' : 'Gratis';
+    if (!confirm(`¿Cambiar plan a ${pretty} para ${user.email}?`)) return false;
+    const reason = (prompt('Motivo (requerido) para cambiar el plan:') || '').trim();
+    if (!reason) {
+      showToast('Motivo requerido', 'error');
+      return false;
+    }
+
+    try {
+      const res = await authFetch(API_URL + `users/update_admin/${userId}/`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: user.username, email: user.email, plan: pretty, reason }),
+      });
+      if (res.ok) {
+        showToast('Plan actualizado', 'success');
+        await fetchUsers();
+        refreshAudit();
+        return true;
+      }
+      showToast('Error actualizando plan', 'error');
+      return false;
+    } catch (e) {
+      showToast('Error actualizando plan', 'error');
+      return false;
+    }
+  }
+
+  async function setUserActive(userId, isActive) {
+    const user = allUsers.find((u) => u && u.id === userId);
+    if (!user) {
+      showToast('Usuario no encontrado', 'error');
+      return false;
+    }
+    const verb = isActive ? 'Reactivar' : 'Suspender';
+    if (!confirm(`¿${verb} a ${user.email}?`)) return false;
+    const reason = (prompt(`Motivo (requerido) para ${verb.toLowerCase()}:`) || '').trim();
+    if (!reason) {
+      showToast('Motivo requerido', 'error');
+      return false;
+    }
+
+    try {
+      const res = await authFetch(API_URL + `users/set_active/${userId}/`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ is_active: !!isActive, reason }),
+      });
+      if (res.ok) {
+        showToast('Estado actualizado', 'success');
+        await fetchUsers();
+        refreshAudit();
+        return true;
+      }
+      const err = await res.json().catch(() => ({}));
+      showToast(err.error || 'Error actualizando estado', 'error');
+      return false;
+    } catch (e) {
+      showToast('Error actualizando estado', 'error');
+      return false;
+    }
+  }
+
+  function bindPlanToggles() {
+    document.querySelectorAll('input.plan-toggle[data-user-id]').forEach((cb) => {
+      cb.addEventListener('change', async (e) => {
+        const id = Number(cb.getAttribute('data-user-id'));
+        const user = allUsers.find((u) => u && u.id === id);
+        if (!user) return;
+
+        // Mostrar contexto antes de permitir acción
+        const last = user.last_login ? new Date(user.last_login).toLocaleDateString() : '—';
+        const riskText = (() => {
+          try {
+            const lastDays = user.last_login ? Math.floor((Date.now() - new Date(user.last_login).getTime()) / (1000 * 60 * 60 * 24)) : null;
+            if (user.is_active === false) return 'alto (inactivo)';
+            if (lastDays === null) return (user.plan === 'Premium' ? 'alto' : 'medio');
+            if (user.plan === 'Premium' && lastDays >= 14) return 'alto';
+            if (lastDays >= 7) return 'medio';
+            return 'bajo';
+          } catch {
+            return '—';
+          }
+        })();
+
+        const nextPlan = cb.checked ? 'Premium' : 'Gratis';
+        const ok = await setUserPlan(id, nextPlan);
+        if (!ok) {
+          // revertir UI
+          cb.checked = user.plan === 'Premium';
+          showToast(`Acción cancelada (últ. actividad: ${last} | riesgo: ${riskText})`, 'error');
+        }
+      });
+    });
+
+    // cerrar menú al click fuera
+    if (!document.body.__gtgRowMenuBound) {
+      document.body.__gtgRowMenuBound = true;
+      document.addEventListener('click', () => closeAllRowMenus());
+      document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') closeAllRowMenus();
+      });
+    }
   }
 
   function setSelectedCount(count) {
