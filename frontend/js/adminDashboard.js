@@ -3,7 +3,8 @@
 // Depende de: theme.css (variables), config.js (API_URL, authFetch).
 
 (() => {
-  const DAYS_WINDOW = 30;
+  const DEFAULT_DAYS_WINDOW = 30;
+  const RANGE_STORAGE_KEY = 'adminDashboardRangeDays';
 
   const els = {
     kpiTotal: () => document.getElementById('kpi-total'),
@@ -17,7 +18,13 @@
 
     globalChart: () => document.getElementById('globalChart'),
     signupsChart: () => document.getElementById('signupsChart'),
+    signupsTrendChart: () => document.getElementById('signupsTrendChart'),
+    usersCumulativeChart: () => document.getElementById('usersCumulativeChart'),
+    premiumShareChart: () => document.getElementById('premiumShareChart'),
     planChart: () => document.getElementById('planChart'),
+
+    rangeSelect: () => document.getElementById('rangeSelect'),
+    rangeLabel: () => document.getElementById('rangeLabel'),
 
     createModal: () => document.getElementById('createModal'),
     editModal: () => document.getElementById('editModal'),
@@ -33,9 +40,15 @@
 
   let allUsers = [];
 
+  let daysWindow = DEFAULT_DAYS_WINDOW;
+  let globalHistoryCache = null;
+
   let globalChartInstance = null;
   let signupsChartInstance = null;
+  let signupsTrendChartInstance = null;
   let planChartInstance = null;
+  let usersCumulativeChartInstance = null;
+  let premiumShareChartInstance = null;
 
   function getThemeVars() {
     const styles = getComputedStyle(document.documentElement);
@@ -43,6 +56,28 @@
     const secondary = (styles.getPropertyValue('--secondary') || '').trim() || '#D4B46A';
     const textMuted = (styles.getPropertyValue('--text-muted') || '').trim() || '#AAAAAA';
     return { primary, secondary, textMuted };
+  }
+
+  function clampDaysWindow(value) {
+    const v = Number(value);
+    if (v === 7 || v === 30 || v === 90) return v;
+    return DEFAULT_DAYS_WINDOW;
+  }
+
+  function rangeLabelText(days) {
+    return `últimos ${days} días`;
+  }
+
+  function syncRangeUI() {
+    const labelEl = els.rangeLabel();
+    if (labelEl) labelEl.textContent = rangeLabelText(daysWindow);
+
+    document.querySelectorAll('[data-range-chip]').forEach((el) => {
+      el.textContent = `Últimos ${daysWindow} días`;
+    });
+
+    const selectEl = els.rangeSelect();
+    if (selectEl) selectEl.value = String(daysWindow);
   }
 
   function showToast(message, type = 'success') {
@@ -155,12 +190,24 @@
     return labels;
   }
 
+  function safeISODate(dateStr) {
+    if (!dateStr) return null;
+    try {
+      const d = new Date(dateStr);
+      if (Number.isNaN(d.getTime())) return null;
+      return d.toISOString().slice(0, 10);
+    } catch (e) {
+      return null;
+    }
+  }
+
   function countSignupsByDay(users, labels) {
     const counts = Object.fromEntries(labels.map((l) => [l, 0]));
     users.forEach((u) => {
       if (!u || !u.date_joined) return;
       try {
-        const day = new Date(u.date_joined).toISOString().slice(0, 10);
+        const day = safeISODate(u.date_joined);
+        if (!day) return;
         if (counts[day] !== undefined) counts[day] += 1;
       } catch (e) {
         // ignore
@@ -169,12 +216,75 @@
     return labels.map((l) => counts[l] || 0);
   }
 
+  function countSignupsByDayAndPlan(users, labels) {
+    const premiumCounts = Object.fromEntries(labels.map((l) => [l, 0]));
+    const freeCounts = Object.fromEntries(labels.map((l) => [l, 0]));
+
+    users.forEach((u) => {
+      if (!u || !u.date_joined) return;
+      const day = safeISODate(u.date_joined);
+      if (!day) return;
+      if (premiumCounts[day] === undefined) return;
+      if (u.plan === 'Premium') premiumCounts[day] += 1;
+      else freeCounts[day] += 1;
+    });
+
+    return {
+      premium: labels.map((l) => premiumCounts[l] || 0),
+      free: labels.map((l) => freeCounts[l] || 0),
+    };
+  }
+
+  function rollingAverage(values, windowSize) {
+    const out = [];
+    const w = Math.max(1, Number(windowSize) || 1);
+    for (let i = 0; i < values.length; i++) {
+      const start = Math.max(0, i - w + 1);
+      const slice = values.slice(start, i + 1);
+      const sum = slice.reduce((a, b) => a + (Number(b) || 0), 0);
+      out.push(slice.length ? sum / slice.length : 0);
+    }
+    return out;
+  }
+
+  function cumulativeSeries(users, labels) {
+    const labelSet = new Set(labels);
+    const counts = Object.fromEntries(labels.map((l) => [l, { total: 0, premium: 0 }]));
+
+    users.forEach((u) => {
+      const day = safeISODate(u?.date_joined);
+      if (!day) return;
+      if (!labelSet.has(day)) return;
+      counts[day].total += 1;
+      if (u.plan === 'Premium') counts[day].premium += 1;
+    });
+
+    let runningTotal = 0;
+    let runningPremium = 0;
+    const cumulativeTotal = [];
+    const cumulativePremium = [];
+
+    labels.forEach((l) => {
+      runningTotal += counts[l]?.total || 0;
+      runningPremium += counts[l]?.premium || 0;
+      cumulativeTotal.push(runningTotal);
+      cumulativePremium.push(runningPremium);
+    });
+
+    const premiumShare = cumulativeTotal.map((t, i) => (t > 0 ? Math.round((cumulativePremium[i] / t) * 1000) / 10 : 0));
+
+    return { cumulativeTotal, cumulativePremium, premiumShare };
+  }
+
   function loadUserCharts(users) {
     const { primary, secondary, textMuted } = getThemeVars();
 
-    const labels = lastNDaysLabels(DAYS_WINDOW);
+    const labels = lastNDaysLabels(daysWindow);
     const signups = countSignupsByDay(users, labels);
+    const signupsByPlan = countSignupsByDayAndPlan(users, labels);
+    const trend = rollingAverage(signups, 7);
 
+    // 1) Altas (Premium vs Gratis) - stacked bar
     const signupsEl = els.signupsChart();
     if (signupsEl && window.Chart) {
       const ctx = signupsEl.getContext('2d');
@@ -185,11 +295,66 @@
           labels,
           datasets: [
             {
-              label: 'Altas',
-              data: signups,
+              label: 'Premium',
+              data: signupsByPlan.premium,
+              backgroundColor: 'rgba(212, 180, 106, 0.35)',
+              borderWidth: 0,
+              stack: 'signups',
+            },
+            {
+              label: 'Gratis',
+              data: signupsByPlan.free,
+              backgroundColor: 'rgba(255, 255, 255, 0.10)',
+              borderWidth: 0,
+              stack: 'signups',
+            },
+          ],
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: {
+              position: 'bottom',
+              labels: { color: textMuted, boxWidth: 10 },
+            },
+          },
+          scales: {
+            y: {
+              beginAtZero: true,
+              stacked: true,
+              grid: { color: 'rgba(255,255,255,0.1)' },
+              ticks: { color: textMuted },
+            },
+            x: {
+              stacked: true,
+              grid: { display: false },
+              ticks: { maxTicksLimit: 7, color: textMuted },
+            },
+          },
+        },
+      });
+    }
+
+    // 2) Tendencia (promedio móvil 7d) - line
+    const trendEl = els.signupsTrendChart();
+    if (trendEl && window.Chart) {
+      const ctx = trendEl.getContext('2d');
+      if (signupsTrendChartInstance) signupsTrendChartInstance.destroy();
+      signupsTrendChartInstance = new Chart(ctx, {
+        type: 'line',
+        data: {
+          labels,
+          datasets: [
+            {
+              label: 'Promedio móvil 7d',
+              data: trend,
               borderColor: primary,
-              backgroundColor: 'rgba(15, 191, 176, 0.15)',
-              borderWidth: 1,
+              backgroundColor: 'rgba(15, 191, 176, 0.12)',
+              borderWidth: 2,
+              tension: 0.35,
+              fill: true,
+              pointRadius: 0,
             },
           ],
         },
@@ -198,8 +363,82 @@
           maintainAspectRatio: false,
           plugins: { legend: { display: false } },
           scales: {
-            y: { beginAtZero: true, grid: { color: 'rgba(255,255,255,0.1)' } },
-            x: { grid: { display: false }, ticks: { maxTicksLimit: 6, color: textMuted } },
+            y: { beginAtZero: true, grid: { color: 'rgba(255,255,255,0.1)' }, ticks: { color: textMuted } },
+            x: { grid: { display: false }, ticks: { maxTicksLimit: 7, color: textMuted } },
+          },
+        },
+      });
+    }
+
+    // 3) Acumulados y % premium
+    const { cumulativeTotal, premiumShare } = cumulativeSeries(users, labels);
+
+    const cumEl = els.usersCumulativeChart();
+    if (cumEl && window.Chart) {
+      const ctx = cumEl.getContext('2d');
+      if (usersCumulativeChartInstance) usersCumulativeChartInstance.destroy();
+      usersCumulativeChartInstance = new Chart(ctx, {
+        type: 'line',
+        data: {
+          labels,
+          datasets: [
+            {
+              label: 'Usuarios',
+              data: cumulativeTotal,
+              borderColor: secondary,
+              backgroundColor: 'rgba(212, 180, 106, 0.10)',
+              borderWidth: 2,
+              tension: 0.25,
+              fill: true,
+              pointRadius: 0,
+            },
+          ],
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: { legend: { display: false } },
+          scales: {
+            y: { beginAtZero: true, grid: { color: 'rgba(255,255,255,0.1)' }, ticks: { color: textMuted } },
+            x: { grid: { display: false }, ticks: { maxTicksLimit: 7, color: textMuted } },
+          },
+        },
+      });
+    }
+
+    const shareEl = els.premiumShareChart();
+    if (shareEl && window.Chart) {
+      const ctx = shareEl.getContext('2d');
+      if (premiumShareChartInstance) premiumShareChartInstance.destroy();
+      premiumShareChartInstance = new Chart(ctx, {
+        type: 'line',
+        data: {
+          labels,
+          datasets: [
+            {
+              label: '% Premium',
+              data: premiumShare,
+              borderColor: secondary,
+              backgroundColor: 'rgba(212, 180, 106, 0.06)',
+              borderWidth: 2,
+              tension: 0.35,
+              fill: true,
+              pointRadius: 0,
+            },
+          ],
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: { legend: { display: false } },
+          scales: {
+            y: {
+              beginAtZero: true,
+              max: 100,
+              grid: { color: 'rgba(255,255,255,0.1)' },
+              ticks: { color: textMuted, callback: (v) => `${v}%` },
+            },
+            x: { grid: { display: false }, ticks: { maxTicksLimit: 7, color: textMuted } },
           },
         },
       });
@@ -242,12 +481,18 @@
     const { secondary } = getThemeVars();
 
     try {
-      const res = await authFetch(API_URL + 'stats/global_history/');
-      const data = await res.json();
+      if (!globalHistoryCache) {
+        const res = await authFetch(API_URL + 'stats/global_history/');
+        const data = await res.json();
+        globalHistoryCache = Array.isArray(data) ? data : [];
+      }
+
+      const data = globalHistoryCache;
       if (!data || data.length === 0) return;
 
-      const labels = data.map((d) => d.date);
-      const values = data.map((d) => d.value);
+      const sliced = data.slice(-daysWindow);
+      const labels = sliced.map((d) => d.date);
+      const values = sliced.map((d) => d.value);
 
       // KPI adicional: felicidad promedio últimos 7 datos (si vienen en orden cronológico)
       try {
@@ -292,13 +537,40 @@
           plugins: { legend: { display: false } },
           scales: {
             y: { beginAtZero: true, max: 10, grid: { color: 'rgba(255,255,255,0.1)' } },
-            x: { grid: { display: false } },
+            x: { grid: { display: false }, ticks: { maxTicksLimit: 7 } },
           },
         },
       });
     } catch (e) {
       console.error('Chart error', e);
     }
+  }
+
+  function setDaysWindow(newDays) {
+    daysWindow = clampDaysWindow(newDays);
+    localStorage.setItem(RANGE_STORAGE_KEY, String(daysWindow));
+    syncRangeUI();
+    renderDashboard();
+  }
+
+  function loadStoredDaysWindow() {
+    const v = localStorage.getItem(RANGE_STORAGE_KEY);
+    daysWindow = clampDaysWindow(v || DEFAULT_DAYS_WINDOW);
+  }
+
+  function bindRangeSelect() {
+    const selectEl = els.rangeSelect();
+    if (!selectEl) return;
+    selectEl.addEventListener('change', (e) => {
+      setDaysWindow(e.target.value);
+    });
+  }
+
+  function renderDashboard() {
+    renderTable(allUsers);
+    calculateKPIs(allUsers);
+    loadUserCharts(allUsers);
+    loadGlobalChart();
   }
 
   async function fetchUsers() {
@@ -310,10 +582,7 @@
         return;
       }
       allUsers = Array.isArray(users) ? users : [];
-      renderTable(allUsers);
-      calculateKPIs(allUsers);
-      loadUserCharts(allUsers);
-      await loadGlobalChart();
+      renderDashboard();
     } catch (e) {
       console.error(e);
       showToast('Error de conexión', 'error');
@@ -495,6 +764,10 @@
 
   document.addEventListener('DOMContentLoaded', () => {
     if (!requireAdminSessionOrRedirect()) return;
+
+    loadStoredDaysWindow();
+    bindRangeSelect();
+    syncRangeUI();
 
     fetchUsers();
 

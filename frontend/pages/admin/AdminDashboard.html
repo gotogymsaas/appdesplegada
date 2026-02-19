@@ -17,10 +17,20 @@
         <div class="admin-header">
             <div>
                 <h3>Panel de Administración</h3>
-                <div class="admin-subtitle">Resumen general (agregado) — últimos 30 días</div>
+                <div class="admin-subtitle">Resumen general (agregado) — <span id="rangeLabel">últimos 30 días</span></div>
             </div>
+            <div class="admin-header-actions">
+                <div class="range-control">
+                    <label for="rangeSelect" class="range-label">Rango</label>
+                    <select id="rangeSelect" class="input-field range-select">
+                        <option value="7">7 días</option>
+                        <option value="30" selected>30 días</option>
+                        <option value="90">90 días</option>
+                    </select>
+                </div>
             <button class="btn btn-outline-gold btn-sm" style="border-color: var(--error); color: var(--error);"
                 onclick="logout()">Cerrar Sesión</button>
+            </div>
         </div>
 
         <!-- KPI CARDS -->
@@ -57,25 +67,15 @@
             <!-- LEFT: USERS -->
             <!-- LEFT: USERS -->
             <div style="display:flex; flex-direction:column; gap:20px;">
-                <!-- Global Chart -->
-                <div class="table-section">
-                    <div class="meta-row" style="margin-bottom: 10px;">
-                        <h2 style="margin: 0; color: var(--text-main); font-size: 18px;">Felicidad Global</h2>
-                        <span class="meta-chip">Últimos 30 días</span>
-                    </div>
-                    <div style="height: 200px;">
-                        <canvas id="globalChart"></canvas>
-                    </div>
-                </div>
-
-                <div class="chart-grid">
+                <!-- Charts (mínimo 6) -->
+                <div class="charts-grid">
                     <div class="table-section">
                         <div class="meta-row" style="margin-bottom: 10px;">
-                            <h2 style="margin: 0; color: var(--text-main); font-size: 18px;">Altas de usuarios</h2>
-                            <span class="meta-chip">Últimos 30 días</span>
+                            <h2 style="margin: 0; color: var(--text-main); font-size: 18px;">Felicidad Global</h2>
+                            <span class="meta-chip" data-range-chip>Últimos 30 días</span>
                         </div>
-                        <div style="height: 200px;">
-                            <canvas id="signupsChart"></canvas>
+                        <div class="chart-canvas-wrap chart-tall">
+                            <canvas id="globalChart"></canvas>
                         </div>
                     </div>
 
@@ -84,8 +84,48 @@
                             <h2 style="margin: 0; color: var(--text-main); font-size: 18px;">Distribución de plan</h2>
                             <span class="meta-chip">Actual</span>
                         </div>
-                        <div style="height: 200px;">
+                        <div class="chart-canvas-wrap chart-tall">
                             <canvas id="planChart"></canvas>
+                        </div>
+                    </div>
+
+                    <div class="table-section">
+                        <div class="meta-row" style="margin-bottom: 10px;">
+                            <h2 style="margin: 0; color: var(--text-main); font-size: 18px;">Altas (Premium vs Gratis)</h2>
+                            <span class="meta-chip" data-range-chip>Últimos 30 días</span>
+                        </div>
+                        <div class="chart-canvas-wrap chart-tall">
+                            <canvas id="signupsChart"></canvas>
+                        </div>
+                    </div>
+
+                    <div class="table-section">
+                        <div class="meta-row" style="margin-bottom: 10px;">
+                            <h2 style="margin: 0; color: var(--text-main); font-size: 18px;">Tendencia de altas (prom. móvil 7d)</h2>
+                            <span class="meta-chip" data-range-chip>Últimos 30 días</span>
+                        </div>
+                        <div class="chart-canvas-wrap chart-tall">
+                            <canvas id="signupsTrendChart"></canvas>
+                        </div>
+                    </div>
+
+                    <div class="table-section">
+                        <div class="meta-row" style="margin-bottom: 10px;">
+                            <h2 style="margin: 0; color: var(--text-main); font-size: 18px;">Usuarios acumulados</h2>
+                            <span class="meta-chip" data-range-chip>Últimos 30 días</span>
+                        </div>
+                        <div class="chart-canvas-wrap chart-tall">
+                            <canvas id="usersCumulativeChart"></canvas>
+                        </div>
+                    </div>
+
+                    <div class="table-section">
+                        <div class="meta-row" style="margin-bottom: 10px;">
+                            <h2 style="margin: 0; color: var(--text-main); font-size: 18px;">% Premium (acumulado)</h2>
+                            <span class="meta-chip" data-range-chip>Últimos 30 días</span>
+                        </div>
+                        <div class="chart-canvas-wrap chart-tall">
+                            <canvas id="premiumShareChart"></canvas>
                         </div>
                     </div>
                 </div>
@@ -217,12 +257,12 @@
                     style="background: var(--secondary); color:black;">Guardar Cambios</button>
             </form>
         </div>
-</body>
+    </div>
 
     <!-- Toast Notification -->
     <div id="toast" class="toast"></div>
 
     <script src="../../js/config.js?v=2026-02-19"></script>
     <script src="../../js/adminDashboard.js?v=2026-02-19"></script>
-
+</body>
 </html>
