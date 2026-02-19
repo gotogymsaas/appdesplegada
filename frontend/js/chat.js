@@ -921,13 +921,138 @@ async function processMessage(text, file, pendingId) {
     appendMessage(`❌ Error: ${err.message} `, 'bot');
   }
 }
-// Inject Marked.js for Markdown parsing
-if (!window.marked) {
-const script = document.createElement('script');
-script.src = 'https://cdn.jsdelivr.net/npm/marked/marked.min.js';
-script.onload = () => { console.log("Marked.js loaded"); };
-document.head.appendChild(script);
+
+function escapeHtml(input) {
+  return String(input)
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#39;');
 }
+
+function sanitizeUrl(url) {
+  const raw = String(url || '').trim();
+  if (!raw) return '';
+  const lower = raw.toLowerCase();
+  if (lower.startsWith('javascript:') || lower.startsWith('data:') || lower.startsWith('vbscript:')) return '';
+  if (lower.startsWith('http://') || lower.startsWith('https://') || lower.startsWith('mailto:')) return raw;
+  if (raw.startsWith('/') || raw.startsWith('./') || raw.startsWith('../') || raw.startsWith('#')) return raw;
+  return '';
+}
+
+function renderInlineMarkdown(escapedText) {
+  let out = String(escapedText);
+
+  // Inline code
+  out = out.replace(/`([^`]+)`/g, '<code>$1</code>');
+
+  // Bold then italic
+  out = out.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+  out = out.replace(/(^|[^*])\*([^*]+)\*(?!\*)/g, '$1<em>$2</em>');
+
+  // Links: [text](url)
+  out = out.replace(/\[([^\]]+?)\]\(([^\s)]+?)\)/g, (m, label, url) => {
+    const safe = sanitizeUrl(url);
+    if (!safe) return label;
+    // `safe` ya viene desde texto escapado; evitar doble escape.
+    return `<a href="${safe}" target="_blank" rel="noopener noreferrer">${label}</a>`;
+  });
+
+  return out;
+}
+
+function renderBotRichText(text) {
+  // Render seguro: escapamos HTML de entrada y soportamos un subconjunto de Markdown
+  const input = String(text ?? '');
+  const normalized = input.replace(/\r\n?/g, '\n');
+
+  // Code fences ```...```
+  const parts = normalized.split('```');
+  const html = [];
+  for (let i = 0; i < parts.length; i++) {
+    const part = parts[i];
+    const isCode = i % 2 === 1;
+    if (isCode) {
+      const codeEscaped = escapeHtml(part.replace(/^\w+\n/, ''));
+      html.push(`<pre><code>${codeEscaped}</code></pre>`);
+      continue;
+    }
+
+    const lines = part.split('\n');
+    let paragraph = [];
+    let listType = null; // 'ul' | 'ol'
+    const flushParagraph = () => {
+      if (!paragraph.length) return;
+      const joined = paragraph.join('<br>');
+      html.push(`<p>${joined}</p>`);
+      paragraph = [];
+    };
+    const closeList = () => {
+      if (!listType) return;
+      html.push(`</${listType}>`);
+      listType = null;
+    };
+
+    for (const rawLine of lines) {
+      const line = rawLine.trimEnd();
+      const trimmed = line.trim();
+
+      if (!trimmed) {
+        flushParagraph();
+        closeList();
+        continue;
+      }
+
+      // Horizontal rule
+      if (/^(-{3,}|\*{3,}|_{3,})$/.test(trimmed)) {
+        flushParagraph();
+        closeList();
+        html.push('<hr>');
+        continue;
+      }
+
+      // Headings (#, ##, ###)
+      const headingMatch = trimmed.match(/^(#{1,3})\s+(.*)$/);
+      if (headingMatch) {
+        const level = headingMatch[1].length;
+        const content = renderInlineMarkdown(escapeHtml(headingMatch[2]));
+        flushParagraph();
+        closeList();
+        html.push(`<h${level}>${content}</h${level}>`);
+        continue;
+      }
+
+      // Lists
+      const ulMatch = trimmed.match(/^[-*]\s+(.*)$/);
+      const olMatch = trimmed.match(/^\d+\.\s+(.*)$/);
+      if (ulMatch || olMatch) {
+        const nextType = ulMatch ? 'ul' : 'ol';
+        const itemText = ulMatch ? ulMatch[1] : olMatch[1];
+        const itemHtml = renderInlineMarkdown(escapeHtml(itemText));
+
+        flushParagraph();
+        if (listType && listType !== nextType) closeList();
+        if (!listType) {
+          listType = nextType;
+          html.push(`<${listType}>`);
+        }
+        html.push(`<li>${itemHtml}</li>`);
+        continue;
+      }
+
+      // Default: paragraph line
+      closeList();
+      paragraph.push(renderInlineMarkdown(escapeHtml(trimmed)));
+    }
+
+    flushParagraph();
+    closeList();
+  }
+
+  return html.join('');
+}
+
 function persistHistory() {
 localStorage.setItem(CHAT_STORAGE_KEY, JSON.stringify(chatHistory));
 localStorage.setItem(CHAT_META_KEY, JSON.stringify({
@@ -944,11 +1069,12 @@ if (opts.meta) {
   div.dataset.text = opts.meta.text || '';
   div.dataset.hasFile = opts.meta.hasFile ? '1' : '0';
 }
-// Use Markdown if available, otherwise fallback to plain text
-if (window.marked && className.includes('bot')) {
-div.innerHTML = window.marked.parse(text);
+// Bot: mantener formato (subconjunto Markdown) sin depender de librerías externas.
+// User: mantener texto plano.
+if (className.includes('bot')) {
+  div.innerHTML = renderBotRichText(text);
 } else {
-div.textContent = text;
+  div.textContent = text;
 }
 const id = 'msg-' + Date.now();
 div.id = id;

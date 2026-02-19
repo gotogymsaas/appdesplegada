@@ -248,6 +248,12 @@
   text-decoration: underline;
 }
 
+.message hr {
+  border: 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.14);
+  margin: 8px 0;
+ }
+
 /* Keep user messages text-only style mostly */
 .message.user p {
   margin: 0;
