@@ -329,6 +329,62 @@
   white-space: nowrap;
 }
 
+.segments-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.segment-chip {
+  font-size: 12px;
+  color: var(--text-muted);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 999px;
+  padding: 8px 10px;
+  background: transparent;
+  cursor: pointer;
+}
+
+.segment-chip:hover {
+  border-color: var(--primary);
+  color: var(--text-main);
+}
+
+.audit-help {
+  font-size: 12px;
+  color: var(--text-muted);
+  line-height: 1.4;
+}
+
+.risk-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.risk-high {
+  color: var(--error);
+  border-color: rgba(255, 77, 79, 0.4);
+  background: rgba(255, 77, 79, 0.08);
+}
+
+.risk-med {
+  color: var(--secondary);
+  border-color: rgba(212, 180, 106, 0.4);
+  background: rgba(212, 180, 106, 0.08);
+}
+
+.risk-low {
+  color: var(--primary);
+  border-color: rgba(15, 191, 176, 0.4);
+  background: rgba(15, 191, 176, 0.08);
+}
+
 @media (max-width: 540px) {
   .admin-container {
     padding: 14px;

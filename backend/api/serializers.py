@@ -22,7 +22,7 @@ class UserSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'username', 'email', 'plan', 'age', 'weight', 'height', 'profession', 'full_name',
             'favorite_exercise_time', 'favorite_sport', 'happiness_index', 'scores', 'profile_picture',
-            'current_streak', 'badges', 'date_joined', 'is_superuser', 'trial_active', 'trial_ends_at',
+            'current_streak', 'badges', 'date_joined', 'last_login', 'is_active', 'is_superuser', 'trial_active', 'trial_ends_at',
             'billing_status'
         ]
 

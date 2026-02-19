@@ -51,6 +51,8 @@
     bulkCreateInput: () => document.getElementById('bulkCreateInput'),
     bulkPlanInput: () => document.getElementById('bulkPlanInput'),
 
+    auditBody: () => document.getElementById('auditBody'),
+
     createModal: () => document.getElementById('createModal'),
     editModal: () => document.getElementById('editModal'),
 
@@ -68,6 +70,9 @@
 
   let overviewCache = null;
   let signupsSeriesCache = null;
+
+  let auditCache = null;
+  let activeSegment = 'all';
 
   let daysWindow = DEFAULT_DAYS_WINDOW;
   let compareEnabled = true;
@@ -511,10 +516,58 @@
 
     tbody.innerHTML = '';
 
+    const daysSince = (dateStr) => {
+      if (!dateStr) return null;
+      try {
+        const d = new Date(dateStr);
+        if (Number.isNaN(d.getTime())) return null;
+        const now = new Date();
+        return Math.floor((now.getTime() - d.getTime()) / (1000 * 60 * 60 * 24));
+      } catch (e) {
+        return null;
+      }
+    };
+
+    const operationalState = (user) => {
+      if (!user) return { key: 'unknown', label: '—' };
+      if (user.is_active === false) return { key: 'inactive', label: 'Inactivo' };
+      return { key: 'active', label: 'Activo' };
+    };
+
+    const formatLastActivity = (user) => {
+      if (!user?.last_login) return '—';
+      try {
+        const d = new Date(user.last_login);
+        if (Number.isNaN(d.getTime())) return '—';
+        return d.toLocaleDateString();
+      } catch (e) {
+        return '—';
+      }
+    };
+
+    const computeRisk = (user) => {
+      const lastDays = daysSince(user?.last_login);
+      const isPremium = user?.plan === 'Premium';
+      const isInactive = user?.is_active === false;
+
+      if (isInactive) return { score: 100, level: 'high', label: 'Inactivo' };
+      if (lastDays === null) return { score: isPremium ? 80 : 60, level: isPremium ? 'high' : 'med', label: 'Sin actividad' };
+
+      if (isPremium && lastDays >= 14) return { score: 85, level: 'high', label: `Inactivo ${lastDays}d` };
+      if (!isPremium && lastDays >= 30) return { score: 70, level: 'med', label: `Inactivo ${lastDays}d` };
+      if (lastDays >= 7) return { score: 45, level: 'med', label: `Baja act. ${lastDays}d` };
+      return { score: 10, level: 'low', label: 'OK' };
+    };
+
     users.forEach((user) => {
       const row = document.createElement('tr');
       const date = user.date_joined ? new Date(user.date_joined).toLocaleDateString() : '-';
       const badgeClass = user.plan === 'Premium' ? 'badge-premium' : 'badge-free';
+
+      const state = operationalState(user);
+      const lastAct = formatLastActivity(user);
+      const risk = computeRisk(user);
+      const riskClass = risk.level === 'high' ? 'risk-badge risk-high' : (risk.level === 'med' ? 'risk-badge risk-med' : 'risk-badge risk-low');
 
       const checked = selectedUserIds.has(user.id) ? 'checked' : '';
 
@@ -526,6 +579,9 @@
         <td style="font-weight: bold; color: var(--text-main);">${user.username}</td>
         <td style="color: var(--text-muted);">${user.email}</td>
         <td><span class="badge ${badgeClass}">${user.plan}</span></td>
+        <td>${state.label}</td>
+        <td>${lastAct}</td>
+        <td><span class="${riskClass}" title="Risk score: ${risk.score}">${risk.label}</span></td>
         <td>${date}</td>
         <td>
           <button class="btn-delete" style="border-color: var(--secondary); color: var(--secondary); margin-right:5px;" onclick='window.openEditModal(${JSON.stringify(
@@ -1157,6 +1213,104 @@
     }
   }
 
+  function applySegment(segment, { silent = false } = {}) {
+    const next = (segment || 'all').trim();
+    activeSegment = next;
+
+    const now = new Date();
+    const daysSince = (dateStr) => {
+      if (!dateStr) return null;
+      try {
+        const d = new Date(dateStr);
+        if (Number.isNaN(d.getTime())) return null;
+        return Math.floor((now.getTime() - d.getTime()) / (1000 * 60 * 60 * 24));
+      } catch (e) {
+        return null;
+      }
+    };
+
+    const computeRiskLevel = (user) => {
+      const lastDays = daysSince(user?.last_login);
+      const isPremium = user?.plan === 'Premium';
+      const isInactive = user?.is_active === false;
+      if (isInactive) return 'high';
+      if (lastDays === null) return isPremium ? 'high' : 'med';
+      if (isPremium && lastDays >= 14) return 'high';
+      if (!isPremium && lastDays >= 30) return 'med';
+      if (lastDays >= 7) return 'med';
+      return 'low';
+    };
+
+    const filtered = allUsers.filter((u) => {
+      if (!u) return false;
+      if (next === 'all') return true;
+
+      if (next === 'new_7d') {
+        const dj = u.date_joined ? new Date(u.date_joined) : null;
+        if (!dj || Number.isNaN(dj.getTime())) return false;
+        return (now.getTime() - dj.getTime()) <= 7 * 24 * 60 * 60 * 1000;
+      }
+
+      if (next === 'premium_inactive_14d') {
+        if (u.plan !== 'Premium') return false;
+        if (u.is_active === false) return false;
+        const lastDays = daysSince(u.last_login);
+        return lastDays === null || lastDays >= 14;
+      }
+
+      if (next === 'risk_high') {
+        return computeRiskLevel(u) === 'high';
+      }
+
+      return true;
+    });
+
+    if (!silent) renderTable(filtered);
+    return filtered;
+  }
+
+  async function fetchAudit() {
+    try {
+      const res = await authFetch(`${API_URL}admin/audit/?page=1&pageSize=25`);
+      if (!res.ok) return false;
+      auditCache = await res.json();
+      return true;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  function renderAudit() {
+    const tbody = els.auditBody();
+    if (!tbody) return;
+    tbody.innerHTML = '';
+
+    const rows = auditCache && (auditCache.data || auditCache);
+    const items = Array.isArray(rows) ? rows : [];
+
+    items.forEach((r) => {
+      const tr = document.createElement('tr');
+      const when = r.created_at ? new Date(r.created_at).toLocaleString() : '-';
+      const action = r.action || '-';
+      const entity = `${r.entity_type || '-'}:${r.entity_id || '-'}`;
+      const actor = r.actor_username || r.actor_id || '-';
+      const reason = r.reason || '-';
+      tr.innerHTML = `
+        <td>${when}</td>
+        <td>${action}</td>
+        <td>${entity}</td>
+        <td>${actor}</td>
+        <td style="color: var(--text-muted);">${reason}</td>
+      `;
+      tbody.appendChild(tr);
+    });
+  }
+
+  async function refreshAudit() {
+    const ok = await fetchAudit();
+    if (ok) renderAudit();
+  }
+
   function filterUsers() {
     const term = (els.searchInput()?.value || '').toLowerCase();
     const filtered = allUsers.filter(
@@ -1166,7 +1320,14 @@
   }
 
   async function deleteUser(id) {
-    if (!confirm('¿Eliminar usuario? (borrado lógico)')) return;
+    const user = allUsers.find((u) => u && u.id === id);
+    const who = user ? `${user.email} (#${user.id})` : `#${id}`;
+    if (!confirm(`¿Eliminar usuario ${who}? (borrado lógico)`)) return;
+    const confirmText = (prompt('Escribe ELIMINAR para confirmar esta acción:') || '').trim();
+    if (confirmText !== 'ELIMINAR') {
+      showToast('Confirmación cancelada', 'error');
+      return;
+    }
     const reason = (prompt('Motivo (requerido) para eliminar este usuario:') || '').trim();
     if (!reason) {
       showToast('Motivo requerido', 'error');
@@ -1181,6 +1342,7 @@
       if (res.ok) {
         showToast('Eliminado', 'success');
         fetchUsers();
+        refreshAudit();
       } else {
         showToast('Error', 'error');
       }
@@ -1212,6 +1374,7 @@
       if (res.ok) {
         showToast('Plan actualizado', 'success');
         fetchUsers();
+        refreshAudit();
       } else {
         showToast('Error actualizando plan', 'error');
       }
@@ -1749,6 +1912,8 @@
   window.refreshDashboard = refreshDashboard;
   window.bulkSetPlan = bulkSetPlan;
   window.bulkDeleteUsers = bulkDeleteUsers;
+  window.applySegment = applySegment;
+  window.refreshAudit = refreshAudit;
 
   document.addEventListener('DOMContentLoaded', () => {
     if (!requireAdminSessionOrRedirect()) return;
@@ -1765,6 +1930,8 @@
     if (toggleEl) toggleEl.checked = compareEnabled;
 
     fetchUsers();
+
+    refreshAudit();
 
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.register('/sw.js').catch((err) => console.error('SW Fail', err));

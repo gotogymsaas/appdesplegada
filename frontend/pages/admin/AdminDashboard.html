@@ -265,6 +265,13 @@
                             </div>
                         </div>
 
+                        <div class="segments-row">
+                            <button class="segment-chip" onclick="applySegment('all')">Todos</button>
+                            <button class="segment-chip" onclick="applySegment('new_7d')">Nuevos (7d)</button>
+                            <button class="segment-chip" onclick="applySegment('premium_inactive_14d')">Premium inactivos (14d)</button>
+                            <button class="segment-chip" onclick="applySegment('risk_high')">En riesgo (alto)</button>
+                        </div>
+
                         <div class="bulk-help">
                             <div><strong>Carga masiva:</strong> CSV con columnas <code>username,email,password,plan</code> (plan: Gratis|Premium).</div>
                             <div><strong>Auto:</strong> También se acepta CSV con <code>email</code> (y <code>plan</code> opcional). Se generará usuario/contraseña y se descargará un CSV con credenciales creadas.</div>
@@ -280,11 +287,38 @@
                                         <th>Usuario</th>
                                         <th>Email</th>
                                         <th>Plan</th>
+                                        <th>Estado</th>
+                                        <th>Últ. actividad</th>
+                                        <th>Riesgo</th>
                                         <th>Registro</th>
                                         <th>Acción</th>
                                     </tr>
                                 </thead>
                                 <tbody id="usersBody">
+                                    <!-- Rows -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <div class="table-section">
+                        <div class="toolbar">
+                            <h2 style="margin: 0; color: var(--text-main); font-size: 18px;">Auditoría (reciente)</h2>
+                            <button class="btn btn-outline-teal btn-sm" onclick="refreshAudit()">Actualizar</button>
+                        </div>
+                        <div class="audit-help">Acciones sensibles (eliminar, cambios de plan, broadcast) requieren motivo y quedan registradas.</div>
+                        <div class="table-wrapper">
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th>Fecha</th>
+                                        <th>Acción</th>
+                                        <th>Entidad</th>
+                                        <th>Actor</th>
+                                        <th>Motivo</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="auditBody">
                                     <!-- Rows -->
                                 </tbody>
                             </table>
