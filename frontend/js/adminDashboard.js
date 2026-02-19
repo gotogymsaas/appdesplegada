@@ -9,6 +9,9 @@
     kpiTotal: () => document.getElementById('kpi-total'),
     kpiPremium: () => document.getElementById('kpi-premium'),
     kpiToday: () => document.getElementById('kpi-today'),
+    kpi7d: () => document.getElementById('kpi-7d'),
+    kpi30d: () => document.getElementById('kpi-30d'),
+    kpiHappy7d: () => document.getElementById('kpi-happy-7d'),
     usersBody: () => document.getElementById('usersBody'),
     searchInput: () => document.getElementById('searchInput'),
 
@@ -88,6 +91,28 @@
       (u) => u.date_joined && new Date(u.date_joined).toLocaleDateString() === today,
     ).length;
     if (els.kpiToday()) els.kpiToday().innerText = String(newToday);
+
+    const countSinceDays = (days) => {
+      const now = new Date();
+      const start = new Date(now);
+      start.setHours(0, 0, 0, 0);
+      start.setDate(now.getDate() - (days - 1));
+
+      let count = 0;
+      users.forEach((u) => {
+        if (!u || !u.date_joined) return;
+        try {
+          const dt = new Date(u.date_joined);
+          if (!Number.isNaN(dt.getTime()) && dt >= start) count += 1;
+        } catch (e) {
+          // ignore
+        }
+      });
+      return count;
+    };
+
+    if (els.kpi7d()) els.kpi7d().innerText = String(countSinceDays(7));
+    if (els.kpi30d()) els.kpi30d().innerText = String(countSinceDays(30));
   }
 
   function renderTable(users) {
@@ -223,6 +248,22 @@
 
       const labels = data.map((d) => d.date);
       const values = data.map((d) => d.value);
+
+      // KPI adicional: felicidad promedio últimos 7 datos (si vienen en orden cronológico)
+      try {
+        const nums = (values || []).map((v) => Number(v)).filter((n) => Number.isFinite(n));
+        if (els.kpiHappy7d()) {
+          if (nums.length === 0) {
+            els.kpiHappy7d().innerText = '--';
+          } else {
+            const last = nums.slice(-7);
+            const avg = last.reduce((a, b) => a + b, 0) / last.length;
+            els.kpiHappy7d().innerText = avg.toFixed(1);
+          }
+        }
+      } catch (e) {
+        if (els.kpiHappy7d()) els.kpiHappy7d().innerText = '--';
+      }
 
       const globalEl = els.globalChart();
       if (!globalEl || !window.Chart) return;
