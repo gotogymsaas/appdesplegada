@@ -190,7 +190,7 @@
 // --- AUTO-INJECT CHAT WIDGET ---
 // Detecta si estamos en el navegador y carga el script del chat automáticamente
   if (typeof document !== 'undefined') {
-    const CHAT_WIDGET_VERSION = '2026-02-16';
+    const CHAT_WIDGET_VERSION = '2026-02-20';
     const script = document.createElement('script');
     // Asumimos que la estructura es /js/chat.js relativa a la raíz del servidor web (port 5500)
     // Como config.js suele estar en /js/config.js, podemos intentar ruta relativa si la absoluta falla

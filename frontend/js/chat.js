@@ -16,7 +16,8 @@ return;
 // 1. Inyectar CSS
 const link = document.createElement('link');
 link.rel = "stylesheet";
-link.href = "/css/chat.css"; // Ruta absoluta desde raíz del servidor // frontend
+const CHAT_CSS_VERSION = '2026-02-20';
+link.href = `/css/chat.css?v=${CHAT_CSS_VERSION}`; // Ruta absoluta desde raíz del servidor // frontend
 // Si estás en subcarpetas, esto funciona si el server sirve desde raíz.
 // Si falla, intentaremos ruta relativa automática
 document.head.appendChild(link);
