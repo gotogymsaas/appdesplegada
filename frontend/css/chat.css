@@ -1,5 +1,5 @@
 /* Chat Bot Widget */
-:root {
+#chat-widget-container {
   --chat-primary: var(--primary, #0FBFA0);
   --chat-bg: var(--card-bg, #121212);
   --chat-text: var(--text-main, #ffffff);
@@ -26,7 +26,7 @@
   --chat-shadow: 0 5px 20px rgba(0, 0, 0, 0.50);
 }
 
-body[data-theme="light"] {
+body[data-theme="light"] #chat-widget-container {
   --chat-border: rgba(0, 0, 0, 0.12);
   --chat-border-subtle: rgba(0, 0, 0, 0.06);
 
