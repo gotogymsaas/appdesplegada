@@ -400,11 +400,169 @@
             const menu = document.getElementById('menuOverlay');
             menu.classList.toggle('active');
         }
+
+        let gtgLastProfileFetchAt = 0;
+        const GTG_PROFILE_FETCH_TTL_MS = 15000;
+
+        function getStoredUser() {
+            const raw = localStorage.getItem("user");
+            if (!raw) return null;
+            try {
+                return JSON.parse(raw);
+            } catch (e) {
+                return null;
+            }
+        }
+
+        function mergeAndStoreUser(patch) {
+            const current = getStoredUser() || {};
+            const next = { ...current, ...(patch || {}) };
+            localStorage.setItem("user", JSON.stringify(next));
+            return next;
+        }
+
+        function applyUserToUI(user, opts = {}) {
+            const silent = opts.silent !== false;
+            if (!user) return;
+
+            document.getElementById('userName').textContent = user.full_name || user.username || "Nombres y apellidos";
+
+            const avatarEl = document.getElementById('userAvatar');
+            const originalAvatarValue = user.profile_picture || "";
+            const profilePictureUrl = user.profile_picture_url || "";
+            const resolvedFallbackUrl = window.resolveMediaUrl
+                ? window.resolveMediaUrl(originalAvatarValue)
+                : originalAvatarValue;
+            const defaultAvatarUrl = window.DEFAULT_AVATAR_URL || "";
+            const preferredUrl = profilePictureUrl || resolvedFallbackUrl;
+            const finalUrl = preferredUrl || defaultAvatarUrl;
+            if (window.GTG_DEBUG) {
+                console.debug('[Avatar][Perfil] profile_picture original:', originalAvatarValue);
+                console.debug('[Avatar][Perfil] profile_picture_url:', profilePictureUrl);
+                console.debug('[Avatar][Perfil] default avatar URL:', defaultAvatarUrl);
+                console.debug('[Avatar][Perfil] profile_picture final URL:', finalUrl);
+            }
+
+            if (finalUrl) {
+                const avatarImg = new Image();
+                avatarImg.src = finalUrl;
+                avatarImg.style.width = '100%';
+                avatarImg.style.height = '100%';
+                avatarImg.style.objectFit = 'cover';
+                avatarImg.onload = () => {
+                    avatarEl.innerHTML = '';
+                    avatarEl.appendChild(avatarImg);
+                    avatarEl.style.background = 'transparent';
+                };
+                avatarImg.onerror = (errorEvent) => {
+                    logAvatarLoadFailure('Perfil', finalUrl, errorEvent);
+                    if (defaultAvatarUrl && preferredUrl && preferredUrl !== defaultAvatarUrl) {
+                        const fallbackImg = new Image();
+                        const fallbackUrl = defaultAvatarUrl;
+                        fallbackImg.src = fallbackUrl;
+                        fallbackImg.style.width = '100%';
+                        fallbackImg.style.height = '100%';
+                        fallbackImg.style.objectFit = 'cover';
+                        fallbackImg.onload = () => {
+                            avatarEl.innerHTML = '';
+                            avatarEl.appendChild(fallbackImg);
+                            avatarEl.style.background = 'transparent';
+                        };
+                        fallbackImg.onerror = (fallbackErrorEvent) => {
+                            logAvatarLoadFailure('Perfil', fallbackUrl, fallbackErrorEvent);
+                            avatarEl.textContent = (user.username || "U").charAt(0).toUpperCase();
+                            avatarEl.style.background = '';
+                        };
+                        return;
+                    }
+                    avatarEl.textContent = (user.username || "U").charAt(0).toUpperCase();
+                    avatarEl.style.background = '';
+                };
+            } else {
+                avatarEl.textContent = (user.username || "U").charAt(0).toUpperCase();
+            }
+
+            document.getElementById('userProfession').textContent = user.profession || "Profesión";
+            document.getElementById("stat-weight").innerText = user.weight || "--";
+            document.getElementById("stat-height").innerText = user.height || "--";
+            document.getElementById("stat-age").innerText = user.age || "--";
+            document.getElementById("stat-streak").innerText = user.current_streak || "0";
+
+            if (user.happiness_index !== undefined && user.happiness_index !== null) {
+                const percent = Math.round(user.happiness_index * 10);
+                document.getElementById('happinessValue').textContent = percent + "%";
+                loadChart(user.username);
+            } else {
+                document.getElementById('happinessValue').textContent = "--";
+                document.getElementById("happinessValue").style.fontSize = "16px";
+            }
+
+            const badgesContainer = document.getElementById("badges-container");
+            if (!badgesContainer) {
+                if (window.GTG_DEBUG) console.warn("badges-container no existe en este template, se omite Render Badges");
+            } else {
+                if (user.badges && user.badges.length > 0) {
+                    badgesContainer.innerHTML = "";
+                    const badgeConfig = {
+                        "iniciado": { icon: "🚀", label: "Iniciado" },
+                        "on_fire": { icon: "🔥", label: "On Fire" },
+                        "zen_master": { icon: "🧘", label: "Zen Master" }
+                    };
+                    user.badges.forEach(badgeKey => {
+                        const config = badgeConfig[badgeKey] || { icon: "🏅", label: badgeKey };
+                        const badgeHTML = `
+                        <div class="badge-item">
+                          <span class="badge-icon">${config.icon}</span>
+                          <span class="badge-label">${config.label}</span>
+                        </div>
+                      `;
+                        badgesContainer.innerHTML += badgeHTML;
+                    });
+                } else {
+                    badgesContainer.innerHTML = `<p style="color:#666;font-size:12px;">Aún no tienes logros.</p>`;
+                }
+            }
+
+            if (!silent) {
+                showToast("Perfil actualizado", "success");
+            }
+        }
+
+        async function fetchUserProfile(opts = {}) {
+            const silent = opts.silent !== false;
+            const user = getStoredUser();
+            const username = user?.username;
+            if (!username || !window.API_URL || typeof authFetch !== 'function') return null;
+
+            const now = Date.now();
+            if (now - gtgLastProfileFetchAt < GTG_PROFILE_FETCH_TTL_MS) return null;
+            gtgLastProfileFetchAt = now;
+
+            try {
+                const res = await authFetch(`${API_URL}user_profile/?username=${encodeURIComponent(username)}`);
+                if (!res.ok) return null;
+                const data = await res.json();
+                const merged = mergeAndStoreUser(data);
+                applyUserToUI(merged, { silent });
+                return merged;
+            } catch (e) {
+                if (window.GTG_DEBUG) console.warn('[Perfil] fetchUserProfile falló', e);
+                return null;
+            }
+        }
+
+        async function refreshProfile(opts = {}) {
+            const silent = opts.silent !== false;
+            const stored = getStoredUser();
+            if (!stored) return;
+            applyUserToUI(stored, { silent: true });
+            await fetchUserProfile({ silent });
+        }
         
         document.addEventListener('DOMContentLoaded', () => {
-            const userData = localStorage.getItem("user");
+            const user = getStoredUser();
             
-            if (!userData) {
+            if (!user) {
                 // For demo purposes if run directly without login, show dummy data or redirect
                 // window.location.href='../../auth/indexInicioDeSesion.html';
                 // return;
@@ -418,121 +576,27 @@
                 document.getElementById("stat-age").innerText = "30";
                 return;
             }
-            
-            try {
-                const user = JSON.parse(userData);
-                document.getElementById('userName').textContent = user.full_name || user.username || "Nombres y apellidos";
-                
-                const avatarEl = document.getElementById('userAvatar');
-                const originalAvatarValue = user.profile_picture || "";
-                const profilePictureUrl = user.profile_picture_url || "";
-                const resolvedFallbackUrl = window.resolveMediaUrl
-                    ? window.resolveMediaUrl(originalAvatarValue)
-                    : originalAvatarValue;
-                const defaultAvatarUrl = window.DEFAULT_AVATAR_URL || "";
-                const preferredUrl = profilePictureUrl || resolvedFallbackUrl;
-                const finalUrl = preferredUrl || defaultAvatarUrl;
-                if (window.GTG_DEBUG) {
-                    console.debug('[Avatar][Perfil] profile_picture original:', originalAvatarValue);
-                    console.debug('[Avatar][Perfil] profile_picture_url:', profilePictureUrl);
-                    console.debug('[Avatar][Perfil] default avatar URL:', defaultAvatarUrl);
-                    console.debug('[Avatar][Perfil] profile_picture final URL:', finalUrl);
-                }
 
-                if (finalUrl) {
-                    const avatarImg = new Image();
-                    avatarImg.src = finalUrl;
-                    avatarImg.style.width = '100%';
-                    avatarImg.style.height = '100%';
-                    avatarImg.style.objectFit = 'cover';
-                    avatarImg.onload = () => {
-                        avatarEl.innerHTML = '';
-                        avatarEl.appendChild(avatarImg);
-                        avatarEl.style.background = 'transparent';
-                    };
-                    avatarImg.onerror = (errorEvent) => {
-                        logAvatarLoadFailure('Perfil', finalUrl, errorEvent);
-                        if (defaultAvatarUrl && preferredUrl && preferredUrl !== defaultAvatarUrl) {
-                            const fallbackImg = new Image();
-                            const fallbackUrl = defaultAvatarUrl;
-                            fallbackImg.src = fallbackUrl;
-                            fallbackImg.style.width = '100%';
-                            fallbackImg.style.height = '100%';
-                            fallbackImg.style.objectFit = 'cover';
-                            fallbackImg.onload = () => {
-                                avatarEl.innerHTML = '';
-                                avatarEl.appendChild(fallbackImg);
-                                avatarEl.style.background = 'transparent';
-                            };
-                            fallbackImg.onerror = (fallbackErrorEvent) => {
-                                logAvatarLoadFailure('Perfil', fallbackUrl, fallbackErrorEvent);
-                                avatarEl.textContent = (user.username || "U").charAt(0).toUpperCase();
-                                avatarEl.style.background = '';
-                            };
-                            return;
-                        }
-                        avatarEl.textContent = (user.username || "U").charAt(0).toUpperCase();
-                        avatarEl.style.background = '';
-                    };
-                } else {
-                    avatarEl.textContent = (user.username || "U").charAt(0).toUpperCase();
-                }
-                
-                document.getElementById('userProfession').textContent = user.profession || "Profesión";
-                
-                // Stats
-                // Note: The design separates number and unit.
-                document.getElementById("stat-weight").innerText = user.weight || "--";
-                document.getElementById("stat-height").innerText = user.height || "--";
-                document.getElementById("stat-age").innerText = user.age || "--";
-                document.getElementById("stat-streak").innerText = user.current_streak || "0";
-                
-                // Happiness Index
-                if (user.happiness_index !== undefined && user.happiness_index !== null) {
-                    // Convert 0-10 to 0-100%
-                    const percent = Math.round(user.happiness_index * 10);
-                    document.getElementById('happinessValue').textContent = percent + "%";
-                    // Load Chart
-                    loadChart(user.username);
-                } else {
-                    document.getElementById('happinessValue').textContent = "--";
-                    document.getElementById("happinessValue").style.fontSize = "16px";
-                }
-                // Render Badges
-                const badgesContainer = document.getElementById("badges-container");
+            applyUserToUI(user, { silent: true });
+            refreshProfile({ silent: true });
+        });
 
-                // ✅ Guard: si el contenedor no existe en este HTML, salimos sin romper nada
-                if (!badgesContainer) {
-                  console.warn("badges-container no existe en este template, se omite Render Badges");
-                } else {
-                  if (user.badges && user.badges.length > 0) {
-                    badgesContainer.innerHTML = ""; // Clear loader
-
-                    const badgeConfig = {
-                      "iniciado": { icon: "🚀", label: "Iniciado" },
-                      "on_fire": { icon: "🔥", label: "On Fire" },
-                      "zen_master": { icon: "🧘", label: "Zen Master" }
-                    };
-
-                    user.badges.forEach(badgeKey => {
-                      const config = badgeConfig[badgeKey] || { icon: "🏅", label: badgeKey };
-                      const badgeHTML = `
-                        <div class="badge-item">
-                          <span class="badge-icon">${config.icon}</span>
-                          <span class="badge-label">${config.label}</span>
-                        </div>
-                      `;
-                      badgesContainer.innerHTML += badgeHTML;
-                    });
-
-                  } else {
-                    badgesContainer.innerHTML = `<p style="color:#666;font-size:12px;">Aún no tienes logros.</p>`;
-                  }
-                }
-
-                showToast("Perfil actualizado", "success");
-            } catch (e) {
-                console.error(e);
+        // Important: cuando vuelves desde otra página en móvil/desktop, el navegador puede restaurar
+        // Perfil desde bfcache y NO dispara DOMContentLoaded. Usamos pageshow/visibility para recargar.
+        window.addEventListener('pageshow', () => {
+            refreshProfile({ silent: true });
+        });
+        document.addEventListener('visibilitychange', () => {
+            if (document.visibilityState === 'visible') {
+                refreshProfile({ silent: true });
+            }
+        });
+        window.addEventListener('focus', () => {
+            refreshProfile({ silent: true });
+        });
+        window.addEventListener('storage', (event) => {
+            if (event && event.key === 'user') {
+                refreshProfile({ silent: true });
             }
         });
         
