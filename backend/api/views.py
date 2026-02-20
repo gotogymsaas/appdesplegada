@@ -2410,9 +2410,10 @@ def internal_ocr_health(request):
         line = (output.splitlines() or [""])[0]
         return (line or "")[:limit]
 
-    def _run_version(cmd: str):
+    def _run_version(cmd: str, args: list[str] | None = None):
         try:
-            proc = subprocess.run([cmd, "--version"], capture_output=True, text=True, timeout=3)
+            final_args = args if args is not None else ["--version"]
+            proc = subprocess.run([cmd, *final_args], capture_output=True, text=True, timeout=3)
             out = (proc.stdout or "") + ("\n" + proc.stderr if proc.stderr else "")
             return proc.returncode == 0, _first_line(out)
         except Exception as ex:
@@ -2420,8 +2421,13 @@ def internal_ocr_health(request):
 
     tesseract_path = _which("tesseract")
     pdftoppm_path = _which("pdftoppm")
-    t_ok, t_ver = (_run_version("tesseract") if tesseract_path else (False, "not_found"))
-    p_ok, p_ver = (_run_version("pdftoppm") if pdftoppm_path else (False, "not_found"))
+    t_ok, t_ver = (
+        _run_version("tesseract", ["--version"]) if tesseract_path else (False, "not_found")
+    )
+    # `pdftoppm` (poppler-utils) usa `-v` y escribe a stderr; `--version` puede fallar.
+    p_ok, p_ver = (
+        _run_version("pdftoppm", ["-v"]) if pdftoppm_path else (False, "not_found")
+    )
 
     smoke = _as_bool(
         (request.query_params.get("smoke") if hasattr(request, "query_params") else request.GET.get("smoke"))
