@@ -100,7 +100,7 @@ body[data-theme="light"] #chat-widget-container {
 #chat-scroll-controls {
   position: absolute;
   right: 10px;
-  bottom: 78px;
+  bottom: calc(78px + var(--gtg-vv-offset, 0px));
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -545,17 +545,17 @@ body[data-theme="light"] #chat-widget-container {
     flex: 1 1 auto;
     height: auto !important;
     overflow-y: auto;
-    padding-bottom: calc(92px + env(safe-area-inset-bottom));
+    padding-bottom: calc(92px + env(safe-area-inset-bottom) + var(--gtg-vv-offset, 0px));
     background-color: var(--chat-bg);
   }
 
   /* Input Area */
   #chat-input-area {
     flex: 0 0 auto;
-    position: relative !important;
-    bottom: auto !important;
-    left: auto !important;
-    right: auto !important;
+    position: fixed !important;
+    left: 0 !important;
+    right: 0 !important;
+    bottom: var(--gtg-vv-offset, 0px) !important;
     width: 100% !important;
     background: var(--chat-bg);
     border-top: 1px solid var(--chat-border);
