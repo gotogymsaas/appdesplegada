@@ -232,6 +232,14 @@
                     margin-top: 10px;
                 }
 
+                .evolution-help {
+                    color: var(--text-muted);
+                    font-size: 11px;
+                    line-height: 1.4;
+                    margin-top: 10px;
+                    opacity: 0.95;
+                }
+
                 .missions-title {
                     color: var(--text-main);
                     font-size: 12px;
@@ -466,6 +474,7 @@
             <div class="progress-fill" id="weeklyProgressFill"></div>
         </div>
         <div class="weekly-hint" id="weeklyHint">Activa tu racha con 1 acción al día: check-in, hábito o sincronización.</div>
+        <div class="evolution-help" id="evolutionHelp"></div>
 
         <div class="missions-title">Misión semanal</div>
         <div id="missionsContainer"></div>
@@ -627,12 +636,23 @@
                             const targetVal = (m.target !== undefined && m.target !== null) ? m.target : 0;
                             const completed = !!m.completed;
                             const status = completed ? '✓' : `${progress}/${targetVal}`;
+
+                            const key = String(m.key || '').toLowerCase();
+                            let howTo = 'Haz 1 acción válida hoy para activar tu evolución.';
+                            if (key === 'checkins') {
+                                howTo = 'Responde el check-in (Cuestionario IF) para contar un registro.';
+                            } else if (key === 'sync') {
+                                howTo = 'Ve a Dispositivos y sincroniza (cuenta solo si trae datos reales).';
+                            } else if (key === 'if_delta') {
+                                howTo = 'Mejora tu IF esta semana: ajusta hábitos y vuelve a calcular.';
+                            }
+
                             const row = document.createElement('div');
                             row.className = 'mission-item';
                             row.innerHTML = `
                               <div class="mission-left">
                                 <div class="mission-label">${label}</div>
-                                <div class="mission-sub">Hazlo para activar tu evolución</div>
+                                <div class="mission-sub">${howTo}</div>
                               </div>
                               <div class="mission-status">${status}</div>
                             `;
@@ -646,6 +666,15 @@
                         hint.textContent = tier
                             ? `Estado: ${tier}. Activa tu racha con 1 acción al día: check-in, hábito o sincronización.`
                             : 'Activa tu racha con 1 acción al día: check-in, hábito o sincronización.';
+                    }
+
+                    const help = document.getElementById('evolutionHelp');
+                    if (help) {
+                        const nextTier = (g.streak_tier && g.streak_tier.next) ? g.streak_tier.next : null;
+                        const nextText = nextTier && nextTier.threshold
+                            ? `Siguiente hito: ${nextTier.threshold} días (${nextTier.label}).`
+                            : '';
+                        help.textContent = `Cómo activar: 1) Check-in IF (responder el cuestionario) 2) Actualizar un hábito 3) Sincronizar un dispositivo. ${nextText}`.trim();
                     }
                 }
             } catch (e) {
