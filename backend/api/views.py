@@ -86,6 +86,16 @@ except Exception:
 logger = logging.getLogger(__name__)
 
 
+def _qaf_catalog_paths():
+    base = Path(__file__).resolve().parent / "qaf_calories" / "data"
+    return {
+        "base": base,
+        "aliases": base / "aliases.csv",
+        "items_meta": base / "items_meta.csv",
+        "calorie_db": base / "calorie_db.csv",
+    }
+
+
 class IsAuthenticatedOrOptions(IsAuthenticated):
     def has_permission(self, request, view):
         if request.method == "OPTIONS":
@@ -3706,6 +3716,11 @@ def chat_n8n(request):
         attachment_text = request.data.get('attachment_text')  # Nuevo: Texto extraído
         attachment_text_diagnostic = request.data.get('attachment_text_diagnostic') or ""
 
+        # Extensión QAF (premium): permite confirmar porciones sin re-subir imagen.
+        confirmed_portions = request.data.get('confirmed_portions')
+        goal_kcal_meal = request.data.get('goal_kcal_meal')
+        qaf_context = request.data.get('qaf_context')
+
         auth_header = request.headers.get('Authorization', '')
 
         if not message and not attachment_url:
@@ -3754,6 +3769,16 @@ def chat_n8n(request):
 
         # Vision para imágenes (comida/porciones): para fotos suele ser mejor que OCR.
         # Nota: por restricciones típicas (n8n/LLM no puede hacer fetch), preferimos mandar bytes como data URL.
+        vision_parsed = None
+        qaf_result = None
+
+        # 0) Si llega qaf_context (ej. click en botones), usamos eso para estimar sin Vision.
+        try:
+            if isinstance(qaf_context, dict) and isinstance(qaf_context.get('vision'), dict):
+                vision_parsed = qaf_context.get('vision')
+        except Exception:
+            vision_parsed = None
+
         try:
             if attachment_url:
                 filename_guess = os.path.basename(urlparse(str(attachment_url)).path or "")
@@ -3804,6 +3829,7 @@ def chat_n8n(request):
                         try:
                             parsed = json.loads(pretty)
                             if isinstance(parsed, dict):
+                                vision_parsed = parsed
                                 items = parsed.get("items")
                                 if isinstance(items, list):
                                     items_str = ", ".join([str(x) for x in items if str(x).strip()])
@@ -3829,6 +3855,44 @@ def chat_n8n(request):
                         attachment_text_diagnostic = f"vision_failed: {vision_diag}"[:350]
         except Exception as ex:
             print(f"Vision image description warning: {ex}")
+
+        # 1) QAF (post-proceso premium): si tenemos vision_parsed o se pudo extraer items.
+        try:
+            if isinstance(vision_parsed, dict) and isinstance(vision_parsed.get('items'), list):
+                from .qaf_calories.engine import (
+                    load_aliases,
+                    load_calorie_db,
+                    load_items_meta,
+                    qaf_estimate,
+                    render_professional_summary,
+                )
+
+                cat = _qaf_catalog_paths()
+                aliases = load_aliases(cat['aliases'])
+                calorie_db = load_calorie_db(cat['calorie_db'])
+                items_meta = load_items_meta(cat['items_meta'])
+
+                locale = (request.data.get('locale') or '').strip() or 'es-CO'
+                memory_hint = {}
+                # MVP: memoria suave real la añadimos luego; por ahora, sin hints.
+
+                qaf_result = qaf_estimate(
+                    vision_parsed,
+                    calorie_db=calorie_db,
+                    aliases=aliases,
+                    items_meta=items_meta,
+                    locale=locale,
+                    memory_hint_by_item=memory_hint,
+                    goal_kcal_meal=goal_kcal_meal,
+                    confirmed_portions=confirmed_portions if isinstance(confirmed_portions, list) else None,
+                )
+
+                # Compat texto: añadimos un bloque corto si hay estimación.
+                qaf_text = render_professional_summary(qaf_result)
+                if qaf_text:
+                    attachment_text = ((attachment_text or '').strip() + "\n\n" if (attachment_text or '').strip() else "") + f"[CALORÍAS ESTIMADAS]\n{qaf_text}".strip()
+        except Exception as ex:
+            print(f"QAF calories warning: {ex}")
 
         # Construir prompt enriquecido (solo con texto real si se pudo)
         final_input = message or "Analisis de archivo adjunto"
@@ -4019,6 +4083,8 @@ def chat_n8n(request):
             "attachment": attachment_url_for_n8n,
             "attachment_text": attachment_text,
             "attachment_text_diagnostic": attachment_text_diagnostic,
+            "qaf": qaf_result,
+            "qaf_context": {"vision": vision_parsed} if isinstance(vision_parsed, dict) else None,
             "fitness": fitness_payload,
             "profile": profile_payload,
             "if_snapshot": if_snapshot,
@@ -4065,6 +4131,15 @@ def chat_n8n(request):
                     data['output'] = _extract_text_from_iframe(data['output'])
             except Exception:
                 pass
+            # Enriquecer respuesta hacia frontend (sin requerir cambios en n8n)
+            try:
+                if isinstance(data, dict) and qaf_result:
+                    data.setdefault('qaf', qaf_result)
+                    data.setdefault('follow_up_questions', qaf_result.get('follow_up_questions') or [])
+                    data.setdefault('qaf_context', {"vision": vision_parsed} if isinstance(vision_parsed, dict) else None)
+            except Exception:
+                pass
+
             return Response(data)
         else:
             # Intentar obtener mensaje de error de n8n

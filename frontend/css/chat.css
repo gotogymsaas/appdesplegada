@@ -308,6 +308,13 @@ body[data-theme="light"] #chat-widget-container {
   margin-top: 8px;
 }
 
+.quick-actions-title {
+  width: 100%;
+  color: var(--chat-muted);
+  font-size: 12px;
+  line-height: 1.2;
+}
+
 .quick-action-btn {
   background: rgba(15, 191, 160, 0.12);
   border: 1px solid rgba(15, 191, 160, 0.35);

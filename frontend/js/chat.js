@@ -927,7 +927,12 @@ async function processMessage(text, file, pendingId) {
         attachment: attachmentUrl,
         attachment_text: attachmentText,
         attachment_text_diagnostic: attachmentTextDiagnostic,
-        username: username
+        username: username,
+        // Extensiones QAF (premium)
+        confirmed_portions: pendingQafConfirm?.confirmed_portions || undefined,
+        qaf_context: pendingQafConfirm?.qaf_context || undefined,
+        locale: pendingQafConfirm?.locale || undefined,
+        goal_kcal_meal: pendingQafConfirm?.goal_kcal_meal || undefined,
       })
     });
 
@@ -960,7 +965,22 @@ async function processMessage(text, file, pendingId) {
         reply = match[1];
       }
     }
-    appendMessage(reply, 'bot');
+    const botMsgId = appendMessage(reply, 'bot');
+
+    // QAF follow-up questions (botones)
+    try {
+      if (data && typeof data === 'object') {
+        const q = data.follow_up_questions || (data.qaf && data.qaf.follow_up_questions);
+        const ctx = data.qaf_context || (data.qaf && data.qaf.qaf_context);
+        if (Array.isArray(q) && q.length) {
+          // guardar contexto para el click
+          lastQafContext = ctx || data.qaf_context || null;
+          appendFollowUpQuestions(q, lastQafContext, data);
+        }
+      }
+    } catch (e) {
+      console.warn('No se pudieron renderizar follow_up_questions', e);
+    }
   } catch (err) {
     console.error(err);
     document.getElementById(loadingId)?.remove();
@@ -971,6 +991,55 @@ async function processMessage(text, file, pendingId) {
     setAttachmentPreview(null);
     appendMessage(`❌ Error: ${err.message} `, 'bot');
   }
+}
+
+// --- QAF premium follow-ups (botones) ---
+let lastQafContext = null;
+let pendingQafConfirm = null;
+
+function appendFollowUpQuestions(questions, qafContext, fullResponse) {
+  if (!Array.isArray(questions) || !questions.length) return;
+
+  const q = questions[0];
+  if (!q || q.type !== 'confirm_portion') return;
+  const options = Array.isArray(q.options) ? q.options : [];
+  if (!options.length) return;
+
+  const wrapper = document.createElement('div');
+  wrapper.className = 'quick-actions';
+
+  const title = document.createElement('div');
+  title.className = 'quick-actions-title';
+  title.textContent = q.prompt || 'Confirma la porción';
+  wrapper.appendChild(title);
+
+  options.slice(0, 3).forEach((opt) => {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'quick-action-btn';
+    btn.textContent = opt.label || `${opt.grams} g`;
+    btn.addEventListener('click', async () => {
+      // Mostrar selección como mensaje del usuario (profesional y corto)
+      const itemId = q.item_id;
+      const grams = opt.grams;
+      appendMessage(`Confirmo porción: ${btn.textContent}`, 'user');
+
+      pendingQafConfirm = {
+        confirmed_portions: [{ item_id: itemId, grams: grams }],
+        qaf_context: qafContext || null,
+        locale: (fullResponse && fullResponse.locale) || 'es-CO',
+      };
+
+      // Disparar mensaje vacío: backend usa confirmed_portions + qaf_context
+      await processMessage('Confirmación de porción', null);
+      pendingQafConfirm = null;
+    });
+    wrapper.appendChild(btn);
+  });
+
+  messages.appendChild(wrapper);
+  messages.scrollTop = messages.scrollHeight;
+  updateScrollControls();
 }
 
 function escapeHtml(input) {
