@@ -578,6 +578,24 @@ def _clean_extracted_text(text):
     return cleaned.strip()
 
 
+def _ocr_params():
+    """Parámetros de OCR configurables por env.
+
+    - CHAT_OCR_LANG: por ejemplo "eng" o "spa" o "spa+eng" (si están instalados en tesseract).
+    - CHAT_OCR_TESSERACT_CONFIG: por ejemplo "--psm 6".
+    """
+
+    lang = (os.getenv("CHAT_OCR_LANG", "") or "").strip()
+    if not lang:
+        lang = (os.getenv("TESSERACT_LANG", "") or "").strip()
+
+    config = (os.getenv("CHAT_OCR_TESSERACT_CONFIG", "") or "").strip() or "--psm 6"
+    return {
+        "lang": lang or None,
+        "config": config,
+    }
+
+
 def _is_attachment_text_placeholder(text: str) -> bool:
     t = (text or "").strip()
     if not t:
@@ -727,10 +745,17 @@ def _extract_text_from_file_bytes(original_name: str, file_bytes: bytes):
                 if pytesseract and convert_from_path:
                     try:
                         pages = convert_from_path(temp_path, dpi=200, first_page=1, last_page=10)
+                        ocr_opts = _ocr_params()
                         ocr_chunks = []
                         for img in pages:
                             try:
-                                ocr_chunks.append(pytesseract.image_to_string(img))
+                                ocr_chunks.append(
+                                    pytesseract.image_to_string(
+                                        img,
+                                        lang=ocr_opts["lang"],
+                                        config=ocr_opts["config"],
+                                    )
+                                )
                             except Exception:
                                 pass
                         extracted_text = "\n".join([c for c in ocr_chunks if c.strip()])
@@ -741,8 +766,31 @@ def _extract_text_from_file_bytes(original_name: str, file_bytes: bytes):
         else:
             if enable_ocr and pytesseract and Image is not None:
                 try:
+                    # Preprocesado básico para OCR: corrección de rotación EXIF y mejora de contraste.
+                    from PIL import ImageEnhance, ImageOps
+
                     img = Image.open(temp_path)
-                    extracted_text = pytesseract.image_to_string(img)
+                    img = ImageOps.exif_transpose(img)
+
+                    if img.mode not in ("RGB", "L"):
+                        img = img.convert("RGB")
+
+                    gray = img.convert("L")
+                    gray = ImageEnhance.Contrast(gray).enhance(1.8)
+
+                    ocr_opts = _ocr_params()
+                    try:
+                        extracted_text = pytesseract.image_to_string(
+                            gray,
+                            lang=ocr_opts["lang"],
+                            config=ocr_opts["config"],
+                        )
+                    except Exception:
+                        # Si el lang configurado no existe en el runtime, reintenta sin lang.
+                        extracted_text = pytesseract.image_to_string(
+                            gray,
+                            config=ocr_opts["config"],
+                        )
                 except Exception as ex:
                     diagnostic = f"img_ocr_failed:{ex}"
             elif not enable_ocr:
@@ -2407,8 +2455,10 @@ def internal_ocr_health(request):
     def _first_line(output: str, limit: int = 200) -> str:
         if not output:
             return ""
-        line = (output.splitlines() or [""])[0]
-        return (line or "")[:limit]
+        for line in (output.splitlines() or []):
+            if (line or "").strip():
+                return (line or "")[:limit]
+        return ""
 
     def _run_version(cmd: str, args: list[str] | None = None):
         try:
@@ -2428,6 +2478,23 @@ def internal_ocr_health(request):
     p_ok, p_ver = (
         _run_version("pdftoppm", ["-v"]) if pdftoppm_path else (False, "not_found")
     )
+
+    langs = []
+    if tesseract_path:
+        try:
+            proc = subprocess.run(
+                ["tesseract", "--list-langs"],
+                capture_output=True,
+                text=True,
+                timeout=4,
+            )
+            out = (proc.stdout or "") + ("\n" + proc.stderr if proc.stderr else "")
+            lines = [ln.strip() for ln in out.splitlines() if ln.strip()]
+            # Normalmente: "List of available languages (2):" + langs
+            langs = [ln for ln in lines if not ln.lower().startswith("list of available")]
+            langs = langs[:30]
+        except Exception:
+            langs = []
 
     smoke = _as_bool(
         (request.query_params.get("smoke") if hasattr(request, "query_params") else request.GET.get("smoke"))
@@ -2480,6 +2547,7 @@ def internal_ocr_health(request):
                     "version": p_ver,
                 },
             },
+            "tesseract_langs": langs,
             "env": {
                 "CHAT_ATTACHMENT_OCR": (os.getenv("CHAT_ATTACHMENT_OCR", "") or "").strip(),
                 "CHAT_ATTACHMENT_TEXT_MAX_CHARS": (os.getenv("CHAT_ATTACHMENT_TEXT_MAX_CHARS", "") or "").strip(),
@@ -2491,6 +2559,57 @@ def internal_ocr_health(request):
                 "CHAT_ATTACHMENT_INSTALL_PDF_OCR_DEPS": (os.getenv("CHAT_ATTACHMENT_INSTALL_PDF_OCR_DEPS", "") or "").strip(),
             },
             "smoke": smoke_result,
+        }
+    )
+
+
+@api_view(["POST", "OPTIONS"])
+@permission_classes([AllowAny])
+def internal_ocr_extract(request):
+    """Extrae texto (PDF/imagen) de un archivo subido para debug.
+
+    Autorización: header X-Internal-Token debe coincidir con INTERNAL_OCR_HEALTH_TOKEN.
+    """
+
+    if request.method == "OPTIONS":
+        response = Response()
+        response["Access-Control-Allow-Origin"] = "*"
+        response["Access-Control-Allow-Methods"] = "POST, OPTIONS"
+        response["Access-Control-Allow-Headers"] = "Content-Type, Authorization, X-Internal-Token"
+        return response
+
+    expected = (os.getenv("INTERNAL_OCR_HEALTH_TOKEN", "") or "").strip()
+    if not expected:
+        return Response({"ok": False, "error": "health_token_not_configured"}, status=503)
+
+    provided = (
+        request.headers.get("X-Internal-Token")
+        or request.META.get("HTTP_X_INTERNAL_TOKEN")
+        or ""
+    ).strip()
+    if not provided or not secrets.compare_digest(provided, expected):
+        return Response({"ok": False, "error": "unauthorized"}, status=401)
+
+    file_obj = request.FILES.get("file")
+    if not file_obj:
+        return Response({"ok": False, "error": "file_required"}, status=400)
+
+    original_name = file_obj.name or "adjunto"
+    content_type = (getattr(file_obj, "content_type", "") or "application/octet-stream").strip()
+    file_bytes = file_obj.read() or b""
+    extracted_text, diagnostic = _extract_text_from_file_bytes(original_name, file_bytes)
+
+    return Response(
+        {
+            "ok": True,
+            "file": {
+                "name": original_name,
+                "content_type": content_type,
+                "bytes": len(file_bytes),
+            },
+            "extracted_text": extracted_text or "",
+            "diagnostic": diagnostic or "",
+            "ocr": _ocr_params(),
         }
     )
 
