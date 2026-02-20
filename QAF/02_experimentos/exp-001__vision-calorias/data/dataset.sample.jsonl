@@ -1,0 +1,3 @@
+{"id":"ex-001","vision":{"is_food":true,"items":["manzana"],"portion_estimate":"1 unidad","notes":""},"ground_truth":{"items":[{"item_id":"manzana","grams":180,"calories":94}],"total_calories":94}}
+{"id":"ex-002","vision":{"is_food":true,"items":["arroz blanco","pollo"],"portion_estimate":"1 taza de arroz y 150g de pollo","notes":""},"ground_truth":{"items":[{"item_id":"arroz_blanco_cocido","grams":160,"calories":208},{"item_id":"pollo_pechuga_asada","grams":150,"calories":248}],"total_calories":456}}
+{"id":"ex-003","vision":{"is_food":true,"items":["huevo"],"portion_estimate":"2 unidades","notes":""},"ground_truth":{"items":[{"item_id":"huevo","grams":100,"calories":156}],"total_calories":156}}

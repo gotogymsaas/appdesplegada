@@ -1,0 +1,10 @@
+item_id,kcal_per_100g,kcal_per_unit,unit_grams,default_serving_grams
+manzana,52,,,
+arroz_blanco_cocido,130,,,
+pollo_pechuga_asada,165,,,
+ensalada_mixta,35,,,
+papa_frita,312,,,
+huevo,155,78,50,50
+banano,89,,,
+pan_rebanada,,79,30,30
+leche_entera,61,,,
