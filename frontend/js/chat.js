@@ -72,6 +72,7 @@ fill="currentColor"><path d="M16.5 6v11.5c0 2.21-1.79 4-4
 `;
 document.body.appendChild(container);
 // 3. Lógica
+const widgetContainer = document.getElementById('chat-widget-container');
 const toggleBtn = document.getElementById('chat-toggle-btn');
 const chatWindow = document.getElementById('chat-window');
 const form = document.getElementById('chat-input-area');
@@ -193,6 +194,28 @@ let nativeSpeechPlugin = null;
 let nativeSpeechListener = null;
 
 const MAX_INPUT_HEIGHT = 120;
+
+// --- Mobile keyboard / safe-area handling ---
+let viewportRaf = 0;
+
+function computeVisualViewportOffset() {
+  const vv = window.visualViewport;
+  if (!vv) return 0;
+  const raw = window.innerHeight - vv.height - vv.offsetTop;
+  return Math.max(0, Math.round(raw));
+}
+
+function applyViewportOffset() {
+  viewportRaf = 0;
+  if (!widgetContainer) return;
+  const offset = computeVisualViewportOffset();
+  widgetContainer.style.setProperty('--gtg-vv-offset', `${offset}px`);
+}
+
+function scheduleViewportOffsetUpdate() {
+  if (viewportRaf) return;
+  viewportRaf = requestAnimationFrame(applyViewportOffset);
+}
 
 function autoResizeInput() {
   if (!input) return;
@@ -654,6 +677,7 @@ if (chatWindow.classList.contains('open')) {
 if (window.innerWidth > 480) input.focus();
 // Recalcular visibilidad de los controles de scroll al abrir.
 setTimeout(updateScrollControls, 50);
+scheduleViewportOffsetUpdate();
 }
 }
 toggleBtn.addEventListener('click', toggleChat);
@@ -794,6 +818,14 @@ form.addEventListener('submit', async (e) => {
 });
 
 input.addEventListener('input', autoResizeInput);
+input.addEventListener('focus', () => {
+  scheduleViewportOffsetUpdate();
+  setTimeout(scheduleViewportOffsetUpdate, 250);
+});
+input.addEventListener('blur', () => {
+  scheduleViewportOffsetUpdate();
+  setTimeout(scheduleViewportOffsetUpdate, 250);
+});
 input.addEventListener('keydown', (event) => {
   if (event.key === 'Enter' && !event.shiftKey) {
     event.preventDefault();
@@ -805,6 +837,17 @@ input.addEventListener('keydown', (event) => {
   }
 });
 autoResizeInput();
+
+// VisualViewport listeners (mobile keyboard)
+if (window.visualViewport) {
+  window.visualViewport.addEventListener('resize', scheduleViewportOffsetUpdate);
+  window.visualViewport.addEventListener('scroll', scheduleViewportOffsetUpdate);
+}
+window.addEventListener('orientationchange', scheduleViewportOffsetUpdate);
+window.addEventListener('resize', scheduleViewportOffsetUpdate);
+
+// Initial compute
+scheduleViewportOffsetUpdate();
 
 async function processMessage(text, file, pendingId) {
   const loadingId = appendMessage('Analizando...', 'bot loading', { persist: false });
