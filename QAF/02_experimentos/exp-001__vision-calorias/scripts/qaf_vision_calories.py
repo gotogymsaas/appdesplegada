@@ -9,6 +9,7 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
+import tempfile
 
 
 DEFAULT_LOCALE = "es-CO"
@@ -116,6 +117,72 @@ def default_alias_path() -> Path:
 
 def default_soft_memory_path() -> Path:
     return Path(__file__).resolve().parents[1] / "data" / "soft_memory.json"
+
+
+def default_items_meta_path() -> Path:
+    return Path(__file__).resolve().parents[1] / "data" / "items_meta.csv"
+
+
+def load_items_meta(csv_path: Path) -> dict[str, dict[str, str]]:
+    meta: dict[str, dict[str, str]] = {}
+    if not csv_path.exists():
+        return meta
+    with csv_path.open("r", encoding="utf-8") as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            item_id = (row.get("item_id") or "").strip()
+            if not item_id:
+                continue
+            meta[item_id] = {
+                "display_name_es": (row.get("display_name_es") or "").strip() or item_id,
+                "display_name_en": (row.get("display_name_en") or "").strip() or item_id,
+            }
+    return meta
+
+
+def _display_name(item_id: str, items_meta: dict[str, dict[str, str]] | None, locale: str) -> str:
+    meta = (items_meta or {}).get(item_id) or {}
+    if str(locale or "").lower().startswith("en"):
+        return meta.get("display_name_en") or item_id
+    return meta.get("display_name_es") or item_id
+
+
+def update_soft_memory(user_id: str, item_id: str, grams: float, *, path: Path | None = None) -> bool:
+    """Persiste memoria suave en JSON de forma atómica.
+
+    Estructura:
+    { "user_id": { "item_id": {"grams": <float>, "ts": <epoch>} } }
+    """
+
+    if not user_id or not item_id:
+        return False
+    try:
+        g = float(grams)
+    except Exception:
+        return False
+    if g <= 0:
+        return False
+
+    import time
+
+    path = path or default_soft_memory_path()
+    try:
+        if path.exists():
+            data = json.loads(path.read_text(encoding="utf-8"))
+        else:
+            data = {}
+    except Exception:
+        data = {}
+
+    data.setdefault(str(user_id), {})[str(item_id)] = {"grams": g, "ts": float(time.time())}
+
+    tmp_dir = path.parent
+    tmp_dir.mkdir(parents=True, exist_ok=True)
+    with tempfile.NamedTemporaryFile("w", delete=False, dir=str(tmp_dir), encoding="utf-8") as tf:
+        tf.write(json.dumps(data, ensure_ascii=False, indent=2))
+        tmp_name = tf.name
+    Path(tmp_name).replace(path)
+    return True
 
 
 def _best_fuzzy_match(query: str, candidates: list[str]) -> tuple[str | None, float]:
@@ -348,7 +415,7 @@ def parse_portion_grams(item_id: str, portion_text: str | None, calorie_db: dict
     if m:
         n = _safe_float(m.group(1).replace(",", "."))
         if not n or n <= 0:
-            return None
+            return None, "unknown"
         ci = calorie_db.get(item_id)
         if ci and ci.unit_grams:
             return float(n) * float(ci.unit_grams), "explicit_units"
@@ -469,6 +536,9 @@ def qaf_infer_from_vision(
     aliases: dict[str, str] | None = None,
     user_id: str | None = None,
     locale: str = DEFAULT_LOCALE,
+    goal_kcal_meal: float | None = None,
+    confirmed_portions: list[dict[str, Any]] | None = None,
+    items_meta: dict[str, dict[str, str]] | None = None,
 ) -> dict[str, Any]:
     raw_items = vision.get("items")
     if not isinstance(raw_items, list):
@@ -522,6 +592,20 @@ def qaf_infer_from_vision(
 
     per_item_conf: dict[str, dict[str, Any]] = {}
 
+    confirmed_map: dict[str, float] = {}
+    if confirmed_portions:
+        for cp in confirmed_portions:
+            if not isinstance(cp, dict):
+                continue
+            iid = str(cp.get("item_id") or "").strip()
+            g = cp.get("grams")
+            try:
+                gf = float(g)
+            except Exception:
+                continue
+            if iid and gf > 0:
+                confirmed_map[iid] = gf
+
     # memoria suave: opcional (sin dependencias). Si no hay archivo, se ignora.
     memory: dict[str, Any] = {}
     try:
@@ -563,6 +647,13 @@ def qaf_infer_from_vision(
             calorie_db,
             item_aliases=item_aliases.get(item_id) or [],
         )
+
+        selected_portion = None
+        if item_id in confirmed_map:
+            grams = float(confirmed_map[item_id])
+            portion_method = "explicit_grams"
+            portion_match = "confirmed"
+            selected_portion = {"grams": round(float(grams), 2), "source": "user"}
 
         used_default = False
         if grams is None and ci and ci.default_serving_grams:
@@ -633,10 +724,11 @@ def qaf_infer_from_vision(
         items_out.append(
             {
                 "item_id": item_id,
+                "display_name": _display_name(item_id, items_meta, locale),
                 "grams": grams,
                 "calories": round(float(kcal), 2),
                 "portion_candidates": portion_candidates,
-                "selected_portion": None,
+                "selected_portion": selected_portion,
                 "item_confidence": round(conf_item, 4),
                 "portion_confidence": round(conf_portion, 4),
             }
@@ -678,8 +770,17 @@ def qaf_infer_from_vision(
                 return (float(g) / float(ci.unit_grams)) * float(ci.kcal_per_unit)
             return float(it.get("calories") or 0.0)
 
-        kcal_opts = [_kcal_for_grams(float(c.get("grams") or 0.0)) for c in cands]
-        kcal_opts = [k for k in kcal_opts if k >= 0]
+        # Ordenar candidates por gramos para que el "mid" sea estable.
+        grams_kcal = []
+        for c in cands:
+            try:
+                g = float(c.get("grams") or 0.0)
+            except Exception:
+                continue
+            grams_kcal.append((g, _kcal_for_grams(g)))
+        grams_kcal = [(g, k) for (g, k) in grams_kcal if k >= 0]
+        grams_kcal.sort(key=lambda x: x[0])
+        kcal_opts = [k for (_g, k) in grams_kcal]
         if not kcal_opts:
             kcal = float(it.get("calories") or 0.0)
             low += kcal
@@ -692,8 +793,15 @@ def qaf_infer_from_vision(
         item_mid = kcal_opts[len(kcal_opts) // 2]
         low += item_low
         high += item_high
-        # best estimate = cálculo actual (si existe) o mid de candidates
-        best_estimate += float(it.get("calories") or item_mid)
+        # best_estimate honesto:
+        # - explícito/confirmado -> usar cálculo actual
+        # - default/unknown -> usar item_mid
+        pm = str((per_item_conf.get(item_id) or {}).get("portion_method") or "")
+        current = float(it.get("calories") or 0.0)
+        if pm in {"default", "unknown"}:
+            best_estimate += float(item_mid)
+        else:
+            best_estimate += float(current or item_mid)
         per_item_spread[item_id] = float(item_high - item_low)
 
     # Si no pudimos calcular, usar total_kcal previo.
@@ -711,8 +819,18 @@ def qaf_infer_from_vision(
     # needs_confirmation por impacto (colapso):
     range_width = max(0.0, high - low)
     rel_width = (range_width / total_kcal) if total_kcal else 1.0
-    # Umbral MVP: pedir confirmación cuando el rango es lo suficientemente grande para cambiar decisiones.
-    needs_confirmation = bool(missing) or (rel_width >= 0.35)
+    # Colapso por impacto:
+    # - si faltan items -> siempre
+    # - si el rango es muy amplio en relativo o absoluto
+    # - si el rango cruza la meta (goal_kcal_meal)
+    crosses_goal = False
+    if goal_kcal_meal is not None:
+        try:
+            gk = float(goal_kcal_meal)
+            crosses_goal = (low <= gk <= high)
+        except Exception:
+            crosses_goal = False
+    needs_confirmation = bool(missing) or (rel_width >= 0.35) or (range_width >= 180.0) or crosses_goal
 
     # follow_up_questions: lista lista para UI (máximo 1 pregunta en MVP)
     if needs_confirmation and range_driver:
@@ -722,7 +840,11 @@ def qaf_infer_from_vision(
                 {
                     "type": "confirm_portion",
                     "item_id": range_driver,
-                    "prompt": f"Confirma la porción de {range_driver}",
+                    "prompt": (
+                        f"¿Cuánta porción de {_display_name(range_driver, items_meta, locale)} fue?"
+                        if not _get_memory_grams(user_id, range_driver)
+                        else f"¿Repetimos tu porción habitual de {_display_name(range_driver, items_meta, locale)}?"
+                    ),
                     "options": driver_item.get("portion_candidates") or [],
                 }
             )
@@ -762,7 +884,7 @@ def qaf_infer_from_vision(
         f"Estimado: {round(total_kcal, 0):.0f} kcal (rango {round(low, 0):.0f}–{round(high, 0):.0f})"
     )
     if range_driver:
-        explainability.append(f"Lo que más mueve el rango: {range_driver}")
+        explainability.append(f"Lo que más mueve el rango: {_display_name(range_driver, items_meta, locale)}")
     explainability = explainability[:2]
 
     return {
@@ -790,6 +912,7 @@ def qaf_infer_from_vision(
         "decision": decision,
         "decision_reason": decision_reason,
         "decision_score": round(float(decision_score), 4),
+        "goal_kcal_meal": goal_kcal_meal,
     }
 
 
@@ -810,6 +933,8 @@ def main() -> int:
     # Extensiones opcionales
     user_id = None
     locale = DEFAULT_LOCALE
+    goal_kcal_meal = None
+    confirmed_portions = None
     if isinstance(vision, dict):
         user_id = (vision.get("user_id") or None) if isinstance(vision.get("user_id"), str) else None
         locale = str(vision.get("locale") or DEFAULT_LOCALE)
@@ -817,9 +942,33 @@ def main() -> int:
         if isinstance(vision.get("vision"), dict):
             user_id = str(vision.get("user_id") or user_id or "") or None
             locale = str(vision.get("locale") or locale)
+            goal_kcal_meal = vision.get("goal_kcal_meal")
+            confirmed_portions = vision.get("confirmed_portions")
             vision = vision.get("vision")
 
-    result = qaf_infer_from_vision(vision, calorie_db, user_id=user_id, locale=locale)
+    items_meta = load_items_meta(default_items_meta_path())
+
+    # Persistir memoria si el usuario confirmó porciones
+    if user_id and isinstance(confirmed_portions, list):
+        for cp in confirmed_portions:
+            if not isinstance(cp, dict):
+                continue
+            iid = str(cp.get("item_id") or "").strip()
+            try:
+                grams = float(cp.get("grams"))
+            except Exception:
+                continue
+            update_soft_memory(user_id, iid, grams)
+
+    result = qaf_infer_from_vision(
+        vision,
+        calorie_db,
+        user_id=user_id,
+        locale=locale,
+        goal_kcal_meal=goal_kcal_meal,
+        confirmed_portions=confirmed_portions if isinstance(confirmed_portions, list) else None,
+        items_meta=items_meta,
+    )
     print(json.dumps(result, ensure_ascii=False, indent=2))
     return 0
 

@@ -40,6 +40,11 @@ class QAFPremiumTests(unittest.TestCase):
         if r.get("missing_items"):
             self.assertEqual(r.get("decision"), "needs_confirmation")
 
+    def test_parse_zero_units_does_not_crash(self):
+        vision = {"is_food": True, "items": ["huevo"], "portion_estimate": "0 unidades"}
+        r = qaf_infer_from_vision(vision, self.calorie_db, user_id="u", locale="es-CO")
+        self.assertIsInstance(r, dict)
+
 
 if __name__ == "__main__":
     unittest.main()
