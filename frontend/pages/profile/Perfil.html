@@ -674,7 +674,21 @@
                         const nextText = nextTier && nextTier.threshold
                             ? `Siguiente hito: ${nextTier.threshold} días (${nextTier.label}).`
                             : '';
-                        help.textContent = `Cómo activar: 1) Check-in IF (responder el cuestionario) 2) Actualizar un hábito 3) Sincronizar un dispositivo. ${nextText}`.trim();
+
+                        // Documentos (planes) para activar mejores recomendaciones del Coach
+                        const docs = g.documents || {};
+                        const needNutrition = !(docs.nutrition_plan && docs.nutrition_plan.uploaded);
+                        const needTraining = !(docs.training_plan && docs.training_plan.uploaded);
+                        let docsText = '';
+                        if (needNutrition && needTraining) {
+                            docsText = 'Extra: Sube tu Plan de Nutrición y tu Plan de Entrenamiento (Configuración) para activar recomendaciones más coherentes.';
+                        } else if (needNutrition) {
+                            docsText = 'Extra: Sube tu Plan de Nutrición (Configuración) para activar recomendaciones más coherentes.';
+                        } else if (needTraining) {
+                            docsText = 'Extra: Sube tu Plan de Entrenamiento (Configuración) para activar recomendaciones más coherentes.';
+                        }
+
+                        help.textContent = `Cómo activar: 1) Check-in IF (responder el cuestionario) 2) Actualizar un indicador (sueño, pasos, estrés...) 3) Sincronizar un dispositivo. ${docsText} ${nextText}`.replace(/\s+/g, ' ').trim();
                     }
                 }
             } catch (e) {

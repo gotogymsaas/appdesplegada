@@ -7,7 +7,7 @@ from typing import Any
 from django.db import transaction
 from django.utils import timezone
 
-from api.models import HappinessRecord, IFAnswer, User
+from api.models import HappinessRecord, IFAnswer, User, UserDocument
 from devices.models import FitnessSync
 
 
@@ -346,6 +346,24 @@ def build_gamification_status(user: User, *, as_of: date | None = None) -> dict[
 
     identity = resolve_identity_state(user, weekly={"weekly_progress": weekly_progress, "missions_progress": missions_progress})
 
+    # Documentos clave (para activar recomendaciones más coherentes)
+    docs_qs = UserDocument.objects.filter(user=user, doc_type__in=["nutrition_plan", "training_plan"]).only(
+        "doc_type",
+        "updated_at",
+    )
+    docs_map: dict[str, dict[str, Any]] = {
+        "nutrition_plan": {"uploaded": False, "updated_at": None},
+        "training_plan": {"uploaded": False, "updated_at": None},
+    }
+    for doc in docs_qs:
+        try:
+            docs_map[str(doc.doc_type)] = {
+                "uploaded": True,
+                "updated_at": doc.updated_at.isoformat() if getattr(doc, "updated_at", None) else None,
+            }
+        except Exception:
+            continue
+
     # Persist identity in coach_state if changed
     coach_state = _get_coach_state(user)
     prev_key = coach_state.get("identity_state")
@@ -374,4 +392,5 @@ def build_gamification_status(user: User, *, as_of: date | None = None) -> dict[
             **identity,
             "changed": identity_changed,
         },
+        "documents": docs_map,
     }
