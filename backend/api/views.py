@@ -704,8 +704,9 @@ def _extract_text_from_file_bytes(original_name: str, file_bytes: bytes):
             temp_path = tmp_file.name
 
         is_pdf = extension == ".pdf"
-        default_ocr = "false" if is_pdf else "true"
-        enable_ocr = _as_bool(os.getenv("CHAT_ATTACHMENT_OCR", default_ocr))
+        # OCR: por defecto lo habilitamos también para PDF, porque muchos PDFs son escaneados
+        # y `pypdf` no extrae texto.
+        enable_ocr = _as_bool(os.getenv("CHAT_ATTACHMENT_OCR", "true"))
 
         if is_pdf:
             try:
@@ -717,6 +718,10 @@ def _extract_text_from_file_bytes(original_name: str, file_bytes: bytes):
             except Exception as ex:
                 diagnostic = f"pypdf_failed:{ex}"
                 extracted_text = ""
+
+            # Si el PDF viene sin capa de texto y OCR está apagado, dejar diagnóstico explícito.
+            if (not enable_ocr) and (not extracted_text.strip()) and (not diagnostic):
+                diagnostic = "pdf_ocr_disabled"
 
             if enable_ocr and not extracted_text.strip():
                 if pytesseract and convert_from_path:
@@ -2367,6 +2372,121 @@ def internal_bootstrap_superuser(request):
     user.save()
 
     return Response({"ok": True, "created": created, "username": user.username})
+
+
+@api_view(["GET"])
+@permission_classes([AllowAny])
+def internal_ocr_health(request):
+    """Healthcheck interno para OCR (chat/documentos).
+
+    Autorización: header X-Internal-Token debe coincidir con INTERNAL_OCR_HEALTH_TOKEN.
+    Uso: GET /api/internal/ocr_health/?smoke=1
+    """
+
+    expected = (os.getenv("INTERNAL_OCR_HEALTH_TOKEN", "") or "").strip()
+    if not expected:
+        return Response({"ok": False, "error": "health_token_not_configured"}, status=503)
+
+    provided = (
+        request.headers.get("X-Internal-Token")
+        or request.META.get("HTTP_X_INTERNAL_TOKEN")
+        or ""
+    ).strip()
+    if not provided or not secrets.compare_digest(provided, expected):
+        return Response({"ok": False, "error": "unauthorized"}, status=401)
+
+    import shutil
+    import subprocess
+
+    def _which(cmd: str) -> str:
+        try:
+            return shutil.which(cmd) or ""
+        except Exception:
+            return ""
+
+    def _first_line(output: str, limit: int = 200) -> str:
+        if not output:
+            return ""
+        line = (output.splitlines() or [""])[0]
+        return (line or "")[:limit]
+
+    def _run_version(cmd: str):
+        try:
+            proc = subprocess.run([cmd, "--version"], capture_output=True, text=True, timeout=3)
+            out = (proc.stdout or "") + ("\n" + proc.stderr if proc.stderr else "")
+            return proc.returncode == 0, _first_line(out)
+        except Exception as ex:
+            return False, f"failed:{ex}"[:200]
+
+    tesseract_path = _which("tesseract")
+    pdftoppm_path = _which("pdftoppm")
+    t_ok, t_ver = (_run_version("tesseract") if tesseract_path else (False, "not_found"))
+    p_ok, p_ver = (_run_version("pdftoppm") if pdftoppm_path else (False, "not_found"))
+
+    smoke = _as_bool(
+        (request.query_params.get("smoke") if hasattr(request, "query_params") else request.GET.get("smoke"))
+        or "false"
+    )
+    smoke_result = {
+        "attempted": bool(smoke),
+        "ok": False,
+        "text": "",
+        "error": "",
+    }
+
+    if smoke:
+        if not (pytesseract and Image is not None and tesseract_path):
+            smoke_result["error"] = "smoke_prereq_missing"
+        else:
+            try:
+                from PIL import ImageDraw
+
+                img = Image.new("RGB", (420, 140), color="white")
+                draw = ImageDraw.Draw(img)
+                draw.text((10, 10), "TEST OCR 123", fill="black")
+                text = pytesseract.image_to_string(img)
+                smoke_result["text"] = (text or "").strip()[:200]
+                smoke_result["ok"] = bool(smoke_result["text"])
+                if not smoke_result["ok"]:
+                    smoke_result["error"] = "smoke_empty"
+            except Exception as ex:
+                smoke_result["error"] = f"smoke_failed:{ex}"[:200]
+
+    return Response(
+        {
+            "ok": True,
+            "python": {
+                "pytesseract": bool(pytesseract),
+                "pdf2image": bool(convert_from_path),
+                "pil": bool(Image is not None),
+            },
+            "binaries": {
+                "tesseract": {
+                    "found": bool(tesseract_path),
+                    "path": tesseract_path,
+                    "can_run": bool(t_ok),
+                    "version": t_ver,
+                },
+                "pdftoppm": {
+                    "found": bool(pdftoppm_path),
+                    "path": pdftoppm_path,
+                    "can_run": bool(p_ok),
+                    "version": p_ver,
+                },
+            },
+            "env": {
+                "CHAT_ATTACHMENT_OCR": (os.getenv("CHAT_ATTACHMENT_OCR", "") or "").strip(),
+                "CHAT_ATTACHMENT_TEXT_MAX_CHARS": (os.getenv("CHAT_ATTACHMENT_TEXT_MAX_CHARS", "") or "").strip(),
+                "CHAT_ATTACHMENT_MAX_BYTES": (os.getenv("CHAT_ATTACHMENT_MAX_BYTES", "") or "").strip(),
+                "INSTALL_OCR_SYSTEM_DEPS": (os.getenv("INSTALL_OCR_SYSTEM_DEPS", "") or "").strip(),
+                "INSTALL_PDF_OCR_SYSTEM_DEPS": (os.getenv("INSTALL_PDF_OCR_SYSTEM_DEPS", "") or "").strip(),
+                "CHAT_ATTACHMENT_INSTALL_OCR_DEPS": (os.getenv("CHAT_ATTACHMENT_INSTALL_OCR_DEPS", "") or "").strip(),
+                "CHAT_ATTACHMENT_INSTALL_PDF_OCR_SYSTEM_DEPS": (os.getenv("CHAT_ATTACHMENT_INSTALL_PDF_OCR_SYSTEM_DEPS", "") or "").strip(),
+                "CHAT_ATTACHMENT_INSTALL_PDF_OCR_DEPS": (os.getenv("CHAT_ATTACHMENT_INSTALL_PDF_OCR_DEPS", "") or "").strip(),
+            },
+            "smoke": smoke_result,
+        }
+    )
 
 @api_view(['POST', 'OPTIONS'])
 @authentication_classes([JWTAuthentication])

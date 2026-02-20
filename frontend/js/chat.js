@@ -836,6 +836,7 @@ async function processMessage(text, file, pendingId) {
 
     let attachmentUrl = null;
     let attachmentText = null;
+    let attachmentTextDiagnostic = '';
     if (file) {
       if (!username || !token) {
         document.getElementById(loadingId)?.remove();
@@ -859,6 +860,7 @@ async function processMessage(text, file, pendingId) {
       if (uploadData.success) {
         attachmentUrl = uploadData.file_url;
         attachmentText = uploadData.extracted_text;
+        attachmentTextDiagnostic = uploadData.extracted_text_diagnostic || '';
       } else {
         throw new Error('Error subiendo archivo: ' + uploadData.error);
       }
@@ -876,6 +878,7 @@ async function processMessage(text, file, pendingId) {
         sessionId: sessionId,
         attachment: attachmentUrl,
         attachment_text: attachmentText,
+        attachment_text_diagnostic: attachmentTextDiagnostic,
         username: username
       })
     });

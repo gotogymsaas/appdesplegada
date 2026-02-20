@@ -20,6 +20,7 @@ urlpatterns = [
     path('users/update_admin/<int:user_id>/', views.update_user_admin, name='update_user_admin'),
     path('stats/global_history/', views.get_global_history, name='get_global_history'),
     path('internal/bootstrap_superuser/', views.internal_bootstrap_superuser, name='internal_bootstrap_superuser'),
+    path('internal/ocr_health/', views.internal_ocr_health, name='internal_ocr_health'),
     path('chat/', views.chat_n8n, name='chat_n8n'),
     path('user_profile/', views.get_user_profile, name='get_user_profile'),
     path('coach_context/', views.coach_context, name='coach_context'),
