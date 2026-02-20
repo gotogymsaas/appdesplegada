@@ -214,6 +214,8 @@ function applyViewportOffset() {
   const vv = window.visualViewport;
   const height = vv ? Math.max(0, Math.round(vv.height)) : Math.max(0, Math.round(window.innerHeight));
   widgetContainer.style.setProperty('--gtg-vv-height', `${height}px`);
+
+  scheduleFooterMetricsUpdate();
 }
 
 function scheduleViewportOffsetUpdate() {
@@ -227,6 +229,8 @@ function autoResizeInput() {
   const nextHeight = Math.min(input.scrollHeight, MAX_INPUT_HEIGHT);
   input.style.height = `${nextHeight}px`;
   input.style.overflowY = input.scrollHeight > MAX_INPUT_HEIGHT ? 'auto' : 'hidden';
+
+  scheduleFooterMetricsUpdate();
 }
 
 function resetInput() {
@@ -235,6 +239,38 @@ function resetInput() {
   input.placeholder = 'Escribe tu duda...';
   autoResizeInput();
   if (window.innerWidth > 480) input.focus();
+}
+
+// --- Footer height sync (para que el input/preview/voz no tape el último mensaje) ---
+let footerMetricsRaf = 0;
+
+function computeFooterHeightPx() {
+  if (!form) return 92;
+  const rect = form.getBoundingClientRect();
+  const height = Math.max(0, Math.round(rect.height));
+  return height || 92;
+}
+
+function applyFooterHeightVar() {
+  footerMetricsRaf = 0;
+  if (!widgetContainer || !messages) return;
+
+  const footerHeight = computeFooterHeightPx();
+  widgetContainer.style.setProperty('--chat-footer-height', `${footerHeight}px`);
+
+  // Mantener el último mensaje visible si el usuario estaba cerca del final.
+  try {
+    if (shouldAutoScroll()) {
+      messages.scrollTop = messages.scrollHeight;
+    }
+  } catch (e) {
+    // ignore
+  }
+}
+
+function scheduleFooterMetricsUpdate() {
+  if (footerMetricsRaf) return;
+  footerMetricsRaf = requestAnimationFrame(applyFooterHeightVar);
 }
 
 function formatFileSize(bytes) {
@@ -251,6 +287,7 @@ function setAttachmentPreview(file, state = 'ready') {
   if (!file) {
     attachmentPreview.hidden = true;
     attachmentPreview.innerHTML = '';
+    scheduleFooterMetricsUpdate();
     return;
   }
   const size = formatFileSize(file.size);
@@ -270,6 +307,8 @@ function setAttachmentPreview(file, state = 'ready') {
       setAttachmentPreview(null);
     });
   }
+
+  scheduleFooterMetricsUpdate();
 }
 
 function shouldAutoScroll() {
@@ -373,6 +412,8 @@ function setRecordingState(isRecording) {
   micBtn.textContent = isRecording ? '■' : '🎤';
   if (micCancelBtn) micCancelBtn.hidden = !isRecording;
   if (isRecording && micRetryBtn) micRetryBtn.hidden = true;
+
+  scheduleFooterMetricsUpdate();
 }
 
 function setRetryVisible(visible) {
@@ -682,6 +723,7 @@ if (window.innerWidth > 480) input.focus();
 // Recalcular visibilidad de los controles de scroll al abrir.
 setTimeout(updateScrollControls, 50);
 scheduleViewportOffsetUpdate();
+scheduleFooterMetricsUpdate();
 }
 }
 toggleBtn.addEventListener('click', toggleChat);
@@ -825,10 +867,12 @@ input.addEventListener('input', autoResizeInput);
 input.addEventListener('focus', () => {
   scheduleViewportOffsetUpdate();
   setTimeout(scheduleViewportOffsetUpdate, 250);
+  scheduleFooterMetricsUpdate();
 });
 input.addEventListener('blur', () => {
   scheduleViewportOffsetUpdate();
   setTimeout(scheduleViewportOffsetUpdate, 250);
+  scheduleFooterMetricsUpdate();
 });
 input.addEventListener('keydown', (event) => {
   if (event.key === 'Enter' && !event.shiftKey) {
@@ -852,6 +896,7 @@ window.addEventListener('resize', scheduleViewportOffsetUpdate);
 
 // Initial compute
 scheduleViewportOffsetUpdate();
+scheduleFooterMetricsUpdate();
 
 async function processMessage(text, file, pendingId) {
   const loadingId = appendMessage('Analizando...', 'bot loading', { persist: false });

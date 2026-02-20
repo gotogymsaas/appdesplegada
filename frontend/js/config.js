@@ -6,7 +6,9 @@
   const DEFAULT_MEDIA_PUBLIC_BASE = "https://gotogymweb3755.blob.core.windows.net/media/";
   const DEFAULT_AVATAR_URL = "https://gotogymweb3755.blob.core.windows.net/media/Logo%20Fondo%20negro.png";
   const LOCAL_API = "http://127.0.0.1:8000/api/";
-  const LAN_API = "http://192.168.20.218:8000/api/";
+  // En LAN queremos pegarle al backend en el mismo host que sirve el frontend.
+  // Esto permite abrir el frontend desde el celular (misma Wi-Fi) sin hardcodear una IP.
+  const LAN_API = `http://${host}:8000/api/`;
 
   const isNative = () =>
     window.Capacitor && typeof window.Capacitor.isNativePlatform === "function"
@@ -28,7 +30,11 @@
     baseApi = DEFAULT_PROD_API;
   } else if (host === "127.0.0.1" || host === "localhost") {
     baseApi = LOCAL_API;
-  } else if (host.startsWith("192.168.") || host.startsWith("10.")) {
+  } else if (
+    host.startsWith("192.168.") ||
+    host.startsWith("10.") ||
+    /^172\.(1[6-9]|2\d|3[0-1])\./.test(host)
+  ) {
     baseApi = LAN_API;
   } else {
     baseApi = DEFAULT_PROD_API;

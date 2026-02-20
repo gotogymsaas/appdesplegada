@@ -5,6 +5,9 @@
   --chat-text: var(--text-main, #ffffff);
   --chat-muted: var(--text-muted, #aaaaaa);
 
+  /* Altura dinámica del footer (input + previews + botones). Se actualiza desde JS. */
+  --chat-footer-height: 92px;
+
   --chat-border: rgba(255, 255, 255, 0.10);
   --chat-border-subtle: rgba(255, 255, 255, 0.05);
 
@@ -545,7 +548,7 @@ body[data-theme="light"] #chat-widget-container {
     flex: 1 1 auto;
     height: auto !important;
     overflow-y: auto;
-    padding-bottom: calc(92px + env(safe-area-inset-bottom) + var(--gtg-vv-offset, 0px));
+    padding-bottom: calc(var(--chat-footer-height, 92px) + env(safe-area-inset-bottom) + var(--gtg-vv-offset, 0px));
     background-color: var(--chat-bg);
   }
 
