@@ -210,6 +210,10 @@ function applyViewportOffset() {
   if (!widgetContainer) return;
   const offset = computeVisualViewportOffset();
   widgetContainer.style.setProperty('--gtg-vv-offset', `${offset}px`);
+
+  const vv = window.visualViewport;
+  const height = vv ? Math.max(0, Math.round(vv.height)) : Math.max(0, Math.round(window.innerHeight));
+  widgetContainer.style.setProperty('--gtg-vv-height', `${height}px`);
 }
 
 function scheduleViewportOffsetUpdate() {

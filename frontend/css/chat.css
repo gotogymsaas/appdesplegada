@@ -100,7 +100,7 @@ body[data-theme="light"] #chat-widget-container {
 #chat-scroll-controls {
   position: absolute;
   right: 10px;
-  bottom: calc(78px + var(--gtg-vv-offset, 0px));
+  bottom: 78px;
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -329,7 +329,7 @@ body[data-theme="light"] #chat-widget-container {
   flex-wrap: wrap;
   align-items: flex-end;
   gap: 10px;
-  padding-bottom: calc(10px + env(safe-area-inset-bottom) + var(--gtg-vv-offset, 0px));
+  padding-bottom: calc(10px + env(safe-area-inset-bottom));
 }
 
 #chat-attachment-preview {
@@ -508,7 +508,7 @@ body[data-theme="light"] #chat-widget-container {
 
   #chat-window {
     width: 100% !important;
-    height: 100% !important;
+    height: var(--gtg-vv-height, 100vh) !important;
     position: fixed !important;
     top: 0 !important;
     left: 0 !important;
@@ -545,17 +545,17 @@ body[data-theme="light"] #chat-widget-container {
     flex: 1 1 auto;
     height: auto !important;
     overflow-y: auto;
-    padding-bottom: calc(92px + env(safe-area-inset-bottom) + var(--gtg-vv-offset, 0px));
+    padding-bottom: calc(92px + env(safe-area-inset-bottom));
     background-color: var(--chat-bg);
   }
 
   /* Input Area */
   #chat-input-area {
     flex: 0 0 auto;
-    position: fixed !important;
-    left: 0 !important;
-    right: 0 !important;
-    bottom: var(--gtg-vv-offset, 0px) !important;
+    position: relative !important;
+    bottom: auto !important;
+    left: auto !important;
+    right: auto !important;
     width: 100% !important;
     background: var(--chat-bg);
     border-top: 1px solid var(--chat-border);
