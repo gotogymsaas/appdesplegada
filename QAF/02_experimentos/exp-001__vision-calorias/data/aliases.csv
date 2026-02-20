@@ -1,0 +1,19 @@
+alias,item_id,locale,priority
+manzana,manzana,es,100
+apple,manzana,en,90
+arroz,arroz_blanco_cocido,es,80
+arroz blanco,arroz_blanco_cocido,es,90
+rice,arroz_blanco_cocido,en,60
+pollo,pollo_pechuga_asada,es,80
+pechuga,pollo_pechuga_asada,es,70
+chicken breast,pollo_pechuga_asada,en,60
+ensalada,ensalada_mixta,es,60
+papas fritas,papa_frita,es,70
+huevo,huevo,es,80
+egg,huevo,en,70
+banano,banano,es,70
+banana,banano,en,70
+pan,pan_rebanada,es,60
+bread slice,pan_rebanada,en,50
+leche,leche_entera,es,60
+whole milk,leche_entera,en,50
