@@ -46,7 +46,9 @@ def main() -> int:
                 continue
             row: dict[str, Any] = json.loads(line)
             vision = row.get("vision") or {}
-            result = qaf_infer_from_vision(vision, calorie_db)
+            user_id = row.get("user_id") if isinstance(row.get("user_id"), str) else None
+            locale = row.get("locale") if isinstance(row.get("locale"), str) else None
+            result = qaf_infer_from_vision(vision, calorie_db, user_id=user_id, locale=locale or "es-CO")
 
             processed += 1
 
