@@ -47,7 +47,7 @@ container.innerHTML = `
 center;">
 <div class="chat-input-tools">
 <label for="chat-file-input" style="cursor: pointer; padding:
-10px; color: #666;">
+10px; color: var(--text-muted);">
 <svg viewBox="0 0 24 24" width="24" height="24"
 fill="currentColor"><path d="M16.5 6v11.5c0 2.21-1.79 4-4
 4s-4-1.79-4-4V5a2.5 2.5 0 0 1 5 0v10.5c0 .55-.45 1-1
