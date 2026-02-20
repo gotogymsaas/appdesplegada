@@ -700,14 +700,16 @@ def _describe_image_with_azure_openai(image_url: str, *, image_bytes: bytes | No
             return "", "vision_missing_image_url"
 
         system_msg = (
-            "Eres un nutricionista y coach. Describe la imagen con precisión en español, "
-            "enfocándote en comida/alimentos, ingredientes visibles y porciones aproximadas. "
-            "Si no es comida, descríbela igual y di que no es comida."
+            "Eres un analizador de imágenes para nutrición. Tu salida debe ser ESTRICTAMENTE JSON válido. "
+            "No uses Markdown, no uses bloques ```json```, no agregues texto antes o después. "
+            "Enfócate en comida/alimentos, ingredientes visibles y porciones aproximadas."
         )
         user_text = (
-            "Analiza la imagen y responde SOLO en JSON con estas claves: "
-            "is_food (boolean), items (lista de strings), portion_estimate (string), "
-            "notes (string). Sé breve."
+            "Analiza la imagen y responde SOLO en JSON con estas claves exactas: "
+            "is_food (boolean), items (lista de strings), portion_estimate (string), notes (string), "
+            "scale_hints (object opcional con plate: small|normal|large). "
+            "IMPORTANTE: items deben ser componentes/ingredientes (ej. arroz, frijoles, huevo, arepa), "
+            "evita responder solo con el nombre del plato (ej. 'bandeja paisa'). Sé breve."
         )
 
         payload = {
@@ -3830,8 +3832,39 @@ def chat_n8n(request):
                     if (vision_desc or "").strip():
                         pretty = vision_desc.strip()
                         try:
-                            parsed = json.loads(pretty)
+                            def _parse_vision_json(text: str):
+                                raw = (text or "").strip()
+                                if not raw:
+                                    return None
+
+                                # Remover fences ```json ... ```
+                                if raw.startswith("```"):
+                                    raw = re.sub(r"^```[a-zA-Z0-9_-]*\s*", "", raw)
+                                    raw = re.sub(r"\s*```\s*$", "", raw)
+                                    raw = raw.strip()
+
+                                # Intento directo
+                                try:
+                                    return json.loads(raw)
+                                except Exception:
+                                    pass
+
+                                # Intento por substring entre la primera { y la última }
+                                try:
+                                    i = raw.find("{")
+                                    j = raw.rfind("}")
+                                    if i >= 0 and j > i:
+                                        return json.loads(raw[i : j + 1])
+                                except Exception:
+                                    return None
+                                return None
+
+                            parsed = _parse_vision_json(pretty)
                             if isinstance(parsed, dict):
+                                # Normalizar items: si viene string, convertir a lista.
+                                if isinstance(parsed.get("items"), str):
+                                    items_raw = str(parsed.get("items") or "")
+                                    parsed["items"] = [x.strip() for x in re.split(r"[,;\n]+", items_raw) if x.strip()]
                                 vision_parsed = parsed
                                 items = parsed.get("items")
                                 if isinstance(items, list):
@@ -4155,6 +4188,12 @@ def chat_n8n(request):
                         low = out_text.lower()
                         if (not out_text.strip()) or ("problema tecnico" in low) or ("problema técnico" in low):
                             data['output'] = qaf_text_for_output_override
+                        else:
+                            # Si hay QAF pero el output no trae números, prefijamos un resumen corto.
+                            # (Evita que el usuario se quede sin calorías/porciones aunque n8n ignore el bloque.)
+                            has_kcal = ("kcal" in low) or ("calor" in low)
+                            if not has_kcal:
+                                data['output'] = (qaf_text_for_output_override.strip() + "\n\n" + out_text.strip()).strip()
             except Exception:
                 pass
 
