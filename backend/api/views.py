@@ -93,6 +93,8 @@ def _qaf_catalog_paths():
         "aliases": base / "aliases.csv",
         "items_meta": base / "items_meta.csv",
         "calorie_db": base / "calorie_db.csv",
+        "nutrition_db": base / "nutrition_db.csv",
+        "micros_db": base / "micros_db.csv",
     }
 
 
@@ -3771,6 +3773,7 @@ def chat_n8n(request):
         # Nota: por restricciones típicas (n8n/LLM no puede hacer fetch), preferimos mandar bytes como data URL.
         vision_parsed = None
         qaf_result = None
+        qaf_text_for_output_override = ""
 
         # 0) Si llega qaf_context (ej. click en botones), usamos eso para estimar sin Vision.
         try:
@@ -3863,7 +3866,10 @@ def chat_n8n(request):
                     load_aliases,
                     load_calorie_db,
                     load_items_meta,
+                    load_micros_db,
+                    load_nutrition_db,
                     qaf_estimate,
+                    qaf_estimate_v2,
                     render_professional_summary,
                 )
 
@@ -3871,12 +3877,14 @@ def chat_n8n(request):
                 aliases = load_aliases(cat['aliases'])
                 calorie_db = load_calorie_db(cat['calorie_db'])
                 items_meta = load_items_meta(cat['items_meta'])
+                nutrition_db = load_nutrition_db(cat['nutrition_db'])
+                micros_db = load_micros_db(cat['micros_db'])
 
                 locale = (request.data.get('locale') or '').strip() or 'es-CO'
                 memory_hint = {}
                 # MVP: memoria suave real la añadimos luego; por ahora, sin hints.
 
-                qaf_result = qaf_estimate(
+                qaf_result = qaf_estimate_v2(
                     vision_parsed,
                     calorie_db=calorie_db,
                     aliases=aliases,
@@ -3885,11 +3893,14 @@ def chat_n8n(request):
                     memory_hint_by_item=memory_hint,
                     goal_kcal_meal=goal_kcal_meal,
                     confirmed_portions=confirmed_portions if isinstance(confirmed_portions, list) else None,
+                    nutrition_db=nutrition_db,
+                    micros_db=micros_db,
                 )
 
                 # Compat texto: añadimos un bloque corto si hay estimación.
                 qaf_text = render_professional_summary(qaf_result)
                 if qaf_text:
+                    qaf_text_for_output_override = qaf_text
                     attachment_text = ((attachment_text or '').strip() + "\n\n" if (attachment_text or '').strip() else "") + f"[CALORÍAS ESTIMADAS]\n{qaf_text}".strip()
         except Exception as ex:
             print(f"QAF calories warning: {ex}")
@@ -4137,6 +4148,13 @@ def chat_n8n(request):
                     data.setdefault('qaf', qaf_result)
                     data.setdefault('follow_up_questions', qaf_result.get('follow_up_questions') or [])
                     data.setdefault('qaf_context', {"vision": vision_parsed} if isinstance(vision_parsed, dict) else None)
+
+                    # Si n8n responde un mensaje genérico de error, preferimos devolver el resumen QAF.
+                    out_text = data.get('output')
+                    if isinstance(out_text, str) and qaf_text_for_output_override:
+                        low = out_text.lower()
+                        if (not out_text.strip()) or ("problema tecnico" in low) or ("problema técnico" in low):
+                            data['output'] = qaf_text_for_output_override
             except Exception:
                 pass
 

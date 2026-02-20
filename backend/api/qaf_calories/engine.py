@@ -576,21 +576,392 @@ def render_professional_summary(qaf: dict[str, Any]) -> str:
     """Texto corto y profesional para incrustar en el chat como fallback."""
     if not isinstance(qaf, dict):
         return ""
-    total = qaf.get("total_calories")
-    rng = qaf.get("total_calories_range") or {}
-    low = rng.get("low")
-    high = rng.get("high")
-    driver = qaf.get("range_driver")
+    try:
+        from .response_builder import build_professional_chat_text
 
-    lines = []
-    if total is not None and low is not None and high is not None:
-        lines.append(f"Estimado: {round(float(total), 0):.0f} kcal (rango {round(float(low), 0):.0f}–{round(float(high), 0):.0f})")
-    if driver:
-        lines.append(f"Lo que más mueve el rango: {driver}")
+        return build_professional_chat_text(qaf)
+    except Exception:
+        # Fallback ultra-defensivo (evita romper el chat por import errors)
+        total = qaf.get("total_calories")
+        rng = qaf.get("total_calories_range") or {}
+        low = rng.get("low")
+        high = rng.get("high")
+        driver = qaf.get("range_driver")
 
-    if qaf.get("needs_confirmation") and (qaf.get("follow_up_questions") or []):
-        q = (qaf.get("follow_up_questions") or [])[0]
-        prompt = str(q.get("prompt") or "").strip()
-        if prompt:
-            lines.append(prompt)
-    return "\n".join(lines).strip()
+        lines = []
+        if total is not None and low is not None and high is not None:
+            lines.append(
+                f"Estimado: {round(float(total), 0):.0f} kcal (rango {round(float(low), 0):.0f}–{round(float(high), 0):.0f})"
+            )
+        if driver:
+            lines.append(f"Lo que más mueve el rango: {driver}")
+
+        if qaf.get("needs_confirmation") and (qaf.get("follow_up_questions") or []):
+            q = (qaf.get("follow_up_questions") or [])[0]
+            prompt = str(q.get("prompt") or "").strip()
+            if prompt:
+                lines.append(prompt)
+        return "\n".join(lines).strip()
+
+
+def load_nutrition_db(csv_path: Path) -> dict[str, Any]:
+    """Loader v2 (re-export) para nutrition_db.csv."""
+    from .catalogs import load_nutrition_db as _load
+
+    return _load(csv_path)
+
+
+def load_micros_db(csv_path: Path) -> dict[str, Any]:
+    """Loader v2 (re-export) para micros_db.csv."""
+    from .catalogs import load_micros_db as _load
+
+    return _load(csv_path)
+
+
+def qaf_estimate_v2(
+    vision: dict[str, Any],
+    *,
+    calorie_db: dict[str, CalorieItem],
+    aliases: dict[str, str],
+    items_meta: dict[str, dict[str, str]] | None = None,
+    locale: str = DEFAULT_LOCALE,
+    memory_hint_by_item: dict[str, float] | None = None,
+    goal_kcal_meal: float | None = None,
+    confirmed_portions: list[dict[str, Any]] | None = None,
+    nutrition_db: dict[str, Any] | None = None,
+    micros_db: dict[str, list[dict[str, Any]]] | None = None,
+) -> dict[str, Any]:
+    """Pipeline v2: extractor -> portion_engine -> nutrition_engine -> governor -> response_builder."""
+
+    from .extractor import extract_foods
+    from .governor import decide
+    from .nutrition_engine import macro_calorie_percentages, macros_from_grams, micros_highlights
+    from .portion_engine import build_portion_candidates, parse_portion, portion_confidence
+    from .response_builder import build_ui_blocks
+
+    memory_hint_by_item = memory_hint_by_item or {}
+    nutrition_db = nutrition_db or {}
+    micros_db = micros_db or {}
+
+    # Confirmaciones desde el frontend
+    confirmed_map: dict[str, float] = {}
+    if confirmed_portions:
+        for cp in confirmed_portions:
+            if not isinstance(cp, dict):
+                continue
+            iid = str(cp.get("item_id") or "").strip()
+            try:
+                g = float(cp.get("grams"))
+            except Exception:
+                continue
+            if iid and g > 0:
+                confirmed_map[iid] = g
+
+    portion_text = str(vision.get("portion_estimate") or "").strip() or None
+    scale_hints = vision.get("scale_hints") if isinstance(vision.get("scale_hints"), dict) else None
+
+    foods = extract_foods(vision, aliases=aliases)
+
+    items_out: list[dict[str, Any]] = []
+    missing_items: list[str] = []
+    missing_nutrition: list[str] = []
+    reasons: list[str] = []
+
+    per_item_conf: dict[str, dict[str, Any]] = {}
+    per_item_spread: dict[str, float] = {}
+
+    total_kcal_current = 0.0
+
+    # Totales macros/micros
+    macros_total = {"protein_g": 0.0, "carbs_g": 0.0, "fat_g": 0.0, "fiber_g": 0.0}
+    micros_pool: dict[str, str] = {}  # micro -> best level
+    level_rank = {"alto": 3, "medio": 2, "bajo": 1}
+
+    def _kcal_from_sources(item_id: str, grams: float | None) -> float | None:
+        if grams is None or grams <= 0:
+            return None
+        n = nutrition_db.get(item_id)
+        if n is not None:
+            try:
+                if getattr(n, "kcal_per_100g", None) is not None:
+                    return (float(grams) / 100.0) * float(getattr(n, "kcal_per_100g"))
+            except Exception:
+                pass
+        ci = calorie_db.get(item_id)
+        if not ci:
+            return None
+        if ci.kcal_per_100g is not None:
+            return (float(grams) / 100.0) * float(ci.kcal_per_100g)
+        if ci.kcal_per_unit is not None:
+            if ci.unit_grams and ci.unit_grams > 0:
+                return (float(grams) / float(ci.unit_grams)) * float(ci.kcal_per_unit)
+            return float(ci.kcal_per_unit)
+        return None
+
+    # Selección del range_driver: preferimos el ítem con mayor spread NO confirmado (si existe)
+    spread_candidates: list[tuple[str, float, bool]] = []  # (item_id, spread, is_confirmed)
+
+    for f in foods:
+        item_id = f.item_id
+        ci = calorie_db.get(item_id)
+
+        grams, portion_method, portion_match = parse_portion(item_id, portion_text, calorie_db)
+        selected_portion = None
+
+        if item_id in confirmed_map:
+            grams = float(confirmed_map[item_id])
+            portion_method = "explicit_grams"
+            portion_match = "confirmed"
+            selected_portion = {"grams": round(float(grams), 2), "source": "user"}
+
+        if grams is None and item_id in memory_hint_by_item and float(memory_hint_by_item[item_id] or 0.0) > 0:
+            grams = float(memory_hint_by_item[item_id])
+            portion_method = "memory"
+            portion_match = "memory"
+
+        used_default = False
+        if grams is None and ci and ci.default_serving_grams:
+            grams = float(ci.default_serving_grams)
+            portion_method = "default"
+            portion_match = portion_match or "default"
+            used_default = True
+
+        kcal = _kcal_from_sources(item_id, grams)
+        if kcal is None:
+            missing_items.append(item_id)
+            reasons.append(f"missing_item_in_db:{item_id}")
+            continue
+
+        total_kcal_current += float(kcal)
+
+        conf_item = float(f.confidence_item)
+        conf_portion = float(portion_confidence(portion_method))
+        conf_combined = max(0.0, min(1.0, 0.65 * conf_item + 0.35 * conf_portion))
+
+        if f.method != "exact":
+            reasons.append(f"item_normalized_{f.method}:{item_id}")
+        if used_default:
+            reasons.append(f"used_default_serving:{item_id}")
+        if f.uncertain:
+            reasons.append(f"item_uncertain:{item_id}")
+
+        per_item_conf[item_id] = {
+            "confidence_item": round(conf_item, 4),
+            "confidence_portion": round(conf_portion, 4),
+            "confidence": round(conf_combined, 4),
+            "item_method": f.method,
+            "portion_method": portion_method,
+            "matched_alias": f.matched_alias,
+            "portion_match": portion_match,
+        }
+
+        center = None
+        center_source = None
+        if grams is not None and portion_method in {"explicit_grams", "explicit_ml", "explicit_units"}:
+            center = float(grams)
+            center_source = "explicit"
+        elif grams is not None and portion_method in {"cup", "slice", "qualitative"}:
+            center = float(grams)
+            center_source = "inferred"
+
+        candidates = build_portion_candidates(
+            item_id,
+            calorie_db=calorie_db,
+            locale=locale,
+            memory_hint_grams=memory_hint_by_item.get(item_id),
+            center_grams=center,
+            center_source=center_source,
+            scale_hints=scale_hints,
+        )
+
+        # Macros
+        n = nutrition_db.get(item_id)
+        item_macros = None
+        if n is not None and grams is not None:
+            try:
+                item_macros = macros_from_grams(n, float(grams))
+                for k in macros_total.keys():
+                    macros_total[k] += float(item_macros.get(k) or 0.0)
+            except Exception:
+                item_macros = None
+
+        if n is None:
+            missing_nutrition.append(item_id)
+
+        # Micros
+        m_list = micros_db.get(item_id) or []
+        for m in m_list:
+            micro = str(m.get("micro") or "").strip()
+            level = str(m.get("level") or "").strip().lower()
+            if not micro or not level:
+                continue
+            prev = micros_pool.get(micro)
+            if not prev or level_rank.get(level, 0) > level_rank.get(prev, 0):
+                micros_pool[micro] = level
+
+        items_out.append(
+            {
+                "item_id": item_id,
+                "display_name": display_name(item_id, items_meta, locale),
+                "grams": grams,
+                "calories": round(float(kcal), 2),
+                "portion_candidates": candidates,
+                "selected_portion": selected_portion,
+                "item_confidence": round(conf_item, 4),
+                "portion_confidence": round(conf_portion, 4),
+                "macros": item_macros,
+                "micros": m_list,
+            }
+        )
+
+        # Spread por ítem (kcal) basado en candidates
+        if candidates:
+            kcal_opts = []
+            for c in candidates:
+                try:
+                    g = float(c.get("grams") or 0.0)
+                except Exception:
+                    continue
+                k = _kcal_from_sources(item_id, g)
+                if k is not None and k >= 0:
+                    kcal_opts.append(float(k))
+            if kcal_opts:
+                spread = max(kcal_opts) - min(kcal_opts)
+                per_item_spread[item_id] = float(spread)
+                spread_candidates.append((item_id, float(spread), item_id in confirmed_map))
+
+    # Totales y rango
+    low = 0.0
+    high = 0.0
+    best_estimate = 0.0
+
+    for it in items_out:
+        iid = str(it.get("item_id") or "")
+        cands = it.get("portion_candidates") or []
+        current_kcal = float(it.get("calories") or 0.0)
+
+        if not cands:
+            low += current_kcal
+            high += current_kcal
+            best_estimate += current_kcal
+            continue
+
+        kcal_opts = []
+        for c in cands:
+            try:
+                g = float(c.get("grams") or 0.0)
+            except Exception:
+                continue
+            k = _kcal_from_sources(iid, g)
+            if k is not None and k >= 0:
+                kcal_opts.append(float(k))
+        if not kcal_opts:
+            low += current_kcal
+            high += current_kcal
+            best_estimate += current_kcal
+            continue
+
+        item_low = min(kcal_opts)
+        item_high = max(kcal_opts)
+        item_mid = sorted(kcal_opts)[len(kcal_opts) // 2]
+        low += item_low
+        high += item_high
+
+        pm = str((per_item_conf.get(iid) or {}).get("portion_method") or "")
+        best_estimate += float(item_mid if pm in {"default", "unknown"} else (current_kcal or item_mid))
+
+    # range_driver (mejor candidato no confirmado; si no hay, el de mayor spread)
+    range_driver = None
+    if spread_candidates:
+        spread_candidates.sort(key=lambda x: x[1], reverse=True)
+        best_unconfirmed = next((iid for (iid, _sp, is_conf) in spread_candidates if not is_conf), None)
+        range_driver = best_unconfirmed or spread_candidates[0][0]
+
+    # Confianza total ponderada por kcal
+    total_conf = 0.0
+    if items_out and best_estimate > 0:
+        for it in items_out:
+            iid = str(it.get("item_id") or "")
+            kcal = float(it.get("calories") or 0.0)
+            w = (kcal / best_estimate) if best_estimate else 0.0
+            c = float((per_item_conf.get(iid) or {}).get("confidence") or 0.0)
+            total_conf += w * c
+
+    uncertainty_score = max(0.0, min(1.0, 1.0 - float(total_conf)))
+
+    gov = decide(
+        missing_items=missing_items,
+        low=float(low),
+        high=float(high),
+        estimate=float(best_estimate),
+        range_driver=range_driver,
+        items_count=len(items_out),
+        uncertainty_score=float(uncertainty_score),
+        goal_kcal_meal=goal_kcal_meal,
+    )
+
+    follow_up_questions: list[dict[str, Any]] = []
+    if gov.get("needs_confirmation") and range_driver:
+        driver_item = next((x for x in items_out if x.get("item_id") == range_driver), None)
+        if driver_item:
+            prompt = f"¿Cuánta porción de {display_name(range_driver, items_meta, locale)} fue?"
+            follow_up_questions.append(
+                {
+                    "type": "confirm_portion",
+                    "item_id": range_driver,
+                    "prompt": prompt,
+                    "options": driver_item.get("portion_candidates") or [],
+                }
+            )
+
+    defaults_used = sum(1 for _iid, info in per_item_conf.items() if str(info.get("portion_method")) == "default")
+    D = (defaults_used / len(per_item_conf)) if per_item_conf else 0.0
+    M = 1.0 if missing_items else 0.0
+    U = float(uncertainty_score)
+    A = 1.0 if follow_up_questions else 0.0
+    w_uncertainty, w_default, w_missing, w_ask = 1.0, 0.4, 1.2, 0.3
+    decision_score = (w_uncertainty * U) + (w_default * D) + (w_missing * M) + (w_ask * A)
+
+    # Micros highlights (orden: alto -> medio -> bajo)
+    micros_sorted = sorted(micros_pool.items(), key=lambda kv: level_rank.get(kv[1], 0), reverse=True)
+    micros_out = [f"{micro} ({level})" for (micro, level) in micros_sorted if micro and level]
+
+    macros_pct = macro_calorie_percentages(macros_total)
+
+    explainability = [
+        f"Estimado: {round(float(best_estimate), 0):.0f} kcal (rango {round(float(low), 0):.0f}–{round(float(high), 0):.0f})",
+    ]
+    if range_driver:
+        explainability.append(f"Lo que más mueve el rango: {display_name(range_driver, items_meta, locale)}")
+    explainability = explainability[:2]
+
+    out = {
+        "items": items_out,
+        "missing_items": missing_items,
+        "missing_nutrition_items": sorted(set(missing_nutrition)),
+        "total_calories": round(float(best_estimate), 2),
+        "total_calories_range": {"low": round(float(low), 2), "high": round(float(high), 2)},
+        "uncertainty": {
+            "entropy": 0.0,
+            "uncertainty_score": round(float(uncertainty_score), 4),
+            "portion_text": portion_text,
+        },
+        "needs_confirmation": bool(gov.get("needs_confirmation")),
+        "confidence": {"total": round(float(total_conf), 4), "per_item": per_item_conf},
+        "reasons": sorted(set([r for r in reasons if r])),
+        "follow_up_questions": follow_up_questions,
+        "suggested_questions": follow_up_questions,
+        "range_driver": range_driver,
+        "range_driver_display": display_name(range_driver, items_meta, locale) if range_driver else None,
+        "explainability": explainability,
+        "decision": str(gov.get("decision") or ""),
+        "decision_reason": str(gov.get("decision_reason") or ""),
+        "decision_score": round(float(decision_score), 4),
+        "goal_kcal_meal": goal_kcal_meal,
+        "macros_total": {k: round(float(v), 2) for k, v in macros_total.items()},
+        "macros_pct": {k: round(float(v), 2) for k, v in macros_pct.items()},
+        "micros_highlights": micros_out[:8],
+    }
+
+    out["ui_blocks"] = build_ui_blocks(out)
+    return out
