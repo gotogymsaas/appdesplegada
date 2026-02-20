@@ -631,6 +631,36 @@ def _azure_openai_vision_config():
     }
 
 
+def _azure_openai_vision_diagnostic() -> str:
+    """Diagnóstico legible cuando Vision no está disponible.
+
+    No incluye secretos, solo nombres de variables faltantes.
+    """
+
+    enabled = _as_bool(os.getenv("CHAT_ATTACHMENT_VISION", "true"))
+    if not enabled:
+        return "vision_disabled"
+
+    missing = []
+    endpoint = (os.getenv("AZURE_OPENAI_ENDPOINT", "") or "").strip()
+    api_key = (os.getenv("AZURE_OPENAI_API_KEY", "") or "").strip()
+    deployment = (
+        (os.getenv("AZURE_OPENAI_VISION_DEPLOYMENT", "") or "").strip()
+        or (os.getenv("AZURE_OPENAI_DEPLOYMENT", "") or "").strip()
+    )
+
+    if not endpoint:
+        missing.append("AZURE_OPENAI_ENDPOINT")
+    if not api_key:
+        missing.append("AZURE_OPENAI_API_KEY")
+    if not deployment:
+        missing.append("AZURE_OPENAI_VISION_DEPLOYMENT")
+
+    if missing:
+        return "vision_not_configured:missing=" + ",".join(missing)
+    return "vision_not_configured"
+
+
 def _describe_image_with_azure_openai(image_url: str, *, image_bytes: bytes | None = None, content_type: str | None = None):
     """Genera una descripción de una imagen usando Azure OpenAI (Vision).
 
@@ -640,7 +670,7 @@ def _describe_image_with_azure_openai(image_url: str, *, image_bytes: bytes | No
 
     cfg = _azure_openai_vision_config()
     if not cfg:
-        return "", "vision_not_configured"
+        return "", _azure_openai_vision_diagnostic()
 
     try:
         url = (
@@ -2563,6 +2593,99 @@ def internal_ocr_health(request):
     )
 
 
+@api_view(["GET"])
+@permission_classes([AllowAny])
+def internal_vision_health(request):
+    """Healthcheck interno para Vision (Azure OpenAI) usado por el chat.
+
+    Autorización: header X-Internal-Token debe coincidir con INTERNAL_VISION_HEALTH_TOKEN
+    (o, si no existe, con INTERNAL_OCR_HEALTH_TOKEN).
+
+    Uso: GET /api/internal/vision_health/?smoke=1
+    """
+
+    expected = (
+        (os.getenv("INTERNAL_VISION_HEALTH_TOKEN", "") or "").strip()
+        or (os.getenv("INTERNAL_OCR_HEALTH_TOKEN", "") or "").strip()
+    )
+    if not expected:
+        return Response({"ok": False, "error": "health_token_not_configured"}, status=503)
+
+    provided = (
+        request.headers.get("X-Internal-Token")
+        or request.META.get("HTTP_X_INTERNAL_TOKEN")
+        or ""
+    ).strip()
+    if not provided or not secrets.compare_digest(provided, expected):
+        return Response({"ok": False, "error": "unauthorized"}, status=401)
+
+    endpoint = (os.getenv("AZURE_OPENAI_ENDPOINT", "") or "").strip()
+    deployment = (
+        (os.getenv("AZURE_OPENAI_VISION_DEPLOYMENT", "") or "").strip()
+        or (os.getenv("AZURE_OPENAI_DEPLOYMENT", "") or "").strip()
+    )
+    api_version = (os.getenv("AZURE_OPENAI_API_VERSION", "") or "").strip() or "2024-06-01"
+    enabled = _as_bool(os.getenv("CHAT_ATTACHMENT_VISION", "true"))
+    configured = bool(_azure_openai_vision_config())
+    diagnostic = "" if configured else _azure_openai_vision_diagnostic()
+
+    smoke = _as_bool(
+        (request.query_params.get("smoke") if hasattr(request, "query_params") else request.GET.get("smoke"))
+        or "false"
+    )
+
+    smoke_result = {
+        "attempted": bool(smoke),
+        "ok": False,
+        "diagnostic": "",
+        "preview": "",
+        "time_ms": 0,
+    }
+
+    if smoke:
+        if not configured:
+            smoke_result["diagnostic"] = diagnostic or "vision_not_configured"
+        else:
+            try:
+                import time
+
+                png_b64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+lmf8AAAAASUVORK5CYII="
+                img_bytes = base64.b64decode(png_b64)
+                start = time.time()
+                desc, diag = _describe_image_with_azure_openai(
+                    "internal://vision_smoke",
+                    image_bytes=img_bytes,
+                    content_type="image/png",
+                )
+                smoke_result["time_ms"] = int((time.time() - start) * 1000)
+                smoke_result["ok"] = bool((desc or "").strip())
+                smoke_result["diagnostic"] = (diag or "")[:350]
+                smoke_result["preview"] = (desc or "").strip().replace("\n", " ")[:200]
+                if not smoke_result["ok"] and not smoke_result["diagnostic"]:
+                    smoke_result["diagnostic"] = "smoke_empty"
+            except Exception as ex:
+                smoke_result["diagnostic"] = f"smoke_failed:{ex}"[:200]
+
+    return Response(
+        {
+            "ok": True,
+            "configured": configured,
+            "diagnostic": diagnostic,
+            "config": {
+                "CHAT_ATTACHMENT_VISION": str(enabled).lower(),
+                "AZURE_OPENAI_ENDPOINT_set": bool(endpoint),
+                "AZURE_OPENAI_API_KEY_set": bool((os.getenv("AZURE_OPENAI_API_KEY", "") or "").strip()),
+                "AZURE_OPENAI_VISION_DEPLOYMENT": deployment or "",
+                "AZURE_OPENAI_API_VERSION": api_version,
+            },
+            "limits": {
+                "CHAT_VISION_MAX_BYTES": (os.getenv("CHAT_VISION_MAX_BYTES", "") or "").strip(),
+            },
+            "smoke": smoke_result,
+        }
+    )
+
+
 @api_view(["POST", "OPTIONS"])
 @permission_classes([AllowAny])
 def internal_ocr_extract(request):
@@ -3629,16 +3752,19 @@ def chat_n8n(request):
         except Exception as ex:
             print(f"Attachment fallback extraction warning: {ex}")
 
-        # Vision para imágenes (comida/porciones): si sigue sin texto, generar descripción.
+        # Vision para imágenes (comida/porciones): para fotos suele ser mejor que OCR.
         # Nota: por restricciones típicas (n8n/LLM no puede hacer fetch), preferimos mandar bytes como data URL.
         try:
-            if attachment_url and not (attachment_text or "").strip():
+            if attachment_url:
                 filename_guess = os.path.basename(urlparse(str(attachment_url)).path or "")
-                if _is_image_filename(filename_guess):
+                vision_enabled = _as_bool(os.getenv("CHAT_ATTACHMENT_VISION", "true"))
+                if _is_image_filename(filename_guess) and vision_enabled:
                     max_vision_bytes = int(os.getenv("CHAT_VISION_MAX_BYTES", str(4 * 1024 * 1024)) or (4 * 1024 * 1024))
 
                     image_bytes = None
                     image_content_type = None
+
+                    had_text = bool((attachment_text or "").strip()) and not _is_attachment_text_placeholder(attachment_text)
 
                     # Intento seguro: solo descargamos bytes si es un blob de attachments del propio usuario.
                     try:
@@ -3699,7 +3825,7 @@ def chat_n8n(request):
                             pass
 
                         attachment_text = f"[DESCRIPCIÓN DE IMAGEN]\n{pretty}"
-                    elif vision_diag and not attachment_text_diagnostic:
+                    elif (not had_text) and vision_diag and not attachment_text_diagnostic:
                         attachment_text_diagnostic = f"vision_failed: {vision_diag}"[:350]
         except Exception as ex:
             print(f"Vision image description warning: {ex}")
