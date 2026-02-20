@@ -18,6 +18,34 @@ cd "$BACKEND_DIR"
 INSTALL_OCR_SYSTEM_DEPS="${INSTALL_OCR_SYSTEM_DEPS:-${CHAT_ATTACHMENT_INSTALL_OCR_DEPS:-}}"
 INSTALL_PDF_OCR_SYSTEM_DEPS="${INSTALL_PDF_OCR_SYSTEM_DEPS:-${CHAT_ATTACHMENT_INSTALL_PDF_OCR_DEPS:-}}"
 
+# OCR language packs (optional). Example: CHAT_OCR_LANG="spa+eng"
+CHAT_OCR_LANG="${CHAT_OCR_LANG:-${TESSERACT_LANG:-}}"
+
+ensure_tesseract_lang() {
+	# $1 = lang code, $2 = debian package
+	_lang="$1"
+	_pkg="$2"
+	if [ -z "$_lang" ] || [ -z "$_pkg" ]; then
+		return 0
+	fi
+	if ! command -v tesseract >/dev/null 2>&1; then
+		return 0
+	fi
+	# install only if requested and not already available
+	echo "$CHAT_OCR_LANG" | tr '+' '\n' | grep -qx "$_lang" || return 0
+	if tesseract --list-langs 2>/dev/null | tr -d '\r' | awk 'NF{print $1}' | grep -qx "$_lang"; then
+		return 0
+	fi
+	if command -v apt-get >/dev/null 2>&1; then
+		echo "Installing Tesseract language pack: $_lang ($_pkg)."
+		apt-get update \
+			&& apt-get install -y --no-install-recommends "$_pkg" \
+			&& rm -rf /var/lib/apt/lists/*
+	else
+		echo "apt-get not available; language pack $_lang not installed."
+	fi
+}
+
 if [ "$INSTALL_OCR_SYSTEM_DEPS" = "1" ] || [ "$INSTALL_OCR_SYSTEM_DEPS" = "true" ]; then
 	if ! command -v tesseract >/dev/null 2>&1; then
 		if command -v apt-get >/dev/null 2>&1; then
@@ -29,6 +57,10 @@ if [ "$INSTALL_OCR_SYSTEM_DEPS" = "1" ] || [ "$INSTALL_OCR_SYSTEM_DEPS" = "true"
 			echo "apt-get not available; tesseract not installed."
 		fi
 	fi
+
+	# Language packs (install if requested). Note: Debian/Ubuntu package names.
+	# Spanish improves OCR for screenshots in es-ES.
+	ensure_tesseract_lang "spa" "tesseract-ocr-spa"
 
 	if [ "$INSTALL_PDF_OCR_SYSTEM_DEPS" = "1" ] || [ "$INSTALL_PDF_OCR_SYSTEM_DEPS" = "true" ]; then
 		if ! command -v pdftoppm >/dev/null 2>&1; then
