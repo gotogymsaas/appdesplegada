@@ -54,7 +54,7 @@ body[data-theme="light"] #chat-widget-container {
   bottom: 20px;
   right: 20px;
   z-index: 9999;
-  font-family: 'Inter', sans-serif;
+  font-family: var(--font-main, inherit);
 }
 
 #chat-toggle-btn {
