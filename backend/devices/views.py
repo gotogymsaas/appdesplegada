@@ -261,84 +261,34 @@ def device_disconnect(request, provider):
 @permission_classes([IsAuthenticated])
 def device_sync(request, provider):
     res = sync_device(request.user, provider)
-    return Response(res.payload, status=res.status)
+    payload = res.payload if isinstance(res.payload, dict) else {}
 
-    if provider == "garmin":
-        if obj.status != "connected" or not obj.access_token:
-            return Response(
-                {"ok": False, "error": "Garmin no conectado"},
-                status=400,
-            )
+    # Gamificación: si el sync trae datos reales, cuenta como acción del día y protege la racha.
+    try:
+        metrics = payload.get("metrics") if isinstance(payload, dict) else None
+        has_real_data = False
+        if isinstance(metrics, dict):
+            if metrics.get("note") != "provider_not_implemented":
+                if metrics.get("data_quality") == "ok":
+                    has_real_data = True
+                else:
+                    for k in ("steps", "sleep_minutes", "calories", "distance_m", "distance_km"):
+                        try:
+                            if float(metrics.get(k) or 0) > 0:
+                                has_real_data = True
+                                break
+                        except Exception:
+                            continue
 
-        if obj.token_expires_at and obj.token_expires_at <= timezone.now() + timezone.timedelta(seconds=30):
-            ok, info = _refresh_garmin_token(obj)
-            if not ok:
-                return Response({"ok": False, **info}, status=400)
+        if res.ok and has_real_data:
+            from api.gamification_service import update_user_streak
+            update_user_streak(request.user, source=f"device_sync:{provider}")
+            payload["streak"] = int(getattr(request.user, "current_streak", 0) or 0)
+    except Exception:
+        # Nunca bloquear sync por gamificación.
+        pass
 
-        endpoints = settings.GARMIN.get("ENDPOINTS", {})
-        steps_url = endpoints.get("steps")
-        sleep_url = endpoints.get("sleep")
-        heart_url = endpoints.get("heart")
-
-        if not steps_url and not sleep_url and not heart_url:
-            return Response(
-                {
-                    "ok": False,
-                    "error": "Garmin API no configurada (ENDPOINTS vacíos).",
-                },
-                status=400,
-            )
-
-        headers = {"Authorization": f"Bearer {obj.access_token}"}
-
-        def _get(url):
-            if not url:
-                return None
-            r = requests.get(url, headers=headers, timeout=15)
-            if r.status_code != 200:
-                raise ValueError(r.json())
-            return r.json()
-
-        try:
-            steps_data = _get(steps_url)
-            sleep_data = _get(sleep_url)
-            heart_data = _get(heart_url)
-
-            metrics = {
-                "steps": steps_data,
-                "sleep": sleep_data,
-                "heart": heart_data,
-            }
-
-            FitnessSync.objects.create(
-                user=request.user,
-                provider="garmin",
-                start_time=timezone.now(),
-                end_time=timezone.now(),
-                metrics=metrics,
-                raw=metrics,
-            )
-
-            obj.last_sync_at = timezone.now()
-            obj.save()
-            return Response(
-                {
-                    "ok": True,
-                    "provider": "garmin",
-                    "metrics": metrics,
-                    "device": DeviceConnectionSerializer(obj).data,
-                }
-            )
-        except ValueError as exc:
-            return Response(
-                {"ok": False, "error": "Garmin error", "garmin": exc.args[0]},
-                status=400,
-            )
-        except requests.RequestException as exc:
-            return Response(
-                {"ok": False, "error": "Garmin request failed", "detail": str(exc)},
-                status=500,
-            )
+    return Response(payload, status=res.status)
 
     # Default: simulated sync for other providers
     obj.last_sync_at = timezone.now()

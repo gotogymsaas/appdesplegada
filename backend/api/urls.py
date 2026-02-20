@@ -26,6 +26,7 @@ urlpatterns = [
     path('chat/', views.chat_n8n, name='chat_n8n'),
     path('user_profile/', views.get_user_profile, name='get_user_profile'),
     path('coach_context/', views.coach_context, name='coach_context'),
+    path('gamification/status/', views.gamification_status, name='gamification_status'),
     path('upload_medical/', views.upload_medical_record, name='upload_medical'),
     path('upload_chat_attachment/', views.upload_chat_attachment, name='upload_chat_attachment'),
     path('stt/', views.speech_to_text, name='speech_to_text'),

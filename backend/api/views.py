@@ -25,6 +25,7 @@ from .serializers import UserSerializer
 # Importar el servicio ML
 from .serializers import UserSerializer
 # Importar el servicio ML
+from .gamification_service import update_user_streak, build_gamification_status
 from datetime import date, datetime, timedelta, timezone as dt_timezone
 from django.utils import timezone
 from django.db.models import Avg, Q, Count
@@ -1172,6 +1173,7 @@ def get_user_profile(request):
     try:
         profile_picture = _profile_picture_db_value(user)
         profile_picture_url = _canonical_profile_picture_url(request, user)
+        gamification = build_gamification_status(user)
         return Response({
             'username': user.username,
             'age': user.age,
@@ -1185,6 +1187,7 @@ def get_user_profile(request):
             'happiness_index': user.happiness_index,
             'current_streak': user.current_streak,
             'badges': user.badges,
+            'gamification': gamification,
             'happiness_scores': user.scores or {},
             'has_happiness_scores': bool(user.scores),
             'profile_picture': profile_picture,
@@ -1192,6 +1195,19 @@ def get_user_profile(request):
         })
     except User.DoesNotExist:
         return Response({'error': 'User not found'}, status=status.HTTP_404_NOT_FOUND)
+
+
+@api_view(['GET', 'OPTIONS'])
+@authentication_classes([JWTAuthentication])
+@permission_classes([IsAuthenticatedOrOptions])
+def gamification_status(request):
+    user, auth_error = _require_authenticated_user(request)
+    if auth_error:
+        return auth_error
+    try:
+        return Response(build_gamification_status(user))
+    except Exception as exc:
+        return Response({"ok": False, "error": str(exc)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 @api_view(['GET', 'OPTIONS'])
@@ -3224,42 +3240,7 @@ def get_happiness_history(request):
     except User.DoesNotExist:
         return Response({'error': 'User not found'}, status=status.HTTP_404_NOT_FOUND)
 
-def update_user_streak(user):
-    today = date.today()
-    if user.last_streak_date == today:
-        return # Already updated today
-    
-    if user.last_streak_date == today - timedelta(days=1):
-        user.current_streak += 1
-    else:
-        user.current_streak = 1
-    
-    user.last_streak_date = today
-    user.save()
-    check_badges(user)
-
-def check_badges(user):
-    badges = set(user.badges) # Use set to avoid duplicates
-    
-    # Badge: Iniciado (First step)
-    badges.add('iniciado')
-    
-    # Badge: On Fire (Streak >= 3)
-    if user.current_streak >= 3:
-        badges.add('on_fire')
-        
-    # Badge: Zen Master (Happiness >= 8.0)
-    if user.happiness_index and user.happiness_index >= 8.0:
-        badges.add('zen_master')
-        
-    # Save if changed
-    new_badges = list(badges)
-    if len(new_badges) != len(user.badges):
-        user.badges = new_badges
-    new_badges = list(badges)
-    if len(new_badges) != len(user.badges):
-        user.badges = new_badges
-        user.save()
+ # streak/badges logic lives in gamification_service.update_user_streak
 
 @api_view(['PUT', 'OPTIONS'])
 @authentication_classes([JWTAuthentication])

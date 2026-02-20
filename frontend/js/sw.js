@@ -1,4 +1,4 @@
-const CACHE_NAME = 'gotogym-v7';
+const CACHE_NAME = 'gotogym-v8';
 const ASSETS_TO_CACHE = [
     '/',
     '/manifest.json',
@@ -14,7 +14,8 @@ self.addEventListener('install', event => {
         caches.open(CACHE_NAME)
             .then(cache => {
                 console.log('[Service Worker] Caching core assets');
-                return cache.addAll(ASSETS_TO_CACHE);
+                // Use reload to bypass the browser HTTP cache on install.
+                return cache.addAll(ASSETS_TO_CACHE.map((url) => new Request(url, { cache: 'reload' })));
             })
     );
     self.skipWaiting();
@@ -43,7 +44,8 @@ self.addEventListener('fetch', event => {
     // Navigations: prefer fresh HTML so UX updates propagate.
     if (event.request.mode === 'navigate') {
         event.respondWith(
-            fetch(event.request)
+            // Bypass HTTP cache to avoid serving old HTML on mobile.
+            fetch(event.request, { cache: 'no-store' })
                 .then(res => {
                     if (isSameOrigin) {
                         const copy = res.clone();
@@ -61,7 +63,7 @@ self.addEventListener('fetch', event => {
     {
         event.respondWith(
             caches.match(event.request).then(cached => {
-                const networkFetch = fetch(event.request)
+                const networkFetch = fetch(event.request, { cache: 'no-store' })
                     .then(res => {
                         const copy = res.clone();
                         caches.open(CACHE_NAME).then(cache => cache.put(event.request, copy));

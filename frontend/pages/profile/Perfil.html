@@ -178,6 +178,99 @@
                     flex-wrap: wrap;
                     margin-bottom: 40px;
                 }
+
+                /* EVOLUCIÓN (Gamificación minimalista) */
+                .evolution-section {
+                    width: 90%;
+                    max-width: 420px;
+                    margin: 0 auto 40px auto;
+                    background: var(--card-bg);
+                    border: 1px solid rgba(255, 255, 255, 0.06);
+                    border-radius: 16px;
+                    padding: 16px;
+                }
+
+                .evolution-title {
+                    color: var(--text-main);
+                    font-size: 14px;
+                    margin: 0 0 10px 0;
+                    font-style: italic;
+                }
+
+                .identity-label {
+                    color: var(--primary);
+                    font-size: 13px;
+                    margin-bottom: 10px;
+                }
+
+                .weekly-progress-text {
+                    color: var(--text-muted);
+                    font-size: 12px;
+                    margin-bottom: 8px;
+                }
+
+                .progress-bar {
+                    width: 100%;
+                    height: 10px;
+                    background: rgba(255, 255, 255, 0.08);
+                    border-radius: 999px;
+                    overflow: hidden;
+                    border: 1px solid rgba(255, 255, 255, 0.06);
+                }
+
+                .progress-fill {
+                    height: 100%;
+                    width: 0%;
+                    background: var(--primary);
+                    border-radius: 999px;
+                    transition: width 450ms ease;
+                }
+
+                .weekly-hint {
+                    color: var(--text-muted);
+                    font-size: 11px;
+                    margin-top: 10px;
+                }
+
+                .missions-title {
+                    color: var(--text-main);
+                    font-size: 12px;
+                    margin: 14px 0 8px 0;
+                }
+
+                .mission-item {
+                    display: flex;
+                    align-items: center;
+                    justify-content: space-between;
+                    padding: 10px 10px;
+                    margin-bottom: 8px;
+                    border-radius: 12px;
+                    background: rgba(255, 255, 255, 0.04);
+                    border: 1px solid rgba(255, 255, 255, 0.06);
+                }
+
+                .mission-left {
+                    display: flex;
+                    flex-direction: column;
+                    gap: 2px;
+                }
+
+                .mission-label {
+                    color: var(--text-main);
+                    font-size: 12px;
+                }
+
+                .mission-sub {
+                    color: var(--text-muted);
+                    font-size: 11px;
+                }
+
+                .mission-status {
+                    color: var(--primary);
+                    font-size: 12px;
+                    min-width: 56px;
+                    text-align: right;
+                }
                 
                 .badge-item {
                     background: linear-gradient(145deg, #1e1e1e, #252525);
@@ -363,6 +456,20 @@
         </div>
         <div style="font-size: 14px; color: #FF5722; margin-top: 5px;">Racha actual</div>
     </div>
+
+    <!-- Evolution / Gamificación -->
+    <div id="evolutionSection" class="evolution-section" style="display:none;">
+        <p class="evolution-title">Tu evolución</p>
+        <div class="identity-label" id="identityLabel">—</div>
+        <div class="weekly-progress-text" id="weeklyProgressText">Semana: 0/5 registros</div>
+        <div class="progress-bar" aria-label="Progreso semanal">
+            <div class="progress-fill" id="weeklyProgressFill"></div>
+        </div>
+        <div class="weekly-hint" id="weeklyHint">Activa tu racha con 1 acción al día: check-in, hábito o sincronización.</div>
+
+        <div class="missions-title">Misión semanal</div>
+        <div id="missionsContainer"></div>
+    </div>
     
     <!-- Badges Section -->
     <!-- Badges Section Removed -->
@@ -487,6 +594,63 @@
             document.getElementById("stat-height").innerText = user.height || "--";
             document.getElementById("stat-age").innerText = user.age || "--";
             document.getElementById("stat-streak").innerText = user.current_streak || "0";
+
+            // Gamificación (misiones + progreso + identidad)
+            try {
+                const evo = document.getElementById('evolutionSection');
+                const g = user.gamification;
+                if (!evo || !g || !g.weekly || !g.weekly.progress || !g.missions) {
+                    if (evo) evo.style.display = 'none';
+                } else {
+                    evo.style.display = '';
+                    const identityLabel = document.getElementById('identityLabel');
+                    if (identityLabel && g.identity && g.identity.label) {
+                        identityLabel.textContent = g.identity.label;
+                    }
+
+                    const done = Number(g.weekly.progress.done || 0);
+                    const target = Number(g.weekly.progress.target || 5);
+                    const weeklyText = document.getElementById('weeklyProgressText');
+                    if (weeklyText) weeklyText.textContent = `Semana: ${done}/${target} registros`;
+                    const fill = document.getElementById('weeklyProgressFill');
+                    const pct = target > 0 ? Math.min(100, Math.round((done / target) * 100)) : 0;
+                    if (fill) fill.style.width = `${pct}%`;
+
+                    const missionsEl = document.getElementById('missionsContainer');
+                    if (missionsEl) {
+                        const items = (g.missions.items && Array.isArray(g.missions.items)) ? g.missions.items : [];
+                        missionsEl.innerHTML = '';
+                        items.forEach((m) => {
+                            if (!m) return;
+                            const label = m.label || m.key || 'Misión';
+                            const progress = (m.progress !== undefined && m.progress !== null) ? m.progress : 0;
+                            const targetVal = (m.target !== undefined && m.target !== null) ? m.target : 0;
+                            const completed = !!m.completed;
+                            const status = completed ? '✓' : `${progress}/${targetVal}`;
+                            const row = document.createElement('div');
+                            row.className = 'mission-item';
+                            row.innerHTML = `
+                              <div class="mission-left">
+                                <div class="mission-label">${label}</div>
+                                <div class="mission-sub">Hazlo para activar tu evolución</div>
+                              </div>
+                              <div class="mission-status">${status}</div>
+                            `;
+                            missionsEl.appendChild(row);
+                        });
+                    }
+
+                    const hint = document.getElementById('weeklyHint');
+                    if (hint) {
+                        const tier = g.streak_tier && g.streak_tier.current ? g.streak_tier.current.label : null;
+                        hint.textContent = tier
+                            ? `Estado: ${tier}. Activa tu racha con 1 acción al día: check-in, hábito o sincronización.`
+                            : 'Activa tu racha con 1 acción al día: check-in, hábito o sincronización.';
+                    }
+                }
+            } catch (e) {
+                // no-op
+            }
 
             if (user.happiness_index !== undefined && user.happiness_index !== null) {
                 const percent = Math.round(user.happiness_index * 10);
