@@ -100,6 +100,7 @@ INSTALLED_APPS = [
 # MIDDLEWARE - ORDEN CORREGIDO
 # ======================
 MIDDLEWARE = [
+    'api.middleware.AzureInternalHostMiddleware',
     'api.middleware.CorsMiddleware',  # PRIMERO - Middleware personalizado
     'corsheaders.middleware.CorsMiddleware',  # SEGUNDO - CorsHeaders
     'django.middleware.security.SecurityMiddleware',
