@@ -1086,7 +1086,7 @@ window.addEventListener('resize', scheduleViewportOffsetUpdate);
 scheduleViewportOffsetUpdate();
 scheduleFooterMetricsUpdate();
 
-async function processMessage(text, file, pendingId) {
+async function processMessage(text, file, pendingId, extraPayload = null) {
   const loadingId = appendMessage('Analizando...', 'bot loading', { persist: false });
   try {
     const user = JSON.parse(localStorage.getItem('user') || '{}');
@@ -1160,7 +1160,8 @@ async function processMessage(text, file, pendingId) {
         attachment: attachmentUrl,
         attachment_text: attachmentText,
         attachment_text_diagnostic: attachmentTextDiagnostic,
-        username: username
+        username: username,
+        ...(extraPayload && typeof extraPayload === 'object' ? extraPayload : {})
       })
     });
 
@@ -1194,6 +1195,16 @@ async function processMessage(text, file, pendingId) {
       }
     }
     appendMessage(reply, 'bot');
+
+    // QAF: si el backend manda follow-ups, mostrarlos como botones (misma UX de quick-actions)
+    try {
+      if (data && typeof data === 'object') {
+        if (data.qaf_context) lastQafContext = data.qaf_context;
+        appendQafFollowUps(data.follow_up_questions, lastQafContext);
+      }
+    } catch (e) {
+      // ignore
+    }
   } catch (err) {
     console.error(err);
     document.getElementById(loadingId)?.remove();
@@ -1453,6 +1464,12 @@ function appendQuickActions(actions) {
       }
       if (action.type === 'message' && action.text) {
         sendQuickMessage(action.text);
+        return;
+      }
+
+      if (action.type === 'qaf_confirm_portion' && action.payload) {
+        // Mantener UX: el tap se refleja como un mensaje del usuario (label del botón)
+        sendQuickMessage(action.label, action.payload);
       }
     });
     wrapper.appendChild(btn);
@@ -1462,10 +1479,40 @@ function appendQuickActions(actions) {
   updateScrollControls();
 }
 
-async function sendQuickMessage(text) {
+let lastQafContext = null;
+
+function appendQafFollowUps(followUps, qafContext) {
+  if (!Array.isArray(followUps) || !followUps.length) return;
+  const q = followUps[0];
+  if (!q || q.type !== 'confirm_portion') return;
+  const itemId = q.item_id;
+  const options = Array.isArray(q.options) ? q.options : [];
+  if (!itemId || !options.length) return;
+
+  const actions = options
+    .slice(0, 3)
+    .map((opt) => {
+      const grams = Number(opt.grams);
+      const label = String(opt.label || '').trim();
+      if (!label || !Number.isFinite(grams) || grams <= 0) return null;
+      return {
+        label,
+        type: 'qaf_confirm_portion',
+        payload: {
+          confirmed_portions: [{ item_id: itemId, grams }],
+          qaf_context: qafContext || null,
+        },
+      };
+    })
+    .filter(Boolean);
+
+  if (actions.length) appendQuickActions(actions);
+}
+
+async function sendQuickMessage(text, extraPayload = null) {
   if (!text) return;
   appendMessage(text, 'user');
-  await processMessage(text, null);
+  await processMessage(text, null, null, extraPayload);
 }
 
 // Restore history or show greeting

@@ -213,3 +213,29 @@ class AuditLog(models.Model):
     def __str__(self):
         return f"{self.occurred_at} {self.action} {self.entity_type}:{self.entity_id}"
 
+
+class QAFSoftMemoryPortion(models.Model):
+    """Memoria suave (prior) por usuario para porciones confirmadas.
+
+    Se actualiza únicamente con confirmaciones explícitas (ej. botones).
+    """
+
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="qaf_soft_memory_portions")
+    item_id = models.CharField(max_length=80)
+
+    grams_last = models.FloatField()
+    count_confirmed = models.PositiveIntegerField(default=1)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        unique_together = ("user", "item_id")
+        indexes = [
+            models.Index(fields=["user", "item_id"]),
+            models.Index(fields=["user", "updated_at"]),
+        ]
+
+    def __str__(self):
+        return f"{self.user.username}:{self.item_id} {self.grams_last}g"
+
