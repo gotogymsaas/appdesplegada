@@ -944,14 +944,20 @@ function buildQuickActions(context) {
   const hasPlan = Array.isArray(context?.documents?.types) && context.documents.types.length > 0;
   const hasDevice = (context?.devices?.connected_providers || []).length > 0;
 
+  // Mantener 3 botones máximo, pero sin perder los pilares.
+  // 1) Contextual (uno solo)
   if (hasPlan) {
     actions.push({ label: 'Revisar plan', type: 'link', href: '/pages/settings/PlanEntrenamiento.html' });
-  }
-  if (!hasDevice) {
+  } else if (!hasDevice) {
     actions.push({ label: 'Sincronizar', type: 'link', href: '/pages/settings/Dispositivos.html' });
   }
+
+  // 2) Postura (Exp-006)
   actions.push({ label: 'Postura', type: 'posture_start' });
+
+  // 3) Análisis profundo
   actions.push({ label: 'Análisis profundo', type: 'message', text: 'Quiero un análisis profundo QAF.' });
+
   return actions.slice(0, 3);
 }
 
