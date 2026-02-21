@@ -3817,6 +3817,11 @@ def chat_n8n(request):
         body_trend_result = None
         body_trend_text_for_output_override = ""
 
+        # Exp-006 (postura): resultado + texto + quick-actions
+        posture_result = None
+        posture_text_for_output_override = ""
+        posture_quick_actions_out = []
+
         def _week_weights_from_state(state, week_id: str):
             try:
                 ww = state.get('weekly_weights') if isinstance(state.get('weekly_weights'), dict) else {}
@@ -4228,6 +4233,92 @@ def chat_n8n(request):
         except Exception as ex:
             print(f"QAF body trend warning: {ex}")
 
+        # 0.5) Exp-006: Postura (requiere keypoints ya calculados)
+        try:
+            if user:
+                pr = request.data.get('posture_request') if isinstance(request.data, dict) else None
+                want_posture = False
+                if isinstance(pr, dict):
+                    want_posture = True
+                else:
+                    msg_low = str(message or '').lower()
+                    if re.search(r"\b(postura|posture|hombros\s+adelantados|cabeza\s+adelantada|joroba)\b", msg_low):
+                        want_posture = True
+
+                if want_posture:
+                    from .qaf_posture.engine import evaluate_posture, render_professional_summary
+
+                    # Seguridad mínima: no inferimos desde 'visión descriptiva'. Solo usamos keypoints.
+                    poses = None
+                    user_ctx = {}
+                    locale = 'es-CO'
+                    if isinstance(pr, dict):
+                        poses = pr.get('poses') if isinstance(pr.get('poses'), dict) else None
+                        user_ctx = pr.get('user_context') if isinstance(pr.get('user_context'), dict) else {}
+                        locale = (pr.get('locale') or '').strip() or 'es-CO'
+
+                    def _posture_payload_ok(p: dict) -> bool:
+                        if not isinstance(p, dict):
+                            return False
+                        for v in ('front', 'side'):
+                            pose = p.get(v)
+                            if not isinstance(pose, dict):
+                                return False
+                            kps = pose.get('keypoints')
+                            if not isinstance(kps, list) or not kps:
+                                return False
+                            if len(kps) > 80:
+                                return False
+                            for kp in kps[:40]:
+                                if not isinstance(kp, dict):
+                                    return False
+                                if not str(kp.get('name') or '').strip():
+                                    return False
+                                if kp.get('x') is None or kp.get('y') is None:
+                                    return False
+                        return True
+
+                    if isinstance(poses, dict) and _posture_payload_ok(poses):
+                        posture_result = evaluate_posture({'poses': poses, 'user_context': user_ctx, 'locale': locale}).payload
+                        ptext = render_professional_summary(posture_result)
+                        if ptext:
+                            posture_text_for_output_override = ptext
+                            attachment_text = ((attachment_text or '').strip() + "\n\n" if (attachment_text or '').strip() else "") + f"[POSTURA]\n{ptext}".strip()
+
+                        # Si el motor no concluye, ofrecer retomar captura.
+                        try:
+                            if isinstance(posture_result, dict) and posture_result.get('decision') == 'needs_confirmation':
+                                posture_quick_actions_out.extend([
+                                    {'label': 'Repetir frontal', 'type': 'open_camera'},
+                                    {'label': 'Repetir lateral', 'type': 'open_camera'},
+                                    {'label': 'Adjuntar fotos', 'type': 'open_attach'},
+                                ])
+                        except Exception:
+                            pass
+                    else:
+                        # UX: guiar captura con botones sin introducir pantallas nuevas.
+                        posture_quick_actions_out.extend([
+                            {
+                                'label': 'Tomar foto frontal',
+                                'type': 'open_camera',
+                            },
+                            {
+                                'label': 'Tomar foto lateral',
+                                'type': 'open_camera',
+                            },
+                            {
+                                'label': 'Adjuntar fotos',
+                                'type': 'open_attach',
+                            },
+                        ])
+                        attachment_text = ((attachment_text or '').strip() + "\n\n" if (attachment_text or '').strip() else "") + (
+                            "[POSTURA / CAPTURA]\n"
+                            "Necesito 2 fotos: frontal y lateral (cuerpo completo, buena luz, cámara a la altura del pecho, 2–3m).\n"
+                            "Cuando tengas los keypoints (pose estimation), podré calcular señales y darte una rutina específica."
+                        )
+        except Exception as ex:
+            print(f"QAF posture warning: {ex}")
+
         # 0) Si llega qaf_context (ej. click en botones), usamos eso para estimar sin Vision.
         try:
             if isinstance(qaf_context, dict) and isinstance(qaf_context.get('vision'), dict):
@@ -4590,7 +4681,7 @@ def chat_n8n(request):
         professional_rule = (
             os.getenv("CHAT_PROFESSIONAL_RULE", "")
             .strip()
-            or "Toma decisiones con el foco en ser lo mas profesional posible."
+            or "Toma decisiones con el foco en ser lo más profesional posible: prudente, claro, verificable y seguro. No hagas diagnóstico médico. Si falta información, pide confirmación mínima antes de concluir."
         )
         if professional_rule:
             final_input = f"INSTRUCCION DEL SISTEMA: {professional_rule}\n\n{final_input}"
@@ -4779,6 +4870,7 @@ def chat_n8n(request):
             "qaf_metabolic": metabolic_result,
             "qaf_meal_plan": meal_plan_result,
             "qaf_body_trend": body_trend_result,
+            "qaf_posture": posture_result,
             "fitness": fitness_payload,
             "profile": profile_payload,
             "if_snapshot": if_snapshot,
@@ -4860,6 +4952,26 @@ def chat_n8n(request):
                             data['output'] = metabolic_text_for_output_override
                         elif not has_kcal:
                             data['output'] = (metabolic_text_for_output_override.strip() + "\n\n" + out_text.strip()).strip()
+            except Exception:
+                pass
+
+            # Exp-006: postura (quick-actions + resultado)
+            try:
+                if isinstance(data, dict):
+                    if posture_quick_actions_out:
+                        existing = data.get('quick_actions') if isinstance(data.get('quick_actions'), list) else []
+                        data['quick_actions'] = (existing + posture_quick_actions_out)[:6]
+                    if posture_result:
+                        data.setdefault('qaf_posture', posture_result)
+
+                    out_text = data.get('output')
+                    if isinstance(out_text, str) and posture_text_for_output_override:
+                        low = out_text.lower()
+                        has_posture = ('postura' in low) or ('hombro' in low) or ('cabeza' in low)
+                        if (not out_text.strip()) or ('problema tecnico' in low) or ('problema técnico' in low):
+                            data['output'] = posture_text_for_output_override
+                        elif not has_posture:
+                            data['output'] = (posture_text_for_output_override.strip() + "\n\n" + out_text.strip()).strip()
             except Exception:
                 pass
 
@@ -5445,3 +5557,36 @@ def qaf_body_trend(request):
             pass
 
     return Response({'success': True, 'result': res.payload, 'text': text, 'quick_actions': quick_actions})
+
+
+@api_view(['POST', 'OPTIONS'])
+@authentication_classes([JWTAuthentication])
+@permission_classes([IsAuthenticatedOrOptions])
+def qaf_posture(request):
+    """Exp-006: análisis postural basado en keypoints (pose estimation) + rutina correctiva.
+
+    Importante: este endpoint NO hace pose estimation. Recibe `poses.*.keypoints` ya calculados.
+    """
+
+    if request.method == 'OPTIONS':
+        return Response(status=status.HTTP_200_OK)
+
+    user = _resolve_request_user(request)
+    if not user:
+        return Response({'error': 'Autenticacion requerida'}, status=status.HTTP_401_UNAUTHORIZED)
+
+    payload = request.data if isinstance(request.data, dict) else {}
+    user_ctx = payload.get('user_context') if isinstance(payload.get('user_context'), dict) else {}
+    locale = (payload.get('locale') or '').strip() or 'es-CO'
+
+    from .qaf_posture.engine import evaluate_posture, render_professional_summary
+
+    res = evaluate_posture({
+        'poses': payload.get('poses') if isinstance(payload.get('poses'), dict) else {},
+        'user_context': user_ctx,
+        'locale': locale,
+    }).payload
+
+    text = render_professional_summary(res)
+    return Response({'success': True, 'result': res, 'text': text})
+

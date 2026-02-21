@@ -82,6 +82,269 @@ const toolAttachBtn = document.getElementById('chat-tool-attach');
 const micBtn = toolMicBtn;
 const messages = document.getElementById('chat-messages');
 
+// --- Exp-006 Postura (pose-estimation en cliente, sin subir fotos) ---
+let postureFlow = {
+  active: false,
+  step: 'idle', // idle | need_front | need_side | need_safety | ready
+  captureTarget: null, // 'front' | 'side'
+  poses: { front: null, side: null },
+  userContext: { pain_neck: false, pain_low_back: false, injury_recent: false, level: 'beginner' },
+};
+
+let posturePoseEstimator = null;
+let posturePoseEstimatorLoading = null;
+
+const POSTURE_STATE_KEY = 'gtg_posture_flow_state_v0';
+
+function savePostureState() {
+  try {
+    localStorage.setItem(POSTURE_STATE_KEY, JSON.stringify(postureFlow));
+  } catch (e) {
+    // ignore
+  }
+}
+
+function loadPostureState() {
+  try {
+    const raw = localStorage.getItem(POSTURE_STATE_KEY);
+    if (!raw) return;
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== 'object') return;
+    if (!parsed.active) return;
+    postureFlow = {
+      ...postureFlow,
+      ...parsed,
+      poses: parsed.poses || postureFlow.poses,
+      userContext: parsed.userContext || postureFlow.userContext,
+    };
+  } catch (e) {
+    // ignore
+  }
+}
+
+loadPostureState();
+
+function startPostureFlow() {
+  postureFlow = {
+    active: true,
+    step: 'need_front',
+    captureTarget: null,
+    poses: { front: null, side: null },
+    userContext: { pain_neck: false, pain_low_back: false, injury_recent: false, level: 'beginner' },
+  };
+  savePostureState();
+
+  appendMessage(
+    'Para analizar tu postura necesito 2 fotos: **frontal** y **lateral** (perfil).\n\n' +
+      '- Cámara a la altura del pecho, a 2–3m\n' +
+      '- Cuerpo completo (pies a cabeza)\n' +
+      '- Buena luz y fondo limpio\n' +
+      '- Brazos relajados\n\n' +
+      'Empecemos con la foto frontal.',
+    'bot'
+  );
+  appendQuickActions([
+    { label: 'Tomar foto frontal', type: 'posture_capture', view: 'front', source: 'camera' },
+    { label: 'Adjuntar foto frontal', type: 'posture_capture', view: 'front', source: 'attach' },
+    { label: 'Cancelar', type: 'posture_cancel' },
+  ]);
+}
+
+function cancelPostureFlow() {
+  postureFlow = { ...postureFlow, active: false, step: 'idle', captureTarget: null };
+  try {
+    localStorage.removeItem(POSTURE_STATE_KEY);
+  } catch (e) {
+    // ignore
+  }
+  appendMessage('Listo. Si quieres retomarlo, toca "Postura" o escribe: "analizar postura".', 'bot');
+}
+
+function _isImageFile(file) {
+  if (!file) return false;
+  const mime = String(file.type || '').toLowerCase();
+  if (mime.startsWith('image/')) return true;
+  const name = String(file.name || '').toLowerCase();
+  return name.endsWith('.png') || name.endsWith('.jpg') || name.endsWith('.jpeg') || name.endsWith('.webp') || name.endsWith('.heic') || name.endsWith('.heif');
+}
+
+function _loadScriptOnce(src) {
+  return new Promise((resolve, reject) => {
+    if (!src) return reject(new Error('missing_src'));
+    const existing = document.querySelector(`script[data-gtg-src="${src}"]`);
+    if (existing) {
+      if (existing.dataset.loaded === '1') return resolve();
+      existing.addEventListener('load', () => resolve());
+      existing.addEventListener('error', () => reject(new Error('load_failed')));
+      return;
+    }
+    const s = document.createElement('script');
+    s.src = src;
+    s.async = true;
+    s.defer = true;
+    s.dataset.gtgSrc = src;
+    s.addEventListener('load', () => {
+      s.dataset.loaded = '1';
+      resolve();
+    });
+    s.addEventListener('error', () => reject(new Error('load_failed')));
+    document.head.appendChild(s);
+  });
+}
+
+async function getPosturePoseEstimator() {
+  if (posturePoseEstimator) return posturePoseEstimator;
+  if (posturePoseEstimatorLoading) return posturePoseEstimatorLoading;
+
+  posturePoseEstimatorLoading = (async () => {
+    const POSE_CDN = 'https://cdn.jsdelivr.net/npm/@mediapipe/pose/pose.js';
+    await _loadScriptOnce(POSE_CDN);
+
+    if (typeof Pose !== 'function') {
+      throw new Error('mediapipe_pose_not_available');
+    }
+
+    const estimator = new Pose({
+      locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}`,
+    });
+
+    estimator.setOptions({
+      modelComplexity: 1,
+      smoothLandmarks: true,
+      enableSegmentation: false,
+      selfieMode: false,
+      minDetectionConfidence: 0.5,
+      minTrackingConfidence: 0.5,
+    });
+
+    posturePoseEstimator = estimator;
+    return estimator;
+  })();
+
+  try {
+    return await posturePoseEstimatorLoading;
+  } finally {
+    posturePoseEstimatorLoading = null;
+  }
+}
+
+function mediapipeLandmarksToKeypoints(landmarks) {
+  const lm = Array.isArray(landmarks) ? landmarks : [];
+  const map = {
+    0: 'nose',
+    7: 'left_ear',
+    8: 'right_ear',
+    11: 'left_shoulder',
+    12: 'right_shoulder',
+    23: 'left_hip',
+    24: 'right_hip',
+    25: 'left_knee',
+    26: 'right_knee',
+    27: 'left_ankle',
+    28: 'right_ankle',
+  };
+  const out = [];
+  Object.keys(map).forEach((idxStr) => {
+    const idx = Number(idxStr);
+    const name = map[idx];
+    const p = lm[idx];
+    if (!p) return;
+    const x = Number(p.x);
+    const y = Number(p.y);
+    const score = Number(p.visibility);
+    if (!Number.isFinite(x) || !Number.isFinite(y)) return;
+    out.push({
+      name,
+      x: Math.max(0, Math.min(1, x)),
+      y: Math.max(0, Math.min(1, y)),
+      score: Number.isFinite(score) ? score : 0,
+    });
+  });
+  return out;
+}
+
+async function estimatePoseFromImageFile(file) {
+  const url = URL.createObjectURL(file);
+  try {
+    const img = new Image();
+    img.decoding = 'async';
+    img.loading = 'eager';
+    img.src = url;
+    await new Promise((resolve, reject) => {
+      img.onload = () => resolve();
+      img.onerror = () => reject(new Error('image_load_failed'));
+    });
+
+    const estimator = await getPosturePoseEstimator();
+
+    const res = await new Promise((resolve) => {
+      estimator.onResults((results) => resolve(results || {}));
+      estimator.send({ image: img });
+    });
+
+    const kps = mediapipeLandmarksToKeypoints(res.poseLandmarks);
+    return {
+      keypoints: kps,
+      image: { width: img.naturalWidth || img.width || 0, height: img.naturalHeight || img.height || 0 },
+    };
+  } finally {
+    try {
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      // ignore
+    }
+  }
+}
+
+async function handlePostureCapture(file, view) {
+  if (!_isImageFile(file)) {
+    appendMessage('Para postura necesito una imagen (frontal o lateral).', 'bot');
+    return;
+  }
+
+  const objectUrl = URL.createObjectURL(file);
+  appendMessage(view === 'front' ? 'Foto frontal' : 'Foto lateral', 'user', {
+    meta: { text: view === 'front' ? 'Foto frontal' : 'Foto lateral', hasFile: true },
+    attachment: { file, objectUrl },
+  });
+
+  appendMessage('Analizando postura (pose estimation local)...', 'bot');
+
+  let pose;
+  try {
+    pose = await estimatePoseFromImageFile(file);
+  } catch (e) {
+    console.warn('Pose estimation failed:', e);
+    appendMessage('No pude detectar bien tu cuerpo en la imagen. Repite con mejor luz y el cuerpo completo visible.', 'bot');
+    return;
+  }
+
+  postureFlow.poses[view] = pose;
+  postureFlow.captureTarget = null;
+  savePostureState();
+
+  if (view === 'front') {
+    postureFlow.step = 'need_side';
+    savePostureState();
+    appendMessage('Perfecto. Ahora necesito la foto **lateral** (perfil).', 'bot');
+    appendQuickActions([
+      { label: 'Tomar foto lateral', type: 'posture_capture', view: 'side', source: 'camera' },
+      { label: 'Adjuntar foto lateral', type: 'posture_capture', view: 'side', source: 'attach' },
+      { label: 'Cancelar', type: 'posture_cancel' },
+    ]);
+    return;
+  }
+
+  postureFlow.step = 'need_safety';
+  savePostureState();
+  appendMessage('Antes de recomendar ejercicios: ¿tienes dolor agudo, hormigueo o lesión reciente?', 'bot');
+  appendQuickActions([
+    { label: 'No', type: 'posture_safety', value: 'no' },
+    { label: 'Sí', type: 'posture_safety', value: 'yes' },
+    { label: 'Cancelar', type: 'posture_cancel' },
+  ]);
+}
+
 // --- Chat persistence (24h + reset diario) ---
 const CHAT_STORAGE_KEY = 'gtg_chat_history';
 const CHAT_META_KEY = 'gtg_chat_meta';
@@ -687,6 +950,7 @@ function buildQuickActions(context) {
   if (!hasDevice) {
     actions.push({ label: 'Sincronizar', type: 'link', href: '/pages/settings/Dispositivos.html' });
   }
+  actions.push({ label: 'Postura', type: 'posture_start' });
   actions.push({ label: 'Análisis profundo', type: 'message', text: 'Quiero un análisis profundo QAF.' });
   return actions.slice(0, 3);
 }
@@ -1001,6 +1265,13 @@ if (toolCameraBtn) {
 if (fileInput) {
   fileInput.addEventListener('change', () => {
     const file = getSelectedFile();
+    if (file && postureFlow.active && postureFlow.captureTarget) {
+      const view = postureFlow.captureTarget;
+      setAttachmentPreview(null);
+      clearSelectedFiles();
+      handlePostureCapture(file, view);
+      return;
+    }
     if (file) {
       setAttachmentPreview(file, 'ready');
       input.focus();
@@ -1013,6 +1284,13 @@ if (fileInput) {
 if (cameraInput) {
   cameraInput.addEventListener('change', () => {
     const file = getSelectedFile();
+    if (file && postureFlow.active && postureFlow.captureTarget) {
+      const view = postureFlow.captureTarget;
+      setAttachmentPreview(null);
+      clearSelectedFiles();
+      handlePostureCapture(file, view);
+      return;
+    }
     if (file) {
       setAttachmentPreview(file, 'ready');
       input.focus();
@@ -1467,6 +1745,58 @@ function appendQuickActions(actions) {
     btn.className = 'quick-action-btn';
     btn.textContent = action.label;
     btn.addEventListener('click', () => {
+      if (action.type === 'open_camera') {
+        closeToolsMenu();
+        cameraInput?.click();
+        return;
+      }
+      if (action.type === 'open_attach') {
+        closeToolsMenu();
+        fileInput?.click();
+        return;
+      }
+      if (action.type === 'posture_start') {
+        startPostureFlow();
+        return;
+      }
+      if (action.type === 'posture_cancel') {
+        cancelPostureFlow();
+        return;
+      }
+      if (action.type === 'posture_capture' && action.view) {
+        postureFlow.active = true;
+        postureFlow.captureTarget = action.view;
+        postureFlow.step = action.view === 'front' ? 'need_front' : 'need_side';
+        savePostureState();
+        if (action.source === 'attach') {
+          closeToolsMenu();
+          fileInput?.click();
+        } else {
+          closeToolsMenu();
+          cameraInput?.click();
+        }
+        return;
+      }
+      if (action.type === 'posture_safety') {
+        const v = String(action.value || '').toLowerCase();
+        postureFlow.userContext.injury_recent = v === 'yes';
+        postureFlow.userContext.pain_neck = v === 'yes';
+        postureFlow.userContext.pain_low_back = v === 'yes';
+        postureFlow.step = 'ready';
+        savePostureState();
+
+        sendQuickMessage('Analizar postura', {
+          posture_request: {
+            poses: {
+              front: postureFlow.poses.front,
+              side: postureFlow.poses.side,
+            },
+            user_context: postureFlow.userContext,
+            locale: 'es-CO',
+          },
+        });
+        return;
+      }
       if (action.type === 'link' && action.href) {
         window.location.href = action.href;
         return;
