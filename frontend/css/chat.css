@@ -653,7 +653,7 @@ body[data-theme="light"] #chat-widget-container {
 
 /* --- Responsive Design for Mobile --- */
 /* --- Responsive Design for Mobile --- */
-@media (max-width: 480px) {
+@media (max-width: 768px) {
   body.gtg-chat-open {
     overflow: hidden;
   }
@@ -665,7 +665,12 @@ body[data-theme="light"] #chat-widget-container {
     pointer-events: none;
   }
 
-  /* When chat is open, allow interaction */
+  /* When chat is open, allow interaction (sin depender de :has) */
+  #chat-widget-container.open {
+    pointer-events: all;
+  }
+
+  /* Fallback: navegadores que sí soportan :has */
   #chat-widget-container:has(#chat-window.open) {
     pointer-events: all;
   }
@@ -724,10 +729,10 @@ body[data-theme="light"] #chat-widget-container {
   /* Input Area */
   #chat-input-area {
     flex: 0 0 auto;
-    position: relative !important;
+    position: sticky !important;
     left: auto !important;
     right: auto !important;
-    bottom: auto !important;
+    bottom: 0 !important;
     width: 100% !important;
     background: var(--chat-bg);
     border-top: 1px solid var(--chat-border);
