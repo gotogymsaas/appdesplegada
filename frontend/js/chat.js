@@ -254,8 +254,9 @@ function applyFooterHeightVar() {
   widgetContainer.style.setProperty('--chat-footer-height', `${footerHeight}px`);
 
   // Mantener el último mensaje visible si el usuario estaba cerca del final.
+  // (pero permitir suspenderlo durante relayout al abrir/cerrar)
   try {
-    if (shouldAutoScroll()) {
+    if (allowAutoScroll && shouldAutoScroll()) {
       messages.scrollTop = messages.scrollHeight;
     }
   } catch (e) {
@@ -752,6 +753,27 @@ const loadChatHistory = () => {
 
 let chatHistory = loadChatHistory();
 
+let allowAutoScroll = true;
+let savedScrollState = null;
+
+function getScrollState() {
+  if (!messages) return null;
+  const atBottom = (messages.scrollHeight - messages.scrollTop - messages.clientHeight) <= 10;
+  return {
+    top: messages.scrollTop,
+    atBottom,
+  };
+}
+
+function restoreScrollState(state) {
+  if (!messages || !state) return;
+  if (state.atBottom) {
+    messages.scrollTop = messages.scrollHeight;
+    return;
+  }
+  messages.scrollTop = state.top;
+}
+
 // --- Robust body scroll lock (mobile web + webview) ---
 const bodyScrollLockState = {
   locked: false,
@@ -824,6 +846,11 @@ containerWidget.classList.toggle('expanded'); // Critical for Mobile // CSS
 const isOpen = chatWindow.classList.contains('open');
 containerWidget.classList.toggle('open', isOpen);
 
+// Guardar/restaurar scroll para que al cerrar/abrir no parezca que se "pierden" mensajes/adjuntos.
+if (!isOpen) {
+  savedScrollState = getScrollState();
+}
+
 // En mobile web, bloquear scroll del body para que no se vea la pantalla de atrás.
 try {
   if (window.matchMedia && window.matchMedia('(max-width: 768px)').matches) {
@@ -845,9 +872,17 @@ if (window.innerWidth > 480) {
 // Recalcular visibilidad de los controles de scroll al abrir.
 setTimeout(updateScrollControls, 50);
 scheduleViewportOffsetUpdate();
+allowAutoScroll = false;
 scheduleFooterMetricsUpdate();
+
+// Restaurar scroll después de que el layout se estabilice.
+setTimeout(() => {
+  restoreScrollState(savedScrollState);
+  allowAutoScroll = true;
+}, 80);
 } else {
   closeToolsMenu();
+  allowAutoScroll = true;
 }
 }
 toggleBtn.addEventListener('click', toggleChat);
