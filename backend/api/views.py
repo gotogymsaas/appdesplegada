@@ -9,6 +9,7 @@ import logging
 import re
 import threading
 import secrets
+from typing import Any
 
 from devices.models import DeviceConnection, FitnessSync as DevicesFitnessSync
 from devices.scheduler_service import enqueue_sync_request
@@ -97,6 +98,40 @@ except Exception:
 
 
 logger = logging.getLogger(__name__)
+
+
+def _normalize_height_cm_from_user_value(user_height_value):
+    """Normaliza una altura almacenada en `User.height` a centímetros.
+
+    En el sistema, `User.height` se espera en metros (p.ej. 1.75), pero pueden existir
+    datos legacy en cm (p.ej. 175) o errores por doble conversión (p.ej. 17500, 1750000).
+    """
+    try:
+        h = float(user_height_value)
+    except Exception:
+        return None
+    if not h or h <= 0:
+        return None
+
+    # Caso nominal: metros
+    height_cm = h * 100.0 if h <= 3.0 else h
+
+    # Deshacer errores de escala comunes (cm*100, cm*100*100)
+    try:
+        while height_cm > 30000.0:
+            height_cm = height_cm / 100.0
+    except Exception:
+        return None
+
+    if 300.0 < height_cm <= 30000.0:
+        height_cm = height_cm / 100.0
+    if 0.5 < height_cm < 3.0:
+        height_cm = height_cm * 100.0
+
+    # Guardrail final: rango humano razonable
+    if height_cm < 80.0 or height_cm > 260.0:
+        return None
+    return float(height_cm)
 
 
 def _qaf_catalog_paths():
@@ -4217,6 +4252,17 @@ def chat_n8n(request):
                     except Exception:
                         tdee = None
                         reco = None
+                    # Guardrail: descartar valores absurdos (p.ej. bug legacy de unidades)
+                    try:
+                        if tdee is not None and float(tdee) > 10000.0:
+                            tdee = None
+                    except Exception:
+                        tdee = None
+                    try:
+                        if reco is not None and float(reco) > 10000.0:
+                            reco = None
+                    except Exception:
+                        reco = None
                     if tdee is None:
                         tdee = float(reco) if reco is not None else None
 
@@ -5207,7 +5253,7 @@ def chat_n8n(request):
                     prof = {
                         'sex': getattr(user, 'sex', None),
                         'age': getattr(user, 'age', None),
-                        'height_cm': (float(getattr(user, 'height', None)) * 100.0) if getattr(user, 'height', None) else None,
+                        'height_cm': _normalize_height_cm_from_user_value(getattr(user, 'height', None)),
                         'weight_kg': float(cur_avg2),
                         'goal_type': getattr(user, 'goal_type', None),
                         'activity_level': getattr(user, 'activity_level', None),
@@ -5800,7 +5846,7 @@ def qaf_metabolic_profile(request):
     prof = {
         'sex': getattr(user, 'sex', None),
         'age': getattr(user, 'age', None),
-        'height_cm': (float(getattr(user, 'height', None)) * 100.0) if getattr(user, 'height', None) else None,
+        'height_cm': _normalize_height_cm_from_user_value(getattr(user, 'height', None)),
         'weight_kg': float(cur or getattr(user, 'weight', 0) or 0),
         'goal_type': getattr(user, 'goal_type', None),
         'activity_level': getattr(user, 'activity_level', None),
@@ -6157,6 +6203,18 @@ def qaf_body_trend(request):
         tdee = None
         reco = None
 
+    # Guardrail: descartar valores absurdos (p.ej. bug legacy de unidades)
+    try:
+        if tdee is not None and float(tdee) > 10000.0:
+            tdee = None
+    except Exception:
+        tdee = None
+    try:
+        if reco is not None and float(reco) > 10000.0:
+            reco = None
+    except Exception:
+        reco = None
+
     # fallback tdee: aproximación por activity (si no hay metabolic_last)
     if tdee is None:
         try:
@@ -6165,7 +6223,7 @@ def qaf_body_trend(request):
             prof = {
                 'sex': getattr(user, 'sex', None),
                 'age': getattr(user, 'age', None),
-                'height_cm': (float(getattr(user, 'height', None)) * 100.0) if getattr(user, 'height', None) else None,
+                'height_cm': _normalize_height_cm_from_user_value(getattr(user, 'height', None)),
                 'weight_kg': float(cur_w or getattr(user, 'weight', 0) or 0),
                 'goal_type': getattr(user, 'goal_type', None),
                 'activity_level': getattr(user, 'activity_level', None),
