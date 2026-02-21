@@ -694,15 +694,6 @@ function buildQuickActions(context) {
 async function fetchCoachContext() {
   const user = getUserProfile();
   const username = user?.username || localStorage.getItem('username');
-  if (!username || !window.API_URL) return null;
-  const token = getAuthToken();
-  if (!token) return null;
-
-  try {
-    const res = await (window.authFetch || fetch)(
-      `${API_URL}coach_context/?include_text=0&username=${encodeURIComponent(username)}`,
-      {
-        method: 'GET',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`
@@ -1195,6 +1186,15 @@ async function processMessage(text, file, pendingId, extraPayload = null) {
       }
     }
     appendMessage(reply, 'bot');
+
+    // Quick actions (botones con estilo existente)
+    try {
+      if (data && typeof data === 'object' && Array.isArray(data.quick_actions) && data.quick_actions.length) {
+        appendQuickActions(data.quick_actions);
+      }
+    } catch (e) {
+      // ignore
+    }
 
     // QAF: si el backend manda follow-ups, mostrarlos como botones (misma UX de quick-actions)
     try {

@@ -1,0 +1,2 @@
+{"id":"case-01_basic","profile":{"kcal_day":2000,"meals_per_day":3,"variety":"normal"},"constraints":{"exclude":[]},"expected":{"days":7}}
+{"id":"case-02_high_variety","profile":{"kcal_day":1800,"meals_per_day":4,"variety":"high"},"constraints":{"exclude":["arroz_blanco_cocido"]},"expected":{"days":7}}

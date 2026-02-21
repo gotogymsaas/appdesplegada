@@ -3809,6 +3809,10 @@ def chat_n8n(request):
         metabolic_result = None
         metabolic_text_for_output_override = ""
 
+        # Exp-004 (meal planner): resultado + texto
+        meal_plan_result = None
+        meal_plan_text_for_output_override = ""
+
         def _week_weights_from_state(state, week_id: str):
             try:
                 ww = state.get('weekly_weights') if isinstance(state.get('weekly_weights'), dict) else {}
@@ -3877,6 +3881,108 @@ def chat_n8n(request):
                 user.save(update_fields=['coach_state', 'coach_state_updated_at'])
         except Exception:
             pass
+
+        # 0.3) Exp-004: generar menú por payload o por intención en el mensaje
+        try:
+            if user:
+                meal_req = request.data.get('meal_plan_request') if isinstance(request.data, dict) else None
+                want_menu = False
+                if isinstance(meal_req, dict):
+                    want_menu = True
+                else:
+                    msg_low = str(message or '').lower()
+                    if re.search(r"\b(men[uú]|meal\s*plan|plan\s+de\s+comidas|menu\s+semanal|men[uú]\s+semanal)\b", msg_low):
+                        want_menu = True
+
+                if want_menu:
+                    variety = None
+                    meals_per_day = None
+                    kcal_day = None
+                    exclude_item_ids = []
+                    locale = (request.data.get('locale') or '').strip() if isinstance(request.data, dict) else ''
+                    locale = locale or 'es-CO'
+
+                    if isinstance(meal_req, dict):
+                        variety = str(meal_req.get('variety') or '').strip().lower() or None
+                        try:
+                            meals_per_day = int(meal_req.get('meals_per_day')) if meal_req.get('meals_per_day') is not None else None
+                        except Exception:
+                            meals_per_day = None
+                        try:
+                            kcal_day = float(meal_req.get('kcal_day')) if meal_req.get('kcal_day') is not None else None
+                        except Exception:
+                            kcal_day = None
+                        if isinstance(meal_req.get('exclude_item_ids'), list):
+                            exclude_item_ids = [str(x) for x in meal_req.get('exclude_item_ids') if str(x).strip()]
+
+                    if variety not in ('simple', 'normal', 'high'):
+                        variety = 'normal'
+                    if meals_per_day not in (3, 4):
+                        meals_per_day = 3
+
+                    if kcal_day is None:
+                        if getattr(user, 'daily_target_kcal_override', None):
+                            try:
+                                kcal_day = float(user.daily_target_kcal_override)
+                            except Exception:
+                                kcal_day = None
+                    if kcal_day is None:
+                        try:
+                            weekly_state = getattr(user, 'coach_weekly_state', {}) or {}
+                            kcal_day = float(((weekly_state.get('metabolic_last') or {}).get('kcal_day')) or 0.0) or None
+                        except Exception:
+                            kcal_day = None
+                    if kcal_day is None:
+                        kcal_day = 2000.0
+
+                    week_id_now = _week_id()
+                    seed = (hash(f"{user.id}:{week_id_now}:{variety}:{kcal_day}:{meals_per_day}") & 0xFFFFFFFF)
+
+                    from .qaf_meal_planner.engine import (
+                        build_quick_actions_for_menu,
+                        generate_week_plan,
+                        render_professional_summary as render_menu_summary,
+                    )
+
+                    meal_plan_result = generate_week_plan(
+                        kcal_day=float(kcal_day),
+                        meals_per_day=int(meals_per_day),
+                        variety_level=variety,
+                        exclude_item_ids=exclude_item_ids,
+                        seed=int(seed),
+                        locale=locale,
+                    )
+
+                    # Persistir siempre para continuidad de UX
+                    try:
+                        weekly_state = getattr(user, 'coach_weekly_state', {}) or {}
+                        ws2 = dict(weekly_state)
+                        mp = ws2.get('meal_plan') if isinstance(ws2.get('meal_plan'), dict) else {}
+                        mp2 = dict(mp)
+                        mp2[week_id_now] = {
+                            'result': meal_plan_result,
+                            'updated_at': timezone.now().isoformat(),
+                            'week_id': week_id_now,
+                        }
+                        ws2['meal_plan'] = mp2
+                        user.coach_weekly_state = ws2
+                        user.coach_weekly_updated_at = timezone.now()
+                        user.save(update_fields=['coach_weekly_state', 'coach_weekly_updated_at'])
+                    except Exception:
+                        pass
+
+                    menu_text = render_menu_summary(meal_plan_result)
+                    if menu_text:
+                        meal_plan_text_for_output_override = menu_text
+                        attachment_text = ((attachment_text or '').strip() + "\n\n" if (attachment_text or '').strip() else "") + f"[MENÚ SEMANAL PROPUESTO]\n{menu_text}".strip()
+
+                    # Quick-actions para regeneración (wow: 1 tap)
+                    try:
+                        quick_actions_out.extend(build_quick_actions_for_menu(variety_level=variety))
+                    except Exception:
+                        pass
+        except Exception as ex:
+            print(f"QAF meal planner warning: {ex}")
 
         # 0) Si llega qaf_context (ej. click en botones), usamos eso para estimar sin Vision.
         try:
@@ -4425,6 +4531,7 @@ def chat_n8n(request):
             "qaf": qaf_result,
             "qaf_context": {"vision": vision_parsed} if isinstance(vision_parsed, dict) else None,
             "qaf_metabolic": metabolic_result,
+            "qaf_meal_plan": meal_plan_result,
             "fitness": fitness_payload,
             "profile": profile_payload,
             "if_snapshot": if_snapshot,
@@ -4506,6 +4613,23 @@ def chat_n8n(request):
                             data['output'] = metabolic_text_for_output_override
                         elif not has_kcal:
                             data['output'] = (metabolic_text_for_output_override.strip() + "\n\n" + out_text.strip()).strip()
+            except Exception:
+                pass
+
+            # Exp-004: resultado de menú + posible override de texto
+            try:
+                if isinstance(data, dict):
+                    if meal_plan_result:
+                        data.setdefault('qaf_meal_plan', meal_plan_result)
+
+                    out_text = data.get('output')
+                    if isinstance(out_text, str) and meal_plan_text_for_output_override:
+                        low = out_text.lower()
+                        has_menu = ("menú" in low) or ("menu" in low) or ("plan de comidas" in low)
+                        if (not out_text.strip()) or ("problema tecnico" in low) or ("problema técnico" in low):
+                            data['output'] = meal_plan_text_for_output_override
+                        elif not has_menu:
+                            data['output'] = (meal_plan_text_for_output_override.strip() + "\n\n" + out_text.strip()).strip()
             except Exception:
                 pass
             return Response(data)
@@ -4675,3 +4799,114 @@ def qaf_metabolic_profile(request):
             pass
 
     return Response({'success': True, 'result': res.payload})
+
+
+@api_view(['POST', 'OPTIONS'])
+@authentication_classes([JWTAuthentication])
+@permission_classes([IsAuthenticatedOrOptions])
+def qaf_meal_plan(request):
+    """Genera y opcionalmente persiste un menú semanal (Exp-004).
+
+    Entrada (JSON):
+      {
+        "kcal_day"?: number,
+        "meals_per_day"?: 3|4,
+        "variety"?: "simple"|"normal"|"high",
+        "exclude_item_ids"?: ["..."]
+        "persist"?: bool
+      }
+
+    Por defecto persiste en `user.coach_weekly_state.meal_plan[week_id]`.
+    """
+
+    if request.method == 'OPTIONS':
+        return Response(status=status.HTTP_200_OK)
+
+    user = _resolve_request_user(request)
+    if not user:
+        return Response({'error': 'Autenticacion requerida'}, status=status.HTTP_401_UNAUTHORIZED)
+
+    payload = request.data if isinstance(request.data, dict) else {}
+    persist = str(payload.get('persist') or '').strip().lower() in ('1', 'true', 'yes', 'on')
+    if payload.get('persist') is None:
+        persist = True
+
+    locale = (payload.get('locale') or '').strip() or 'es-CO'
+
+    try:
+        kcal_day = float(payload.get('kcal_day')) if payload.get('kcal_day') is not None else None
+    except Exception:
+        kcal_day = None
+
+    try:
+        meals_per_day = int(payload.get('meals_per_day')) if payload.get('meals_per_day') is not None else None
+    except Exception:
+        meals_per_day = None
+
+    variety = str(payload.get('variety') or '').strip().lower() or 'normal'
+    if variety not in ('simple', 'normal', 'high'):
+        variety = 'normal'
+
+    exclude_item_ids = payload.get('exclude_item_ids') if isinstance(payload.get('exclude_item_ids'), list) else []
+
+    # kcal target: override > metabolic_last > fallback
+    if kcal_day is None:
+        if getattr(user, 'daily_target_kcal_override', None):
+            try:
+                kcal_day = float(user.daily_target_kcal_override)
+            except Exception:
+                kcal_day = None
+
+    if kcal_day is None:
+        try:
+            weekly_state = getattr(user, 'coach_weekly_state', {}) or {}
+            kcal_day = float(((weekly_state.get('metabolic_last') or {}).get('kcal_day')) or 0.0) or None
+        except Exception:
+            kcal_day = None
+
+    if kcal_day is None:
+        kcal_day = 2000.0
+
+    if meals_per_day not in (3, 4):
+        meals_per_day = 3
+
+    week_id_now = _week_id()
+    seed = (hash(f"{user.id}:{week_id_now}:{variety}:{kcal_day}:{meals_per_day}") & 0xFFFFFFFF)
+
+    from .qaf_meal_planner.engine import (
+        build_quick_actions_for_menu,
+        generate_week_plan,
+        render_professional_summary,
+    )
+
+    result = generate_week_plan(
+        kcal_day=float(kcal_day),
+        meals_per_day=int(meals_per_day),
+        variety_level=variety,
+        exclude_item_ids=[str(x) for x in exclude_item_ids if str(x).strip()],
+        seed=int(seed),
+        locale=locale,
+    )
+
+    quick_actions = build_quick_actions_for_menu(variety_level=variety)
+    text = render_professional_summary(result)
+
+    if persist:
+        try:
+            weekly_state = getattr(user, 'coach_weekly_state', {}) or {}
+            ws2 = dict(weekly_state)
+            mp = ws2.get('meal_plan') if isinstance(ws2.get('meal_plan'), dict) else {}
+            mp2 = dict(mp)
+            mp2[week_id_now] = {
+                'result': result,
+                'updated_at': timezone.now().isoformat(),
+                'week_id': week_id_now,
+            }
+            ws2['meal_plan'] = mp2
+            user.coach_weekly_state = ws2
+            user.coach_weekly_updated_at = timezone.now()
+            user.save(update_fields=['coach_weekly_state', 'coach_weekly_updated_at'])
+        except Exception:
+            pass
+
+    return Response({'success': True, 'result': result, 'text': text, 'quick_actions': quick_actions})
