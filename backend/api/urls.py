@@ -48,4 +48,5 @@ urlpatterns = [
 
     # QAF experiments (API)
     path('qaf/meal_coherence/', views.qaf_meal_coherence, name='qaf_meal_coherence'),
+    path('qaf/metabolic_profile/', views.qaf_metabolic_profile, name='qaf_metabolic_profile'),
 ]

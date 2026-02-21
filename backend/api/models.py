@@ -8,6 +8,12 @@ class User(AbstractUser):
         choices=[("Gratis", "Gratis"), ("Premium", "Premium")],
         default="Gratis"
     )
+    sex = models.CharField(
+        max_length=10,
+        choices=[("male", "male"), ("female", "female")],
+        null=True,
+        blank=True,
+    )
     age = models.PositiveSmallIntegerField(null=True, blank=True)
     weight = models.FloatField(null=True, blank=True)
     height = models.FloatField(null=True, blank=True)

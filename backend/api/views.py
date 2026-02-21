@@ -1318,6 +1318,7 @@ def coach_context(request):
             "full_name": getattr(user, "full_name", None),
             "email": user.email,
             "timezone": getattr(user, "timezone", "") or "",
+            "sex": getattr(user, "sex", None),
             "age": user.age,
             "weight": user.weight,
             "height": user.height,
@@ -3119,6 +3120,11 @@ def update_profile_settings(request):
         if not photo_only and 'favorite_exercise_time' in request.data: user.favorite_exercise_time = request.data['favorite_exercise_time']
         if not photo_only and 'favorite_sport' in request.data: user.favorite_sport = request.data['favorite_sport']
 
+        # Exp-003 (perfil metabólico): sexo biológico
+        if not photo_only and 'sex' in request.data:
+            sx = str(request.data.get('sex') or '').strip().lower()
+            user.sex = sx if sx in ('male', 'female') else None
+
         # Exp-002 (meta + actividad)
         if not photo_only and 'goal_type' in request.data:
             gt = str(request.data.get('goal_type') or '').strip().lower()
@@ -3798,6 +3804,80 @@ def chat_n8n(request):
         qaf_result = None
         qaf_text_for_output_override = ""
 
+        # Exp-003 (perfil metabólico): quick-actions + cálculo semanal
+        quick_actions_out = []
+        metabolic_result = None
+        metabolic_text_for_output_override = ""
+
+        def _week_weights_from_state(state, week_id: str):
+            try:
+                ww = state.get('weekly_weights') if isinstance(state.get('weekly_weights'), dict) else {}
+                row = ww.get(week_id)
+                if isinstance(row, dict):
+                    v = row.get('avg_weight_kg')
+                else:
+                    v = row
+                return float(v) if v is not None else None
+            except Exception:
+                return None
+
+        def _set_week_avg_weight(state, week_id: str, avg_weight_kg: float, source: str):
+            out = dict(state or {})
+            ww = out.get('weekly_weights') if isinstance(out.get('weekly_weights'), dict) else {}
+            ww2 = dict(ww)
+            ww2[week_id] = {
+                'avg_weight_kg': float(avg_weight_kg),
+                'source': str(source or 'chat'),
+                'recorded_at': timezone.now().isoformat(),
+            }
+            out['weekly_weights'] = ww2
+            return out
+
+        # 0) Aplicar payloads de quick-actions (sin cambios de UI): actualizar perfil o registrar peso semanal
+        try:
+            if user and isinstance(request.data, dict):
+                profile_updates = request.data.get('profile_updates')
+                if isinstance(profile_updates, dict) and 'sex' in profile_updates:
+                    sx = str(profile_updates.get('sex') or '').strip().lower()
+                    if sx in ('male', 'female'):
+                        user.sex = sx
+                        user.save(update_fields=['sex'])
+        except Exception:
+            pass
+
+        # 0.1) Peso promedio semanal desde el chat
+        try:
+            if user and isinstance(request.data, dict) and request.data.get('weekly_weight_avg_kg') is not None:
+                try:
+                    avg_w = float(request.data.get('weekly_weight_avg_kg'))
+                except Exception:
+                    avg_w = None
+                if avg_w and avg_w > 0:
+                    week_id_now = _week_id()
+                    state = getattr(user, 'coach_weekly_state', {}) or {}
+                    user.coach_weekly_state = _set_week_avg_weight(state, week_id_now, avg_w, source='chat')
+                    user.coach_weekly_updated_at = timezone.now()
+                    try:
+                        user.weight = float(avg_w)
+                    except Exception:
+                        pass
+                    user.save(update_fields=['coach_weekly_state', 'coach_weekly_updated_at', 'weight'])
+        except Exception:
+            pass
+
+        # 0.2) Snooze: no volver a preguntar esta semana
+        try:
+            if user and isinstance(request.data, dict) and str(request.data.get('weekly_checkin_snooze') or '').strip().lower() in ('1', 'true', 'yes', 'on'):
+                cs = getattr(user, 'coach_state', {}) or {}
+                cs2 = dict(cs)
+                cs2['weekly_checkin_snoozed_week_id'] = _week_id()
+                cs2['weekly_checkin_prompted_week_id'] = _week_id()
+                user.coach_state = cs2
+                user.coach_state_updated_at = timezone.now()
+                user.save(update_fields=['coach_state', 'coach_state_updated_at'])
+        except Exception:
+            pass
+
         # 0) Si llega qaf_context (ej. click en botones), usamos eso para estimar sin Vision.
         try:
             if isinstance(qaf_context, dict) and isinstance(qaf_context.get('vision'), dict):
@@ -4025,6 +4105,131 @@ def chat_n8n(request):
             print(f"QAF calories warning: {ex}")
 
 
+        # Exp-003: Perfil metabólico dinámico (si hay usuario)
+        try:
+            if user:
+                week_id_now = _week_id()
+                weekly_state = getattr(user, 'coach_weekly_state', {}) or {}
+                coach_state = getattr(user, 'coach_state', {}) or {}
+
+                snoozed_week = str(coach_state.get('weekly_checkin_snoozed_week_id') or '')
+                prompted_week = str(coach_state.get('weekly_checkin_prompted_week_id') or '')
+
+                cur_avg = _week_weights_from_state(weekly_state, week_id_now)
+
+                prev_avg = None
+                try:
+                    ww = weekly_state.get('weekly_weights') if isinstance(weekly_state.get('weekly_weights'), dict) else {}
+                    prev_keys = [k for k in ww.keys() if isinstance(k, str) and k != week_id_now]
+                    if prev_keys:
+                        prev_key = sorted(prev_keys)[-1]
+                        prev_avg = _week_weights_from_state(weekly_state, prev_key)
+                except Exception:
+                    prev_avg = None
+
+                should_prompt = (cur_avg is None) and (prompted_week != week_id_now) and (snoozed_week != week_id_now)
+                if should_prompt:
+                    cs2 = dict(coach_state)
+                    cs2['weekly_checkin_prompted_week_id'] = week_id_now
+                    user.coach_state = cs2
+                    user.coach_state_updated_at = timezone.now()
+                    user.save(update_fields=['coach_state', 'coach_state_updated_at'])
+
+                    suggested = None
+                    try:
+                        if getattr(user, 'weight', None):
+                            suggested = round(float(user.weight), 1)
+                    except Exception:
+                        suggested = None
+
+                    if not (getattr(user, 'sex', None) in ('male', 'female')):
+                        quick_actions_out.append({
+                            'label': 'Masculino',
+                            'type': 'message',
+                            'text': 'Masculino',
+                            'payload': {'profile_updates': {'sex': 'male'}},
+                        })
+                        quick_actions_out.append({
+                            'label': 'Femenino',
+                            'type': 'message',
+                            'text': 'Femenino',
+                            'payload': {'profile_updates': {'sex': 'female'}},
+                        })
+                    if suggested is not None:
+                        quick_actions_out.append({
+                            'label': f'Registrar {suggested} kg',
+                            'type': 'message',
+                            'text': f'Registrar {suggested} kg',
+                            'payload': {'weekly_weight_avg_kg': float(suggested)},
+                        })
+                    quick_actions_out.append({
+                        'label': 'Luego',
+                        'type': 'message',
+                        'text': 'Luego',
+                        'payload': {'weekly_checkin_snooze': True},
+                    })
+
+                    attachment_text = ((attachment_text or '').strip() + "\n\n" if (attachment_text or '').strip() else "") + (
+                        "[PERFIL METABÓLICO / CHECK-IN]\n"
+                        "Necesito tu peso promedio semanal (kg) para recalibrar tu perfil metabólico.\n"
+                        "Si falta sexo biológico, pedirlo con una sola pregunta."
+                    )
+
+                # Si ya tenemos dato semanal, calculamos
+                cur_avg2 = _week_weights_from_state(weekly_state, week_id_now)
+                if cur_avg2 is not None:
+                    from .qaf_metabolic_profile.engine import evaluate_weekly_metabolic_profile, render_professional_summary
+
+                    prof = {
+                        'sex': getattr(user, 'sex', None),
+                        'age': getattr(user, 'age', None),
+                        'height_cm': (float(getattr(user, 'height', None)) * 100.0) if getattr(user, 'height', None) else None,
+                        'weight_kg': float(cur_avg2),
+                        'goal_type': getattr(user, 'goal_type', None),
+                        'activity_level': getattr(user, 'activity_level', None),
+                        'daily_target_kcal_override': getattr(user, 'daily_target_kcal_override', None),
+                    }
+
+                    last_alpha = None
+                    try:
+                        last_alpha = (weekly_state.get('metabolic_last') or {}).get('adaptation_alpha')
+                    except Exception:
+                        last_alpha = None
+
+                    weights_payload = {
+                        'current_week': [float(cur_avg2)],
+                        'previous_week': [float(prev_avg)] if (prev_avg is not None and prev_avg > 0) else [],
+                    }
+
+                    mr = evaluate_weekly_metabolic_profile(prof, weights_payload, last_alpha=last_alpha)
+                    metabolic_result = mr.payload
+
+                    # Persistir último cálculo para UX y continuidad
+                    try:
+                        ws2 = dict(weekly_state)
+                        ws2['metabolic_last'] = {
+                            'kcal_day': ((mr.payload.get('recommendation') or {}).get('kcal_day')),
+                            'weekly_adjustment_kcal_day': ((mr.payload.get('recommendation') or {}).get('weekly_adjustment_kcal_day')),
+                            'adaptation_alpha': ((mr.payload.get('metabolic') or {}).get('adaptation_alpha')),
+                            'confidence': ((mr.payload.get('confidence') or {}).get('score')),
+                            'updated_at': timezone.now().isoformat(),
+                            'week_id': week_id_now,
+                        }
+                        user.coach_weekly_state = ws2
+                        user.coach_weekly_updated_at = timezone.now()
+                        user.save(update_fields=['coach_weekly_state', 'coach_weekly_updated_at'])
+                        weekly_state = ws2
+                    except Exception:
+                        pass
+
+                    mtext = render_professional_summary(mr.payload)
+                    if mtext:
+                        metabolic_text_for_output_override = mtext
+                        attachment_text = ((attachment_text or '').strip() + "\n\n" if (attachment_text or '').strip() else "") + f"[PERFIL METABÓLICO DINÁMICO]\n{mtext}".strip()
+        except Exception as ex:
+            print(f"QAF metabolic profile warning: {ex}")
+
+
         # Construir prompt enriquecido (solo con texto real si se pudo)
         final_input = message or "Analisis de archivo adjunto"
         if (attachment_text or "").strip() and not _is_attachment_text_placeholder(attachment_text):
@@ -4219,6 +4424,7 @@ def chat_n8n(request):
             "attachment_text_diagnostic": attachment_text_diagnostic,
             "qaf": qaf_result,
             "qaf_context": {"vision": vision_parsed} if isinstance(vision_parsed, dict) else None,
+            "qaf_metabolic": metabolic_result,
             "fitness": fitness_payload,
             "profile": profile_payload,
             "if_snapshot": if_snapshot,
@@ -4283,6 +4489,25 @@ def chat_n8n(request):
                             data['output'] = (qaf_text_for_output_override.strip() + "\n\n" + out_text.strip()).strip()
             except Exception:
                 pass
+
+            # Exp-003: quick-actions + resultado metabólico
+            try:
+                if isinstance(data, dict):
+                    if quick_actions_out:
+                        data.setdefault('quick_actions', quick_actions_out)
+                    if metabolic_result:
+                        data.setdefault('qaf_metabolic', metabolic_result)
+
+                    out_text = data.get('output')
+                    if isinstance(out_text, str) and metabolic_text_for_output_override:
+                        low = out_text.lower()
+                        has_kcal = ("kcal" in low) or ("calor" in low)
+                        if (not out_text.strip()) or ("problema tecnico" in low) or ("problema técnico" in low):
+                            data['output'] = metabolic_text_for_output_override
+                        elif not has_kcal:
+                            data['output'] = (metabolic_text_for_output_override.strip() + "\n\n" + out_text.strip()).strip()
+            except Exception:
+                pass
             return Response(data)
         else:
             # Intentar obtener mensaje de error de n8n
@@ -4337,3 +4562,116 @@ def qaf_meal_coherence(request):
 
     result = evaluate_meal(user_ctx, meal)
     return Response(result)
+
+
+@api_view(['POST', 'OPTIONS'])
+@authentication_classes([JWTAuthentication])
+@permission_classes([IsAuthenticatedOrOptions])
+def qaf_metabolic_profile(request):
+    """Calcula y opcionalmente persiste el perfil metabólico semanal (Exp-003).
+
+    Entrada (JSON):
+      { "weekly_weight_avg_kg"?: number, "persist"?: bool }
+
+    Usa el usuario autenticado como fuente de sexo/edad/altura/meta/actividad.
+    """
+
+    if request.method == 'OPTIONS':
+        return Response(status=status.HTTP_200_OK)
+
+    user = _resolve_request_user(request)
+    if not user:
+        return Response({'error': 'Autenticacion requerida'}, status=status.HTTP_401_UNAUTHORIZED)
+
+    payload = request.data if isinstance(request.data, dict) else {}
+    persist = str(payload.get('persist') or '').strip().lower() in ('1', 'true', 'yes', 'on')
+
+    week_id_now = _week_id()
+    weekly_state = getattr(user, 'coach_weekly_state', {}) or {}
+
+    avg_w = payload.get('weekly_weight_avg_kg')
+    if avg_w is not None:
+        try:
+            avg_w = float(avg_w)
+        except Exception:
+            avg_w = None
+
+    if avg_w and avg_w > 0 and persist:
+        ww = weekly_state.get('weekly_weights') if isinstance(weekly_state.get('weekly_weights'), dict) else {}
+        ww2 = dict(ww)
+        ww2[week_id_now] = {
+            'avg_weight_kg': float(avg_w),
+            'source': 'api',
+            'recorded_at': timezone.now().isoformat(),
+        }
+        weekly_state = dict(weekly_state)
+        weekly_state['weekly_weights'] = ww2
+        user.coach_weekly_state = weekly_state
+        user.coach_weekly_updated_at = timezone.now()
+        try:
+            user.weight = float(avg_w)
+        except Exception:
+            pass
+        user.save(update_fields=['coach_weekly_state', 'coach_weekly_updated_at', 'weight'])
+
+    cur = None
+    try:
+        row = (weekly_state.get('weekly_weights') or {}).get(week_id_now)
+        cur = float(row.get('avg_weight_kg')) if isinstance(row, dict) else float(row)
+    except Exception:
+        cur = None
+
+    prev = None
+    try:
+        ww = weekly_state.get('weekly_weights') if isinstance(weekly_state.get('weekly_weights'), dict) else {}
+        prev_keys = [k for k in ww.keys() if isinstance(k, str) and k != week_id_now]
+        if prev_keys:
+            prev_key = sorted(prev_keys)[-1]
+            row = ww.get(prev_key)
+            prev = float(row.get('avg_weight_kg')) if isinstance(row, dict) else float(row)
+    except Exception:
+        prev = None
+
+    from .qaf_metabolic_profile.engine import evaluate_weekly_metabolic_profile
+
+    prof = {
+        'sex': getattr(user, 'sex', None),
+        'age': getattr(user, 'age', None),
+        'height_cm': (float(getattr(user, 'height', None)) * 100.0) if getattr(user, 'height', None) else None,
+        'weight_kg': float(cur or getattr(user, 'weight', 0) or 0),
+        'goal_type': getattr(user, 'goal_type', None),
+        'activity_level': getattr(user, 'activity_level', None),
+        'daily_target_kcal_override': getattr(user, 'daily_target_kcal_override', None),
+    }
+
+    last_alpha = None
+    try:
+        last_alpha = (weekly_state.get('metabolic_last') or {}).get('adaptation_alpha')
+    except Exception:
+        last_alpha = None
+
+    weights_payload = {
+        'current_week': [float(cur)] if (cur is not None and cur > 0) else [],
+        'previous_week': [float(prev)] if (prev is not None and prev > 0) else [],
+    }
+
+    res = evaluate_weekly_metabolic_profile(prof, weights_payload, last_alpha=last_alpha)
+
+    if persist:
+        try:
+            ws2 = dict(weekly_state)
+            ws2['metabolic_last'] = {
+                'kcal_day': ((res.payload.get('recommendation') or {}).get('kcal_day')),
+                'weekly_adjustment_kcal_day': ((res.payload.get('recommendation') or {}).get('weekly_adjustment_kcal_day')),
+                'adaptation_alpha': ((res.payload.get('metabolic') or {}).get('adaptation_alpha')),
+                'confidence': ((res.payload.get('confidence') or {}).get('score')),
+                'updated_at': timezone.now().isoformat(),
+                'week_id': week_id_now,
+            }
+            user.coach_weekly_state = ws2
+            user.coach_weekly_updated_at = timezone.now()
+            user.save(update_fields=['coach_weekly_state', 'coach_weekly_updated_at'])
+        except Exception:
+            pass
+
+    return Response({'success': True, 'result': res.payload})

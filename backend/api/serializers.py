@@ -20,7 +20,7 @@ class UserSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
         fields = [
-            'id', 'username', 'email', 'plan', 'age', 'weight', 'height', 'profession', 'full_name',
+            'id', 'username', 'email', 'plan', 'sex', 'age', 'weight', 'height', 'profession', 'full_name',
             'favorite_exercise_time', 'favorite_sport', 'happiness_index', 'scores', 'profile_picture',
             'goal_type', 'activity_level', 'daily_target_kcal_override',
             'current_streak', 'badges', 'date_joined', 'last_login', 'is_active', 'is_superuser', 'trial_active', 'trial_ends_at',

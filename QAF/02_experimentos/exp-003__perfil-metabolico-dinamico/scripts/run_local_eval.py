@@ -1,0 +1,58 @@
+from __future__ import annotations
+
+import argparse
+import json
+from pathlib import Path
+from typing import Any
+
+from qaf_metabolic_profile import evaluate_weekly_metabolic_profile
+
+
+def _pct(n: int, d: int) -> float:
+    if not d:
+        return 0.0
+    return (float(n) / float(d)) * 100.0
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--dataset", required=True)
+    args = parser.parse_args()
+
+    dataset_path = Path(args.dataset)
+
+    processed = 0
+    accepted = 0
+    needs_conf = 0
+    with_alerts = 0
+
+    with dataset_path.open("r", encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            row: dict[str, Any] = json.loads(line)
+            profile = row.get("profile") or {}
+            weights = row.get("weights") or {}
+            res = evaluate_weekly_metabolic_profile(profile, weights)
+
+            processed += 1
+            decision = str(res.payload.get("decision") or "")
+            if decision == "accepted":
+                accepted += 1
+            else:
+                needs_conf += 1
+
+            alerts = res.payload.get("alerts") or []
+            if isinstance(alerts, list) and alerts:
+                with_alerts += 1
+
+    print(f"examples={processed}")
+    print(f"accepted={accepted}/{processed} ({_pct(accepted, processed):.1f}%)")
+    print(f"needs_confirmation={needs_conf}/{processed} ({_pct(needs_conf, processed):.1f}%)")
+    print(f"with_alerts={with_alerts}/{processed} ({_pct(with_alerts, processed):.1f}%)")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

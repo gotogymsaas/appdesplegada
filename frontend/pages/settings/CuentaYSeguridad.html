@@ -175,6 +175,15 @@
             </div>
 
             <div class="form-group">
+                <input type="text" id="sex" class="input-field" placeholder=" " list="sexOptions" autocomplete="off">
+                    <label class="input-label">Sexo biológico (male / female)</label>
+                <datalist id="sexOptions">
+                    <option value="male"></option>
+                    <option value="female"></option>
+                </datalist>
+            </div>
+
+            <div class="form-group">
                 <input type="text" id="goal_type" class="input-field" placeholder=" " list="goalTypeOptions" autocomplete="off">
                     <label class="input-label">Meta actual Peso (déficit / mantenimiento / masa)</label>
                 <datalist id="goalTypeOptions">
@@ -345,6 +354,7 @@
                 document.getElementById('weight').value = user.weight ?? "";
                 document.getElementById('age').value = user.age ?? "";
                 document.getElementById('height').value = user.height ?? "";
+                document.getElementById('sex').value = user.sex ?? "";
                 document.getElementById('goal_type').value = user.goal_type ?? "";
                 document.getElementById('activity_level').value = user.activity_level ?? "";
                 document.getElementById('favorite_exercise_time').value = user.favorite_exercise_time || "";
@@ -476,6 +486,7 @@
             const weight = document.getElementById('weight').value;
             const age = document.getElementById('age').value;
             const height = document.getElementById('height').value;
+            const sex = document.getElementById('sex').value;
             const goalType = document.getElementById('goal_type').value;
             const activityLevel = document.getElementById('activity_level').value;
             const password = document.getElementById('password').value;
@@ -507,6 +518,7 @@
             formData.append('weight', weight);
             formData.append('age', age);
             formData.append('height', height);
+            formData.append('sex', sex);
             formData.append('goal_type', goalType);
             formData.append('activity_level', activityLevel);
             if (password) {

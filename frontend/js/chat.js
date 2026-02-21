@@ -1463,10 +1463,9 @@ function appendQuickActions(actions) {
         return;
       }
       if (action.type === 'message' && action.text) {
-        sendQuickMessage(action.text);
+        sendQuickMessage(action.text, action.payload || null);
         return;
       }
-
       if (action.type === 'qaf_confirm_portion' && action.payload) {
         // Mantener UX: el tap se refleja como un mensaje del usuario (label del botón)
         sendQuickMessage(action.label, action.payload);
@@ -1475,6 +1474,15 @@ function appendQuickActions(actions) {
     wrapper.appendChild(btn);
   });
   messages.appendChild(wrapper);
+
+    // Quick actions (botones con estilo existente)
+    try {
+      if (data && typeof data === 'object' && Array.isArray(data.quick_actions) && data.quick_actions.length) {
+        appendQuickActions(data.quick_actions);
+      }
+    } catch (e) {
+      // ignore
+    }
   messages.scrollTop = messages.scrollHeight;
   updateScrollControls();
 }
