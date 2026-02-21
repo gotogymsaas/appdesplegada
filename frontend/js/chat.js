@@ -16,7 +16,7 @@ return;
 // 1. Inyectar CSS
 const link = document.createElement('link');
 link.rel = "stylesheet";
-const CHAT_CSS_VERSION = '2026-02-21-2';
+const CHAT_CSS_VERSION = '2026-02-21-3';
 link.href = `/css/chat.css?v=${CHAT_CSS_VERSION}`; // Ruta absoluta desde raíz del servidor // frontend
 // Si estás en subcarpetas, esto funciona si el server sirve desde raíz.
 // Si falla, intentaremos ruta relativa automática
@@ -44,13 +44,13 @@ container.innerHTML = `
   <div id="chat-attachment-preview" hidden></div>
 
   <div class="chat-footer-row">
-    <button type="submit" id="chat-send-btn" aria-label="Enviar" title="Enviar">
-      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4l7 7-1.4 1.4L13 7.8V20h-2V7.8L6.4 12.4 5 11l7-7z"/></svg>
-    </button>
+    <button type="button" id="chat-plus-btn" aria-label="Más opciones" title="Más">+</button>
 
     <textarea id="chat-input" rows="1" placeholder="Escribe tu duda..." autocomplete="off"></textarea>
 
-    <button type="button" id="chat-plus-btn" aria-label="Más opciones" title="Más">+</button>
+    <button type="submit" id="chat-send-btn" aria-label="Enviar" title="Enviar">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4l7 7-1.4 1.4L13 7.8V20h-2V7.8L6.4 12.4 5 11l7-7z"/></svg>
+    </button>
   </div>
 
   <div id="chat-tools-menu" hidden>

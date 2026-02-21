@@ -338,7 +338,7 @@ body[data-theme="light"] #chat-widget-container {
 
 .chat-footer-row {
   display: flex;
-  align-items: flex-end;
+  align-items: center;
   gap: 10px;
   flex-wrap: nowrap;
 }
@@ -388,7 +388,7 @@ body[data-theme="light"] #chat-widget-container {
 /* Menú desplegable del + */
 #chat-tools-menu {
   position: absolute;
-  right: 10px;
+  left: 10px;
   bottom: calc(100% + 10px);
   background: var(--chat-bg);
   border: 1px solid var(--chat-border);
@@ -471,14 +471,15 @@ body[data-theme="light"] #chat-widget-container {
 #chat-input {
   flex: 1;
   min-width: 0;
+  min-height: 44px;
   background: var(--chat-surface-2);
   border: 1px solid var(--chat-border);
   border-radius: 20px;
-  padding: 10px 15px;
+  padding: 12px 15px;
   color: var(--chat-text);
   outline: none;
   font-size: 16px;
-  line-height: 20px;
+  line-height: 1.4;
   resize: none;
   max-height: 120px;
   overflow-y: hidden;
