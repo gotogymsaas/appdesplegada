@@ -1759,8 +1759,15 @@ function appendQuickActions(actions) {
     const btn = document.createElement('button');
     btn.type = 'button';
     btn.className = 'quick-action-btn';
-    btn.textContent = action.label;
+    btn.textContent = action.label || action.text || 'Acción';
     btn.addEventListener('click', () => {
+      // Evitar doble tap (especialmente en mobile)
+      if (btn.disabled) return;
+      btn.disabled = true;
+      setTimeout(() => {
+        try { btn.disabled = false; } catch (e) { /* ignore */ }
+      }, 1200);
+
       if (action.type === 'open_camera') {
         closeToolsMenu();
         cameraInput?.click();
@@ -1830,14 +1837,6 @@ function appendQuickActions(actions) {
   });
   messages.appendChild(wrapper);
 
-    // Quick actions (botones con estilo existente)
-    try {
-      if (data && typeof data === 'object' && Array.isArray(data.quick_actions) && data.quick_actions.length) {
-        appendQuickActions(data.quick_actions);
-      }
-    } catch (e) {
-      // ignore
-    }
   messages.scrollTop = messages.scrollHeight;
   updateScrollControls();
 }

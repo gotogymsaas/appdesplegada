@@ -184,9 +184,25 @@ def evaluate_motivation(payload: dict[str, Any]) -> MotivationResult:
     if not prev_vec:
         prev_vec = {"logro": 0.2, "disciplina": 0.2, "salud": 0.2, "estetica": 0.2, "comunidad": 0.2}
 
-    obs_vec, evidence = infer_motivation_observation(message)
-    updated = _ema(_norm_dict(prev_vec), obs_vec, alpha=0.25)
-    updated = _norm_dict(updated)
+    # Evitar contaminar el perfil con mensajes que son solo taps/botones.
+    msg_low = (message or "").strip().lower()
+    non_signal = msg_low in (
+        "suave",
+        "medio",
+        "firme",
+        "✅ lo hago",
+        "lo hago",
+        "modo fácil 7 días",
+        "🟡 modo fácil 7 días",
+    ) or (len(msg_low) <= 3)
+
+    if non_signal:
+        obs_vec, evidence = (_norm_dict({k: 0.0 for k in prev_vec.keys()}), {k: 0 for k in prev_vec.keys()})
+        updated = _norm_dict(prev_vec)
+    else:
+        obs_vec, evidence = infer_motivation_observation(message)
+        updated = _ema(_norm_dict(prev_vec), obs_vec, alpha=0.25)
+        updated = _norm_dict(updated)
 
     lifestyle_band = None
     try:
@@ -206,6 +222,17 @@ def evaluate_motivation(payload: dict[str, Any]) -> MotivationResult:
         intervention = 2
     elif mood == "fatiga":
         intervention = 1
+
+    # Modo fácil (Renacer) activo: fuerza intervención 3 durante la ventana.
+    try:
+        ren_until = memory.get("renacer_until")
+        if isinstance(ren_until, str) and ren_until:
+            until_d = date.fromisoformat(ren_until[:10])
+            if date.today() <= until_d:
+                intervention = max(int(intervention), 3)
+                mood_signals.append("mode_renacer_active")
+    except Exception:
+        pass
 
     profile_top = _top_dimension(updated)
     pressure = str(preferences.get("pressure") or "").strip().lower() or None
@@ -270,7 +297,8 @@ def render_professional_summary(result: dict[str, Any]) -> str:
     reward = result.get("reward") if isinstance(result.get("reward"), dict) else {}
 
     lines: list[str] = []
-    lines.append(f"decision: {result.get('decision')}")
+    if result.get('decision') == 'needs_confirmation':
+        lines.append("Antes de ajustar el tono, necesito una preferencia rápida.")
     if prof.get("top"):
         lines.append(f"perfil dominante: {prof.get('top')}")
     if state.get("mood"):

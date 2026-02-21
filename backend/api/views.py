@@ -4518,6 +4518,28 @@ def chat_n8n(request):
                     except Exception:
                         pass
 
+                    # Efectos UX: reconocer y (si aplica) acreditar racha por auto-reporte.
+                    try:
+                        if ma.get('accept') is True:
+                            from api.gamification_service import update_user_streak
+                            update_user_streak(user, source='motivation_accept')
+                        if str(ma.get('mode') or '').strip().lower() == 'renacer_7d':
+                            cs2 = getattr(user, 'coach_state', {}) or {}
+                            cs3 = dict(cs2)
+                            # ventana 7 días desde hoy (fecha local)
+                            until_d = (timezone.localdate() + timezone.timedelta(days=7)).isoformat()
+                            mem0 = cs3.get('motivation_memory') if isinstance(cs3.get('motivation_memory'), dict) else {}
+                            mem1 = dict(mem0)
+                            mem1['renacer_until'] = until_d
+                            cs3['motivation_memory'] = mem1
+                            cs3['motivation_mode'] = {'key': 'renacer_7d', 'until': until_d, 'started_at': timezone.now().isoformat()}
+                            user.coach_state = cs3
+                            user.coach_state_updated_at = timezone.now()
+                            user.save(update_fields=['coach_state', 'coach_state_updated_at'])
+                            cs = cs3
+                    except Exception:
+                        pass
+
                 # Inferir days_inactive por última interacción guardada
                 try:
                     last_seen = mem.get('last_seen_at')
@@ -4530,6 +4552,27 @@ def chat_n8n(request):
                     pass
 
                 if want_motivation:
+                    # Si viene acción explícita, priorizar reconocimiento breve.
+                    try:
+                        if isinstance(ma, dict) and ma.get('accept') is True:
+                            streak_now = int(getattr(user, 'current_streak', 0) or 0)
+                            motivation_text_for_output_override = (
+                                "Perfecto. Eso cuenta como constancia de hoy.\n"
+                                f"Racha actual: {streak_now} días.\n"
+                                "¿Quieres que subamos un poco el reto mañana o mantenemos estabilidad?"
+                            )
+                    except Exception:
+                        pass
+                    try:
+                        if isinstance(ma, dict) and str(ma.get('mode') or '').strip().lower() == 'renacer_7d':
+                            motivation_text_for_output_override = (
+                                "Listo. Activé Modo Renacer por 7 días.\n"
+                                "Objetivo: hábitos mínimos, sin presión.\n"
+                                "Hoy solo vamos por el siguiente paso pequeño."
+                            )
+                    except Exception:
+                        pass
+
                     lifestyle_last = None
                     try:
                         lifestyle_last = (cs.get('lifestyle_last') or {}).get('result')
@@ -4552,7 +4595,7 @@ def chat_n8n(request):
                     }).payload
 
                     mtext = render_professional_summary(motivation_result)
-                    if mtext:
+                    if mtext and not motivation_text_for_output_override:
                         motivation_text_for_output_override = mtext
                         attachment_text = ((attachment_text or '').strip() + "\n\n" if (attachment_text or '').strip() else "") + f"[MOTIVACIÓN]\n{mtext}".strip()
 
