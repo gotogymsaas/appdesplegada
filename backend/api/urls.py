@@ -56,4 +56,5 @@ urlpatterns = [
     path('qaf/posture/', views.qaf_posture, name='qaf_posture'),
     path('qaf/lifestyle/', views.qaf_lifestyle, name='qaf_lifestyle'),
     path('qaf/motivation/', views.qaf_motivation, name='qaf_motivation'),
+    path('qaf/progression/', views.qaf_progression, name='qaf_progression'),
 ]

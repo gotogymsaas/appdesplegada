@@ -3832,6 +3832,11 @@ def chat_n8n(request):
         motivation_text_for_output_override = ""
         motivation_quick_actions_out: list[dict[str, Any]] = []
 
+        # Exp-009 (progresión): resultado + texto + quick-actions
+        progression_result = None
+        progression_text_for_output_override = ""
+        progression_quick_actions_out: list[dict[str, Any]] = []
+
         def _week_weights_from_state(state, week_id: str):
             try:
                 ww = state.get('weekly_weights') if isinstance(state.get('weekly_weights'), dict) else {}
@@ -4678,6 +4683,207 @@ def chat_n8n(request):
         except Exception as ex:
             print(f"QAF motivation warning: {ex}")
 
+        # 0.8) Exp-009: Progresión (fuerza + cardio)
+        try:
+            if user:
+                pr = request.data.get('progression_request') if isinstance(request.data, dict) else None
+                pa = request.data.get('progression_action') if isinstance(request.data, dict) else None
+
+                want_prog = False
+                if isinstance(pr, dict) or isinstance(pa, dict):
+                    want_prog = True
+                else:
+                    msg_low = str(message or '').lower()
+                    if re.search(r"\b(progres|estanc|plateau|subir\s+peso|subir\s+carga|mas\s+reps|cardio|correr|bici|eliptica)\b", msg_low):
+                        want_prog = True
+
+                if want_prog:
+                    from .qaf_progression.engine import evaluate_progression, render_professional_summary, parse_strength_line
+
+                    cs = getattr(user, 'coach_state', {}) or {}
+                    mem = cs.get('progression_history') if isinstance(cs.get('progression_history'), dict) else {}
+
+                    # Base session payload
+                    session = {}
+                    strength = None
+                    cardio = None
+                    if isinstance(pr, dict):
+                        session = pr.get('session') if isinstance(pr.get('session'), dict) else {}
+                        strength = pr.get('strength') if isinstance(pr.get('strength'), dict) else None
+                        cardio = pr.get('cardio') if isinstance(pr.get('cardio'), dict) else None
+
+                    # Parse desde texto si no vino fuerza
+                    if not strength and message:
+                        strength = parse_strength_line(str(message))
+
+                    # Señales: reusar lifestyle + mood
+                    lifestyle_last = (cs.get('lifestyle_last') or {}).get('result') if isinstance(cs.get('lifestyle_last'), dict) else None
+                    mood = None
+                    try:
+                        mood = ((cs.get('motivation_last') or {}).get('result') or {}).get('state', {}).get('mood')
+                    except Exception:
+                        mood = None
+
+                    signals = pr.get('signals') if isinstance(pr, dict) and isinstance(pr.get('signals'), dict) else {}
+                    try:
+                        if isinstance(lifestyle_last, dict):
+                            sig = lifestyle_last.get('signals') if isinstance(lifestyle_last.get('signals'), dict) else {}
+                            if signals.get('sleep_minutes') is None:
+                                signals['sleep_minutes'] = (sig.get('sleep') or {}).get('value')
+                            if signals.get('steps') is None:
+                                signals['steps'] = (sig.get('steps') or {}).get('value')
+                            if signals.get('resting_heart_rate_bpm') is None:
+                                signals['resting_heart_rate_bpm'] = (sig.get('stress_inv') or {}).get('value')
+                            if signals.get('lifestyle_band') is None:
+                                signals['lifestyle_band'] = (lifestyle_last.get('dhss') or {}).get('band')
+                    except Exception:
+                        pass
+                    if signals.get('mood') is None and mood:
+                        signals['mood'] = mood
+
+                    # Aplicar acciones de botones (paging / valores)
+                    if isinstance(pa, dict):
+                        # merge session updates
+                        if isinstance(pa.get('session'), dict):
+                            session = {**session, **pa.get('session')}
+                        if isinstance(pa.get('cardio'), dict):
+                            cardio = {**(cardio or {}), **pa.get('cardio')}
+                        if isinstance(pa.get('strength'), dict):
+                            strength = {**(strength or {}), **pa.get('strength')}
+
+                    progression_result = evaluate_progression({
+                        'session': session,
+                        'strength': strength,
+                        'cardio': cardio,
+                        'history': mem,
+                        'signals': signals,
+                    }).payload
+
+                    ptext = render_professional_summary(progression_result)
+                    if ptext:
+                        progression_text_for_output_override = ptext
+                        attachment_text = ((attachment_text or '').strip() + "\n\n" if (attachment_text or '').strip() else "") + f"[PROGRESIÓN]\n{ptext}".strip()
+
+                    # Quick actions guiadas para missing (sin UI nueva)
+                    try:
+                        missing = ((progression_result.get('confidence') or {}).get('missing') or [])
+                        missing = [str(x) for x in missing]
+
+                        def _rpe_page(high: bool):
+                            out = []
+                            rng = range(6, 11) if high else range(1, 6)
+                            for i in rng:
+                                out.append({
+                                    'label': f"RPE {i}",
+                                    'type': 'message',
+                                    'text': f"RPE {i}",
+                                    'payload': {'progression_action': {'session': {'rpe_1_10': i}}},
+                                })
+                            # toggle
+                            out.append({
+                                'label': 'RPE 6–10' if not high else 'RPE 1–5',
+                                'type': 'message',
+                                'text': 'RPE 6–10' if not high else 'RPE 1–5',
+                                'payload': {'progression_action': {'ui': {'rpe_page': ('high' if not high else 'low')}}},
+                            })
+                            return out
+
+                        rpe_page = None
+                        try:
+                            rpe_page = str(((pa or {}).get('ui') or {}).get('rpe_page') or '').strip().lower() if isinstance(pa, dict) else ''
+                        except Exception:
+                            rpe_page = ''
+
+                        if 'rpe_1_10' in missing:
+                            progression_quick_actions_out.extend(_rpe_page(high=(rpe_page == 'high'))[:6])
+
+                        if 'completion_pct' in missing and len(progression_quick_actions_out) < 6:
+                            # completion presets
+                            opts = [
+                                (1.0, '100%'),
+                                (0.8, '80%'),
+                                (0.6, '60%'),
+                                (0.4, '40%'),
+                            ]
+                            for v, lab in opts:
+                                if len(progression_quick_actions_out) >= 6:
+                                    break
+                                progression_quick_actions_out.append({
+                                    'label': f"Cumplí {lab}",
+                                    'type': 'message',
+                                    'text': f"Cumplí {lab}",
+                                    'payload': {'progression_action': {'session': {'completion_pct': v}}},
+                                })
+
+                        if 'modality' in missing and len(progression_quick_actions_out) < 6:
+                            progression_quick_actions_out.append({
+                                'label': 'Fuerza',
+                                'type': 'message',
+                                'text': 'Fuerza',
+                                'payload': {'progression_action': {'strength': {'name': 'pendiente', 'sets': 0, 'reps': 0}}},
+                            })
+                            progression_quick_actions_out.append({
+                                'label': 'Cardio',
+                                'type': 'message',
+                                'text': 'Cardio',
+                                'payload': {'progression_action': {'cardio': {'minutes': 20}}},
+                            })
+                    except Exception:
+                        pass
+
+                    # Persistir history mínimo si accepted y hay datos
+                    try:
+                        if isinstance(progression_result, dict) and progression_result.get('decision') == 'accepted':
+                            mem2 = dict(mem)
+                            if isinstance(strength, dict) and strength.get('name') and strength.get('sets') and strength.get('reps'):
+                                name = str(strength.get('name') or '').strip().lower()
+                                sets = int(strength.get('sets') or 0)
+                                reps = int(strength.get('reps') or 0)
+                                load = strength.get('load_kg')
+                                try:
+                                    load_f = float(load) if load is not None else None
+                                except Exception:
+                                    load_f = None
+                                ton = None
+                                est1 = None
+                                if load_f is not None and load_f > 0:
+                                    ton = float(sets) * float(reps) * float(load_f)
+                                    est1 = float(load_f) * (1.0 + (float(reps) / 30.0))
+                                key = f"strength:{name}"
+                                rows = mem2.get(key) if isinstance(mem2.get(key), list) else []
+                                rows2 = [r for r in rows if isinstance(r, dict)][-2:]
+                                rows2.append({'date': timezone.localdate().isoformat(), 'sets': sets, 'reps': reps, 'load_kg': load_f, 'tonnage': ton, 'est_1rm': est1, 'rpe': session.get('rpe_1_10')})
+                                mem2[key] = rows2[-3:]
+                            if isinstance(cardio, dict) and cardio.get('minutes') is not None:
+                                rows = mem2.get('cardio:default') if isinstance(mem2.get('cardio:default'), list) else []
+                                rows2 = [r for r in rows if isinstance(r, dict)][-2:]
+                                rows2.append({'date': timezone.localdate().isoformat(), 'minutes': cardio.get('minutes'), 'avg_hr': cardio.get('avg_hr'), 'rpe': session.get('rpe_1_10')})
+                                mem2['cardio:default'] = rows2[-3:]
+                            cs2 = dict(cs)
+                            cs2['progression_history'] = mem2
+                            cs2['progression_last'] = {'result': progression_result, 'updated_at': timezone.now().isoformat()}
+                            user.coach_state = cs2
+                            user.coach_state_updated_at = timezone.now()
+                            user.save(update_fields=['coach_state', 'coach_state_updated_at'])
+                    except Exception:
+                        pass
+
+                    # Responder directo si viene de botones/payloads
+                    try:
+                        if (isinstance(pr, dict) or isinstance(pa, dict)) and progression_text_for_output_override:
+                            existing = quick_actions_out if isinstance(quick_actions_out, list) else []
+                            existing2 = [x for x in existing if isinstance(x, dict)]
+                            out_actions = (existing2 + progression_quick_actions_out)[:6] if progression_quick_actions_out else existing2[:6]
+                            return Response({
+                                'output': progression_text_for_output_override,
+                                'quick_actions': out_actions,
+                                'qaf_progression': progression_result,
+                            })
+                    except Exception:
+                        pass
+        except Exception as ex:
+            print(f"QAF progression warning: {ex}")
+
         # 0) Si llega qaf_context (ej. click en botones), usamos eso para estimar sin Vision.
         try:
             if isinstance(qaf_context, dict) and isinstance(qaf_context.get('vision'), dict):
@@ -5231,6 +5437,7 @@ def chat_n8n(request):
             "qaf_body_trend": body_trend_result,
             "qaf_posture": posture_result,
             "qaf_motivation": motivation_result,
+            "qaf_progression": progression_result,
             "fitness": fitness_payload,
             "profile": profile_payload,
             "if_snapshot": if_snapshot,
@@ -5390,6 +5597,26 @@ def chat_n8n(request):
                             data['output'] = motivation_text_for_output_override
                         elif not has_mot:
                             data['output'] = (motivation_text_for_output_override.strip() + "\n\n" + out_text.strip()).strip()
+            except Exception:
+                pass
+
+            # Exp-009: progresión (quick-actions + resultado)
+            try:
+                if isinstance(data, dict):
+                    if progression_quick_actions_out:
+                        existing = data.get('quick_actions') if isinstance(data.get('quick_actions'), list) else []
+                        data['quick_actions'] = (existing + progression_quick_actions_out)[:6]
+                    if progression_result:
+                        data.setdefault('qaf_progression', progression_result)
+
+                    out_text = data.get('output')
+                    if isinstance(out_text, str) and progression_text_for_output_override:
+                        low = out_text.lower()
+                        has_prog = ('readiness' in low) or ('micro-objetivo' in low) or ('progres' in low)
+                        if (not out_text.strip()) or ('problema tecnico' in low) or ('problema técnico' in low):
+                            data['output'] = progression_text_for_output_override
+                        elif not has_prog:
+                            data['output'] = (progression_text_for_output_override.strip() + "\n\n" + out_text.strip()).strip()
             except Exception:
                 pass
 
@@ -6131,6 +6358,108 @@ def qaf_motivation(request):
         cs2['motivation_memory'] = mem2
         cs2['motivation_preferences'] = prefs
         cs2['motivation_last'] = {'result': res, 'updated_at': timezone.now().isoformat()}
+        user.coach_state = cs2
+        user.coach_state_updated_at = timezone.now()
+        user.save(update_fields=['coach_state', 'coach_state_updated_at'])
+    except Exception:
+        pass
+
+    return Response({'success': True, 'result': res, 'text': text})
+
+
+@api_view(['POST', 'OPTIONS'])
+@authentication_classes([JWTAuthentication])
+@permission_classes([IsAuthenticatedOrOptions])
+def qaf_progression(request):
+    """Exp-009: Progresión inteligente (fuerza + cardio).
+
+    Entrada: payload con `session`, y opcional `strength`/`cardio`.
+    Si no vienen, intenta parsear desde `message`.
+    """
+
+    if request.method == 'OPTIONS':
+        return Response(status=status.HTTP_200_OK)
+
+    user = _resolve_request_user(request)
+    if not user:
+        return Response({'error': 'Autenticacion requerida'}, status=status.HTTP_401_UNAUTHORIZED)
+
+    payload = request.data if isinstance(request.data, dict) else {}
+    message = str(payload.get('message') or payload.get('text') or '').strip()
+
+    from .qaf_progression.engine import evaluate_progression, render_professional_summary, parse_strength_line
+
+    session = payload.get('session') if isinstance(payload.get('session'), dict) else {}
+    strength = payload.get('strength') if isinstance(payload.get('strength'), dict) else None
+    cardio = payload.get('cardio') if isinstance(payload.get('cardio'), dict) else None
+
+    # Parse rápido si no hay estructura
+    if not strength and message:
+        strength = parse_strength_line(message)
+
+    # Señales del día: usar último lifestyle + mood
+    cs = getattr(user, 'coach_state', {}) or {}
+    lifestyle_last = (cs.get('lifestyle_last') or {}).get('result') if isinstance(cs.get('lifestyle_last'), dict) else None
+    mood = None
+    try:
+        mood = ((cs.get('motivation_last') or {}).get('result') or {}).get('state', {}).get('mood')
+    except Exception:
+        mood = None
+
+    signals = payload.get('signals') if isinstance(payload.get('signals'), dict) else {}
+    # Atajo: completar señales desde lifestyle si faltan
+    try:
+        if isinstance(lifestyle_last, dict):
+            sig = lifestyle_last.get('signals') if isinstance(lifestyle_last.get('signals'), dict) else {}
+            if signals.get('sleep_minutes') is None:
+                signals['sleep_minutes'] = (sig.get('sleep') or {}).get('value')
+            if signals.get('steps') is None:
+                signals['steps'] = (sig.get('steps') or {}).get('value')
+            if signals.get('resting_heart_rate_bpm') is None:
+                signals['resting_heart_rate_bpm'] = (sig.get('stress_inv') or {}).get('value')
+            if signals.get('lifestyle_band') is None:
+                signals['lifestyle_band'] = (lifestyle_last.get('dhss') or {}).get('band')
+    except Exception:
+        pass
+    if signals.get('mood') is None and mood:
+        signals['mood'] = mood
+
+    # History
+    mem = cs.get('progression_history') if isinstance(cs.get('progression_history'), dict) else {}
+
+    res = evaluate_progression({'session': session, 'strength': strength, 'cardio': cardio, 'history': mem, 'signals': signals}).payload
+    text = render_professional_summary(res)
+
+    # Persistir history mínimo
+    try:
+        mem2 = dict(mem)
+        if isinstance(strength, dict) and strength.get('name'):
+            name = str(strength.get('name') or '').strip().lower()
+            sets = int(strength.get('sets') or 0)
+            reps = int(strength.get('reps') or 0)
+            load = strength.get('load_kg')
+            try:
+                load_f = float(load) if load is not None else None
+            except Exception:
+                load_f = None
+            ton = None
+            est1 = None
+            if load_f is not None and load_f > 0 and sets > 0 and reps > 0:
+                ton = float(sets) * float(reps) * float(load_f)
+                est1 = float(load_f) * (1.0 + (float(reps) / 30.0))
+            key = f"strength:{name}"
+            rows = mem2.get(key) if isinstance(mem2.get(key), list) else []
+            rows2 = [r for r in rows if isinstance(r, dict)][-2:]
+            rows2.append({'date': timezone.localdate().isoformat(), 'sets': sets, 'reps': reps, 'load_kg': load_f, 'tonnage': ton, 'est_1rm': est1, 'rpe': session.get('rpe_1_10')})
+            mem2[key] = rows2[-3:]
+        if isinstance(cardio, dict) and cardio.get('minutes') is not None:
+            rows = mem2.get('cardio:default') if isinstance(mem2.get('cardio:default'), list) else []
+            rows2 = [r for r in rows if isinstance(r, dict)][-2:]
+            rows2.append({'date': timezone.localdate().isoformat(), 'minutes': cardio.get('minutes'), 'avg_hr': cardio.get('avg_hr'), 'rpe': session.get('rpe_1_10')})
+            mem2['cardio:default'] = rows2[-3:]
+        cs2 = dict(cs)
+        cs2['progression_history'] = mem2
+        cs2['progression_last'] = {'result': res, 'updated_at': timezone.now().isoformat()}
         user.coach_state = cs2
         user.coach_state_updated_at = timezone.now()
         user.save(update_fields=['coach_state', 'coach_state_updated_at'])
