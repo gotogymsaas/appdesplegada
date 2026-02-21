@@ -16,7 +16,7 @@ return;
 // 1. Inyectar CSS
 const link = document.createElement('link');
 link.rel = "stylesheet";
-const CHAT_CSS_VERSION = '2026-02-21-3';
+const CHAT_CSS_VERSION = '2026-02-21-4';
 link.href = `/css/chat.css?v=${CHAT_CSS_VERSION}`; // Ruta absoluta desde raíz del servidor // frontend
 // Si estás en subcarpetas, esto funciona si el server sirve desde raíz.
 // Si falla, intentaremos ruta relativa automática
@@ -824,6 +824,8 @@ if (plusBtn) {
 // Cerrar menú si se toca fuera
 document.addEventListener('click', (event) => {
   if (!toolsMenu || toolsMenu.hidden) return;
+  // Si estamos grabando, no cerrar el menú para permitir detener con el mismo botón.
+  if (micBtn && micBtn.classList.contains('recording')) return;
   const target = event.target;
   if (!(target instanceof Element)) return;
   if (toolsMenu.contains(target) || plusBtn?.contains(target)) return;

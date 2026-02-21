@@ -395,11 +395,15 @@ body[data-theme="light"] #chat-widget-container {
   border-radius: 14px;
   box-shadow: var(--chat-shadow);
   padding: 8px;
-  display: flex;
+  display: none;
   flex-direction: column;
   gap: 6px;
   min-width: 190px;
   z-index: 3;
+}
+
+#chat-tools-menu:not([hidden]) {
+  display: flex;
 }
 
 #chat-tools-menu button {
@@ -424,7 +428,7 @@ body[data-theme="light"] #chat-widget-container {
 }
 
 #chat-attachment-preview {
-  display: flex;
+  display: none;
   align-items: center;
   gap: 8px;
   padding: 6px 10px;
@@ -433,6 +437,10 @@ body[data-theme="light"] #chat-widget-container {
   border: 1px solid rgba(15, 191, 160, 0.2);
   color: var(--chat-text);
   font-size: 12px;
+}
+
+#chat-attachment-preview:not([hidden]) {
+  display: flex;
 }
 
 #chat-attachment-preview[data-state="uploading"] {
