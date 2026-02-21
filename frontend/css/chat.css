@@ -55,6 +55,10 @@ body[data-theme="light"] #chat-widget-container {
   right: 20px;
   z-index: 9999;
   font-family: var(--font-main, inherit);
+
+  /* Evita escalados/zoom inesperados de texto en mobile webviews */
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
 }
 
 #chat-toggle-btn {
@@ -741,7 +745,8 @@ body[data-theme="light"] #chat-widget-container {
   }
 
   #chat-input {
-    font-size: 15px;
+    /* iOS auto-zoom al enfocar si el font-size es < 16px */
+    font-size: 16px;
   }
 
   #chat-toggle-btn {
