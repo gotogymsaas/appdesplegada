@@ -82,6 +82,7 @@ Nota: el handler puede enriquecer la respuesta con resultados QAF (exp-003/004/0
 - `POST /api/qaf/meal_plan/mutate/` (Exp-004)
 - `POST /api/qaf/body_trend/` (Exp-005)
 - `POST /api/qaf/posture/` (Exp-006)
+- `POST /api/qaf/lifestyle/` (Exp-007)
 
 ## Dispositivos / salud (JWT)
 

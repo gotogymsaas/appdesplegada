@@ -1,0 +1,2 @@
+{"id":"basic_ok","input":{"daily_metrics":[{"date":"2026-02-19","steps":8200,"sleep_minutes":420,"calories":1800,"resting_heart_rate_bpm":64},{"date":"2026-02-20","steps":9100,"sleep_minutes":450,"calories":2000,"resting_heart_rate_bpm":63},{"date":"2026-02-21","steps":10000,"sleep_minutes":480,"calories":2100,"resting_heart_rate_bpm":62}],"self_report":{"stress_1_5":2,"sleep_quality_1_5":4},"memory":{"last_ids":["walk_5_postmeal"]}}}
+{"id":"missing_sleep","input":{"daily_metrics":[{"date":"2026-02-21","steps":3000,"calories":900}],"self_report":{"stress_1_5":4}}}

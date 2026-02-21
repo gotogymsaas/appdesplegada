@@ -5590,3 +5590,80 @@ def qaf_posture(request):
     text = render_professional_summary(res)
     return Response({'success': True, 'result': res, 'text': text})
 
+
+@api_view(['POST', 'OPTIONS'])
+@authentication_classes([JWTAuthentication])
+@permission_classes([IsAuthenticatedOrOptions])
+def qaf_lifestyle(request):
+    """Exp-007: Lifestyle Intelligence Engine (DHSS + patrones + micro-hábitos)."""
+
+    if request.method == 'OPTIONS':
+        return Response(status=status.HTTP_200_OK)
+
+    user = _resolve_request_user(request)
+    if not user:
+        return Response({'error': 'Autenticacion requerida'}, status=status.HTTP_401_UNAUTHORIZED)
+
+    payload = request.data if isinstance(request.data, dict) else {}
+    days = payload.get('days')
+    try:
+        days_i = int(days) if days is not None else 14
+    except Exception:
+        days_i = 14
+    days_i = max(3, min(30, days_i))
+
+    self_report = payload.get('self_report') if isinstance(payload.get('self_report'), dict) else {}
+
+    # Construir daily_metrics desde FitnessSync (último por día)
+    try:
+        from datetime import timedelta
+        from django.utils import timezone
+        from devices.models import FitnessSync
+
+        start_dt = timezone.now() - timedelta(days=days_i)
+        qs = FitnessSync.objects.filter(user=user, created_at__gte=start_dt).only('created_at', 'metrics').order_by('created_at')
+        by_day = {}
+        for s in qs:
+            d = timezone.localdate(s.created_at).isoformat()
+            by_day[d] = (s.metrics or {})
+
+        daily_metrics = []
+        for d, m in sorted(by_day.items()):
+            row = {'date': d}
+            if isinstance(m, dict):
+                for k in ('steps', 'sleep_minutes', 'calories', 'resting_heart_rate_bpm', 'avg_heart_rate_bpm', 'distance_m', 'distance_km'):
+                    if k in m:
+                        row[k] = m.get(k)
+            daily_metrics.append(row)
+    except Exception:
+        daily_metrics = []
+
+    # memory desde coach_state
+    cs = getattr(user, 'coach_state', {}) or {}
+    mem = cs.get('lifestyle_memory') if isinstance(cs.get('lifestyle_memory'), dict) else {}
+
+    from .qaf_lifestyle.engine import evaluate_lifestyle, render_professional_summary
+    res = evaluate_lifestyle({'daily_metrics': daily_metrics, 'self_report': self_report, 'memory': mem}).payload
+    text = render_professional_summary(res)
+
+    # Persistir memoria mínima (last_ids)
+    try:
+        micro = res.get('microhabits') if isinstance(res.get('microhabits'), list) else []
+        ids = [str(x.get('id')) for x in micro if isinstance(x, dict) and x.get('id')]
+        mem2 = dict(mem)
+        mem2['last_ids'] = ids[:3]
+        cs2 = dict(cs)
+        cs2['lifestyle_memory'] = mem2
+        cs2['lifestyle_last'] = {
+            'result': res,
+            'updated_at': timezone.now().isoformat(),
+        }
+        user.coach_state = cs2
+        user.coach_state_updated_at = timezone.now()
+        user.save(update_fields=['coach_state', 'coach_state_updated_at'])
+    except Exception:
+        pass
+
+    return Response({'success': True, 'result': res, 'text': text, 'daily_metrics': daily_metrics[-7:]})
+
+
