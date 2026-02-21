@@ -3885,6 +3885,92 @@ def chat_n8n(request):
         # 0.3) Exp-004: generar menú por payload o por intención en el mensaje
         try:
             if user:
+                # Acciones directas desde botones (quick-actions)
+                if isinstance(request.data, dict) and request.data.get('meal_plan_apply') is True:
+                    try:
+                        week_id_now = _week_id()
+                        weekly_state = getattr(user, 'coach_weekly_state', {}) or {}
+                        ws2 = dict(weekly_state)
+                        ws2['meal_plan_active_week_id'] = week_id_now
+                        ws2['meal_plan_active_at'] = timezone.now().isoformat()
+                        user.coach_weekly_state = ws2
+                        user.coach_weekly_updated_at = timezone.now()
+                        user.save(update_fields=['coach_weekly_state', 'coach_weekly_updated_at'])
+                        attachment_text = ((attachment_text or '').strip() + "\n\n" if (attachment_text or '').strip() else "") + (
+                            "[MENÚ] Estado: aplicado para esta semana."
+                        )
+                    except Exception:
+                        pass
+
+                view_mode = request.data.get('meal_plan_view') if isinstance(request.data, dict) else None
+                if isinstance(view_mode, str) and view_mode.strip() == 'shopping_list':
+                    try:
+                        week_id_now = _week_id()
+                        weekly_state = getattr(user, 'coach_weekly_state', {}) or {}
+                        mp = weekly_state.get('meal_plan') if isinstance(weekly_state.get('meal_plan'), dict) else {}
+                        stored = mp.get(week_id_now)
+                        current_result = None
+                        if isinstance(stored, dict) and 'result' in stored and isinstance(stored.get('result'), dict):
+                            current_result = stored.get('result')
+                        elif isinstance(stored, dict) and 'plan' in stored:
+                            current_result = stored
+                        if isinstance(current_result, dict):
+                            from .qaf_meal_planner.engine import render_shopping_list_text
+                            shop_text = render_shopping_list_text(current_result)
+                            if shop_text:
+                                meal_plan_text_for_output_override = shop_text
+                                attachment_text = ((attachment_text or '').strip() + "\n\n" if (attachment_text or '').strip() else "") + f"[LISTA DE COMPRAS]\n{shop_text}".strip()
+                    except Exception:
+                        pass
+
+                if isinstance(request.data, dict) and isinstance(request.data.get('meal_plan_mutate'), dict):
+                    try:
+                        m = request.data.get('meal_plan_mutate')
+                        day_index = int(m.get('day_index'))
+                        slot = str(m.get('slot') or '').strip().lower()
+                        direction = str(m.get('direction') or 'normal').strip().lower()
+                        if direction not in ('simple', 'normal', 'high'):
+                            direction = 'normal'
+                        if slot in ('desayuno', 'almuerzo', 'cena', 'snack'):
+                            week_id_now = _week_id()
+                            weekly_state = getattr(user, 'coach_weekly_state', {}) or {}
+                            mp = weekly_state.get('meal_plan') if isinstance(weekly_state.get('meal_plan'), dict) else {}
+                            stored = mp.get(week_id_now)
+                            current_result = None
+                            if isinstance(stored, dict) and 'result' in stored and isinstance(stored.get('result'), dict):
+                                current_result = stored.get('result')
+                            elif isinstance(stored, dict) and 'plan' in stored:
+                                current_result = stored
+                            if isinstance(current_result, dict):
+                                from .qaf_meal_planner.engine import mutate_plan_slot, render_professional_summary
+                                seed = (hash(f"{user.id}:{week_id_now}:{direction}:{day_index}:{slot}") & 0xFFFFFFFF)
+                                mutated = mutate_plan_slot(
+                                    result=current_result,
+                                    day_index=day_index,
+                                    slot=slot,
+                                    direction=direction,
+                                    seed=int(seed),
+                                    locale=((request.data.get('locale') or '').strip() or 'es-CO'),
+                                    exclude_item_ids=[],
+                                )
+                                meal_plan_result = mutated
+                                menu_text = render_professional_summary(mutated)
+                                if menu_text:
+                                    meal_plan_text_for_output_override = menu_text
+                                    attachment_text = ((attachment_text or '').strip() + "\n\n" if (attachment_text or '').strip() else "") + f"[MENÚ ACTUALIZADO]\n{menu_text}".strip()
+                                try:
+                                    ws2 = dict(weekly_state)
+                                    mp2 = dict(mp)
+                                    mp2[week_id_now] = {'result': mutated, 'updated_at': timezone.now().isoformat(), 'week_id': week_id_now}
+                                    ws2['meal_plan'] = mp2
+                                    user.coach_weekly_state = ws2
+                                    user.coach_weekly_updated_at = timezone.now()
+                                    user.save(update_fields=['coach_weekly_state', 'coach_weekly_updated_at'])
+                                except Exception:
+                                    pass
+                    except Exception:
+                        pass
+
                 meal_req = request.data.get('meal_plan_request') if isinstance(request.data, dict) else None
                 want_menu = False
                 if isinstance(meal_req, dict):
@@ -3914,6 +4000,8 @@ def chat_n8n(request):
                             kcal_day = None
                         if isinstance(meal_req.get('exclude_item_ids'), list):
                             exclude_item_ids = [str(x) for x in meal_req.get('exclude_item_ids') if str(x).strip()]
+                    if len(exclude_item_ids) > 50:
+                        exclude_item_ids = exclude_item_ids[:50]
 
                     if variety not in ('simple', 'normal', 'high'):
                         variety = 'normal'
@@ -3936,7 +4024,10 @@ def chat_n8n(request):
                         kcal_day = 2000.0
 
                     week_id_now = _week_id()
-                    seed = (hash(f"{user.id}:{week_id_now}:{variety}:{kcal_day}:{meals_per_day}") & 0xFFFFFFFF)
+                    exclude_item_ids = [str(x).strip() for x in exclude_item_ids if str(x).strip()][:50]
+                    exclude_sig = ",".join(sorted(exclude_item_ids))
+                    signature = f"v0|{week_id_now}|{variety}|{int(round(float(kcal_day)))}|{int(meals_per_day)}|{exclude_sig}"
+                    seed = (hash(f"{user.id}:{signature}") & 0xFFFFFFFF)
 
                     from .qaf_meal_planner.engine import (
                         build_quick_actions_for_menu,
@@ -3944,18 +4035,30 @@ def chat_n8n(request):
                         render_professional_summary as render_menu_summary,
                     )
 
-                    meal_plan_result = generate_week_plan(
-                        kcal_day=float(kcal_day),
-                        meals_per_day=int(meals_per_day),
-                        variety_level=variety,
-                        exclude_item_ids=exclude_item_ids,
-                        seed=int(seed),
-                        locale=locale,
-                    )
+                    # Cache por variantes (coach_weekly_state)
+                    weekly_state = getattr(user, 'coach_weekly_state', {}) or {}
+                    cached = None
+                    try:
+                        variants = weekly_state.get('meal_plan_variants') if isinstance(weekly_state.get('meal_plan_variants'), dict) else {}
+                        wk = variants.get(week_id_now) if isinstance(variants.get(week_id_now), dict) else {}
+                        cached = wk.get(signature)
+                    except Exception:
+                        cached = None
+
+                    if isinstance(cached, dict) and cached.get('result') and isinstance(cached.get('result'), dict):
+                        meal_plan_result = cached.get('result')
+                    else:
+                        meal_plan_result = generate_week_plan(
+                            kcal_day=float(kcal_day),
+                            meals_per_day=int(meals_per_day),
+                            variety_level=variety,
+                            exclude_item_ids=exclude_item_ids,
+                            seed=int(seed),
+                            locale=locale,
+                        )
 
                     # Persistir siempre para continuidad de UX
                     try:
-                        weekly_state = getattr(user, 'coach_weekly_state', {}) or {}
                         ws2 = dict(weekly_state)
                         mp = ws2.get('meal_plan') if isinstance(ws2.get('meal_plan'), dict) else {}
                         mp2 = dict(mp)
@@ -3963,8 +4066,26 @@ def chat_n8n(request):
                             'result': meal_plan_result,
                             'updated_at': timezone.now().isoformat(),
                             'week_id': week_id_now,
+                            'signature': signature,
                         }
                         ws2['meal_plan'] = mp2
+
+                        variants = ws2.get('meal_plan_variants') if isinstance(ws2.get('meal_plan_variants'), dict) else {}
+                        wk = variants.get(week_id_now) if isinstance(variants.get(week_id_now), dict) else {}
+                        wk2 = dict(wk)
+                        wk2[signature] = {
+                            'result': meal_plan_result,
+                            'updated_at': timezone.now().isoformat(),
+                            'signature': signature,
+                        }
+                        if len(wk2) > 3:
+                            keys = sorted(wk2.keys())
+                            for k in keys[:-3]:
+                                wk2.pop(k, None)
+                        variants2 = dict(variants)
+                        variants2[week_id_now] = wk2
+                        ws2['meal_plan_variants'] = variants2
+
                         user.coach_weekly_state = ws2
                         user.coach_weekly_updated_at = timezone.now()
                         user.save(update_fields=['coach_weekly_state', 'coach_weekly_updated_at'])
@@ -4871,7 +4992,11 @@ def qaf_meal_plan(request):
         meals_per_day = 3
 
     week_id_now = _week_id()
-    seed = (hash(f"{user.id}:{week_id_now}:{variety}:{kcal_day}:{meals_per_day}") & 0xFFFFFFFF)
+    exclude_norm = [str(x).strip() for x in exclude_item_ids if str(x).strip()]
+    exclude_norm = exclude_norm[:50]
+    exclude_sig = ",".join(sorted(exclude_norm))
+    signature = f"v0|{week_id_now}|{variety}|{int(round(float(kcal_day)))}|{int(meals_per_day)}|{exclude_sig}"
+    seed = (hash(f"{user.id}:{signature}") & 0xFFFFFFFF)
 
     from .qaf_meal_planner.engine import (
         build_quick_actions_for_menu,
@@ -4879,21 +5004,33 @@ def qaf_meal_plan(request):
         render_professional_summary,
     )
 
-    result = generate_week_plan(
-        kcal_day=float(kcal_day),
-        meals_per_day=int(meals_per_day),
-        variety_level=variety,
-        exclude_item_ids=[str(x) for x in exclude_item_ids if str(x).strip()],
-        seed=int(seed),
-        locale=locale,
-    )
+    weekly_state = getattr(user, 'coach_weekly_state', {}) or {}
+    # Cache en coach_weekly_state para UX rápida (no depende de memoria del proceso)
+    cached = None
+    try:
+        variants = weekly_state.get('meal_plan_variants') if isinstance(weekly_state.get('meal_plan_variants'), dict) else {}
+        wk = variants.get(week_id_now) if isinstance(variants.get(week_id_now), dict) else {}
+        cached = wk.get(signature)
+    except Exception:
+        cached = None
+
+    if isinstance(cached, dict) and cached.get('result') and isinstance(cached.get('result'), dict):
+        result = cached.get('result')
+    else:
+        result = generate_week_plan(
+            kcal_day=float(kcal_day),
+            meals_per_day=int(meals_per_day),
+            variety_level=variety,
+            exclude_item_ids=exclude_norm,
+            seed=int(seed),
+            locale=locale,
+        )
 
     quick_actions = build_quick_actions_for_menu(variety_level=variety)
     text = render_professional_summary(result)
 
     if persist:
         try:
-            weekly_state = getattr(user, 'coach_weekly_state', {}) or {}
             ws2 = dict(weekly_state)
             mp = ws2.get('meal_plan') if isinstance(ws2.get('meal_plan'), dict) else {}
             mp2 = dict(mp)
@@ -4901,8 +5038,27 @@ def qaf_meal_plan(request):
                 'result': result,
                 'updated_at': timezone.now().isoformat(),
                 'week_id': week_id_now,
+                'signature': signature,
             }
             ws2['meal_plan'] = mp2
+
+            variants = ws2.get('meal_plan_variants') if isinstance(ws2.get('meal_plan_variants'), dict) else {}
+            wk = variants.get(week_id_now) if isinstance(variants.get(week_id_now), dict) else {}
+            wk2 = dict(wk)
+            wk2[signature] = {
+                'result': result,
+                'updated_at': timezone.now().isoformat(),
+                'signature': signature,
+            }
+            # Limitar a 3 variantes para no inflar JSON
+            if len(wk2) > 3:
+                keys = sorted(wk2.keys())
+                for k in keys[:-3]:
+                    wk2.pop(k, None)
+            variants2 = dict(variants)
+            variants2[week_id_now] = wk2
+            ws2['meal_plan_variants'] = variants2
+
             user.coach_weekly_state = ws2
             user.coach_weekly_updated_at = timezone.now()
             user.save(update_fields=['coach_weekly_state', 'coach_weekly_updated_at'])
@@ -4910,3 +5066,112 @@ def qaf_meal_plan(request):
             pass
 
     return Response({'success': True, 'result': result, 'text': text, 'quick_actions': quick_actions})
+
+
+@api_view(['POST', 'OPTIONS'])
+@authentication_classes([JWTAuthentication])
+@permission_classes([IsAuthenticatedOrOptions])
+def qaf_meal_plan_apply(request):
+    """Marca el menú semanal como 'activo' (Exp-004) para evitar cambios sin confirmación."""
+
+    if request.method == 'OPTIONS':
+        return Response(status=status.HTTP_200_OK)
+
+    user = _resolve_request_user(request)
+    if not user:
+        return Response({'error': 'Autenticacion requerida'}, status=status.HTTP_401_UNAUTHORIZED)
+
+    payload = request.data if isinstance(request.data, dict) else {}
+    week_id = str(payload.get('week_id') or _week_id())
+
+    weekly_state = getattr(user, 'coach_weekly_state', {}) or {}
+    ws2 = dict(weekly_state)
+    ws2['meal_plan_active_week_id'] = week_id
+    ws2['meal_plan_active_at'] = timezone.now().isoformat()
+    user.coach_weekly_state = ws2
+    user.coach_weekly_updated_at = timezone.now()
+    user.save(update_fields=['coach_weekly_state', 'coach_weekly_updated_at'])
+    return Response({'success': True, 'week_id': week_id})
+
+
+@api_view(['POST', 'OPTIONS'])
+@authentication_classes([JWTAuthentication])
+@permission_classes([IsAuthenticatedOrOptions])
+def qaf_meal_plan_mutate(request):
+    """Mutación local del menú: cambia un slot sin regenerar toda la semana."""
+
+    if request.method == 'OPTIONS':
+        return Response(status=status.HTTP_200_OK)
+
+    user = _resolve_request_user(request)
+    if not user:
+        return Response({'error': 'Autenticacion requerida'}, status=status.HTTP_401_UNAUTHORIZED)
+
+    payload = request.data if isinstance(request.data, dict) else {}
+    week_id = str(payload.get('week_id') or _week_id())
+    day_index = payload.get('day_index')
+    slot = str(payload.get('slot') or '').strip().lower()
+    direction = str(payload.get('direction') or 'normal').strip().lower()
+    if direction not in ('simple', 'normal', 'high'):
+        direction = 'normal'
+
+    try:
+        day_index_i = int(day_index)
+    except Exception:
+        return Response({'error': 'day_index requerido'}, status=status.HTTP_400_BAD_REQUEST)
+
+    if slot not in ('desayuno', 'almuerzo', 'cena', 'snack'):
+        return Response({'error': 'slot inválido'}, status=status.HTTP_400_BAD_REQUEST)
+
+    locale = (payload.get('locale') or '').strip() or 'es-CO'
+    exclude_item_ids = payload.get('exclude_item_ids') if isinstance(payload.get('exclude_item_ids'), list) else []
+    if len(exclude_item_ids) > 50:
+        exclude_item_ids = exclude_item_ids[:50]
+
+    weekly_state = getattr(user, 'coach_weekly_state', {}) or {}
+    mp = weekly_state.get('meal_plan') if isinstance(weekly_state.get('meal_plan'), dict) else {}
+    stored = mp.get(week_id)
+    if not stored:
+        return Response({'error': 'No hay menú guardado para esta semana'}, status=status.HTTP_404_NOT_FOUND)
+
+    # Compat: stored puede ser {result: ...} o el result directo
+    if isinstance(stored, dict) and 'result' in stored and isinstance(stored.get('result'), dict):
+        current_result = stored.get('result')
+    elif isinstance(stored, dict) and 'plan' in stored:
+        current_result = stored
+    else:
+        return Response({'error': 'Menú guardado inválido'}, status=status.HTTP_400_BAD_REQUEST)
+
+    seed = (hash(f"{user.id}:{week_id}:{direction}:{day_index_i}:{slot}") & 0xFFFFFFFF)
+
+    from .qaf_meal_planner.engine import mutate_plan_slot, render_professional_summary, build_quick_actions_for_menu
+
+    mutated = mutate_plan_slot(
+        result=current_result,
+        day_index=day_index_i,
+        slot=slot,
+        direction=direction,
+        seed=int(seed),
+        locale=locale,
+        exclude_item_ids=[str(x) for x in exclude_item_ids if str(x).strip()],
+    )
+
+    # Persistir
+    try:
+        ws2 = dict(weekly_state)
+        mp2 = dict(mp)
+        mp2[week_id] = {
+            'result': mutated,
+            'updated_at': timezone.now().isoformat(),
+            'week_id': week_id,
+        }
+        ws2['meal_plan'] = mp2
+        user.coach_weekly_state = ws2
+        user.coach_weekly_updated_at = timezone.now()
+        user.save(update_fields=['coach_weekly_state', 'coach_weekly_updated_at'])
+    except Exception:
+        pass
+
+    text = render_professional_summary(mutated)
+    quick_actions = build_quick_actions_for_menu(variety_level=str(((mutated.get('inputs') or {}).get('variety')) or 'normal'))
+    return Response({'success': True, 'result': mutated, 'text': text, 'quick_actions': quick_actions})

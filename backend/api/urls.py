@@ -50,4 +50,6 @@ urlpatterns = [
     path('qaf/meal_coherence/', views.qaf_meal_coherence, name='qaf_meal_coherence'),
     path('qaf/metabolic_profile/', views.qaf_metabolic_profile, name='qaf_metabolic_profile'),
     path('qaf/meal_plan/', views.qaf_meal_plan, name='qaf_meal_plan'),
+    path('qaf/meal_plan/apply/', views.qaf_meal_plan_apply, name='qaf_meal_plan_apply'),
+    path('qaf/meal_plan/mutate/', views.qaf_meal_plan_mutate, name='qaf_meal_plan_mutate'),
 ]

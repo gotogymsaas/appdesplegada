@@ -324,6 +324,31 @@ def generate_week_plan(
     }
 
 
+def render_shopping_list_text(result: dict[str, Any], *, max_items: int = 18) -> str:
+    if not isinstance(result, dict):
+        return ""
+    shopping = result.get("shopping_list")
+    if not isinstance(shopping, list) or not shopping:
+        return ""
+    lines: list[str] = []
+    lines.append("Lista de compras (aprox):")
+    for row in shopping[: max(1, int(max_items))]:
+        if not isinstance(row, dict):
+            continue
+        name = str(row.get("name") or "").strip()
+        grams = row.get("grams")
+        if not name:
+            continue
+        try:
+            g = float(grams)
+            lines.append(f"- {name}: {round(g, 0):.0f} g")
+        except Exception:
+            lines.append(f"- {name}")
+    if len(shopping) > max_items:
+        lines.append(f"… +{len(shopping) - max_items} items")
+    return "\n".join(lines).strip()
+
+
 def render_professional_summary(result: dict[str, Any]) -> str:
     if not isinstance(result, dict):
         return ""
@@ -352,24 +377,161 @@ def render_professional_summary(result: dict[str, Any]) -> str:
 
 
 def build_quick_actions_for_menu(*, variety_level: VarietyLevel) -> list[dict[str, Any]]:
+    # UX wow: aplicar + lista + mutación local (máx 3 botones como el resto del chat)
     actions: list[dict[str, Any]] = []
     actions.append({
-        'label': 'Regenerar (más simple)',
+        'label': 'Aplicar menú',
         'type': 'message',
-        'text': 'Regenerar menú (más simple)',
-        'payload': {'meal_plan_request': {'variety': 'simple'}},
+        'text': 'Aplicar menú',
+        'payload': {'meal_plan_apply': True},
     })
     actions.append({
-        'label': 'Regenerar (más variado)',
+        'label': 'Lista de compras',
         'type': 'message',
-        'text': 'Regenerar menú (más variado)',
-        'payload': {'meal_plan_request': {'variety': 'high'}},
+        'text': 'Lista de compras',
+        'payload': {'meal_plan_view': 'shopping_list'},
     })
-    if variety_level != 'normal':
-        actions.append({
-            'label': 'Regenerar (normal)',
-            'type': 'message',
-            'text': 'Regenerar menú (normal)',
-            'payload': {'meal_plan_request': {'variety': 'normal'}},
-        })
+
+    actions.append({
+        'label': 'Cambiar cena (mañana)',
+        'type': 'message',
+        'text': 'Cambiar cena (mañana)',
+        'payload': {'meal_plan_mutate': {'day_index': 1, 'slot': 'cena', 'direction': 'high'}},
+    })
     return actions[:3]
+
+
+def mutate_plan_slot(
+    *,
+    result: dict[str, Any],
+    day_index: int,
+    slot: str,
+    direction: Literal["simple", "normal", "high"],
+    seed: int,
+    locale: str,
+    exclude_item_ids: list[str] | None,
+) -> dict[str, Any]:
+    """Mutación local: cambia solo 1 slot (ej. cena del día 2) sin regenerar toda la semana."""
+
+    if not isinstance(result, dict):
+        return result
+    plan = result.get('plan') if isinstance(result.get('plan'), dict) else None
+    if not plan:
+        return result
+    days = plan.get('days') if isinstance(plan.get('days'), list) else []
+    if not days or not (0 <= int(day_index) < len(days)):
+        return result
+    slot = str(slot or '').strip().lower()
+    if slot not in ('desayuno', 'almuerzo', 'cena', 'snack'):
+        return result
+
+    p = qaf_paths()
+    items_meta = load_items_meta(p['items_meta'])
+    nutrition_db = load_nutrition_db(p['nutrition_db'])
+    micros_db = load_micros_db(p['micros_db'])
+
+    exclude = {str(x).strip() for x in (exclude_item_ids or []) if str(x).strip()}
+    pools = _classify_pools(nutrition_db, exclude)
+
+    rng = random.Random(int(seed) & 0xFFFFFFFF)
+    out = json.loads(json.dumps(result))
+
+    day = out['plan']['days'][int(day_index)]
+    meals = day.get('meals') if isinstance(day.get('meals'), list) else []
+    target_meal = None
+    for m in meals:
+        if str(m.get('slot') or '').strip().lower() == slot:
+            target_meal = m
+            break
+    if not target_meal:
+        return out
+
+    items = target_meal.get('items') if isinstance(target_meal.get('items'), list) else []
+    if not items:
+        return out
+
+    # Elegimos qué item mutar: en high priorizamos los repetidos; en simple priorizamos vegetales.
+    ids_all = []
+    for d in out['plan']['days']:
+        for m in d.get('meals') or []:
+            for it in m.get('items') or []:
+                iid = str(it.get('item_id') or '')
+                if iid:
+                    ids_all.append(iid)
+    counts = Counter(ids_all)
+
+    idx = 0
+    if direction == 'high':
+        idx = max(range(len(items)), key=lambda i: counts.get(str(items[i].get('item_id') or ''), 0))
+    elif direction == 'simple':
+        idx = min(range(len(items)), key=lambda i: float(items[i].get('kcal') or 0.0))
+    else:
+        idx = rng.randrange(0, len(items))
+
+    iid_old = str(items[idx].get('item_id') or '')
+    kcal_target = float(items[idx].get('kcal') or 0.0)
+
+    pool_key = 'veg'
+    if iid_old in pools.get('protein', []):
+        pool_key = 'protein'
+    elif iid_old in pools.get('carb', []):
+        pool_key = 'carb'
+    elif iid_old in pools.get('fat', []):
+        pool_key = 'fat'
+    elif iid_old in pools.get('fruit', []):
+        pool_key = 'fruit'
+
+    candidates = pools.get(pool_key) or pools['carb']
+    # En high variedad, evitamos el mismo iid si hay alternativas.
+    if direction == 'high':
+        candidates = [c for c in candidates if c != iid_old] or candidates
+
+    iid_new = rng.choice(candidates)
+    grams = _grams_for_kcal(iid_new, kcal_target, nutrition_db)
+    grams = round(grams / 5.0) * 5.0
+    kcal_new = _kcal_for_grams(iid_new, grams, nutrition_db)
+
+    items[idx] = {
+        'item_id': iid_new,
+        'name': _display_name(iid_new, items_meta, locale),
+        'grams': float(grams),
+        'kcal': round(float(kcal_new), 1),
+    }
+    target_meal['items'] = items
+    target_meal['kcal'] = round(float(sum(float(it.get('kcal') or 0.0) for it in items)), 1)
+    day['total_kcal'] = round(float(sum(float(m.get('kcal') or 0.0) for m in meals)), 1)
+
+    # Recalcular shopping + scores (rápido)
+    shop_g = Counter()
+    for d in out['plan']['days']:
+        for m in d.get('meals') or []:
+            for it in m.get('items') or []:
+                iid = str(it.get('item_id') or '')
+                g = float(it.get('grams') or 0.0)
+                if iid and g > 0:
+                    shop_g[iid] += g
+    out['shopping_list'] = [
+        {'item_id': iid, 'name': _display_name(iid, items_meta, locale), 'grams': round(float(g), 1)}
+        for iid, g in shop_g.most_common()
+    ]
+
+    kcal_day_target = float(((out.get('inputs') or {}).get('kcal_day')) or 2000.0)
+    variety_level = str(((out.get('inputs') or {}).get('variety')) or 'normal')
+    if variety_level not in ('simple', 'normal', 'high'):
+        variety_level = 'normal'
+    s = _score_plan(out['plan'], kcal_day_target=kcal_day_target, micros_db=micros_db, variety_level=variety_level)  # type: ignore[arg-type]
+    out['scores'] = {
+        'kcal_loss': round(float(s.kcal_loss), 4),
+        'micro_coverage': round(float(s.micro_coverage), 4),
+        'variety_penalty': round(float(s.variety_penalty), 4),
+        'friction_penalty': round(float(s.friction_penalty), 4),
+        'total': round(float(s.total), 4),
+    }
+
+    # Marcar meta
+    out.setdefault('meta', {})
+    try:
+        out['meta']['mutated'] = {'day_index': int(day_index), 'slot': slot, 'direction': direction, 'as_of': str(date.today())}
+    except Exception:
+        pass
+    return out
