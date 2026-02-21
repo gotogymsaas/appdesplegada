@@ -1,0 +1,50 @@
+alias,item_id,locale,priority
+manzana,manzana,es,100
+apple,manzana,en,90
+arroz,arroz_blanco_cocido,es,80
+arroz blanco,arroz_blanco_cocido,es,90
+rice,arroz_blanco_cocido,en,60
+pollo,pollo_pechuga_asada,es,80
+pechuga,pollo_pechuga_asada,es,70
+chicken breast,pollo_pechuga_asada,en,60
+ensalada,ensalada_mixta,es,60
+papas fritas,papa_frita,es,70
+papas,papa_frita,es,55
+papitas,papa_frita,es,55
+papa frita,papa_frita,es,65
+french fries,papa_frita,en,60
+fries,papa_frita,en,55
+huevo,huevo,es,80
+huevos,huevo,es,60
+egg,huevo,en,70
+banano,banano,es,70
+banana,banano,en,70
+pan,pan_rebanada,es,60
+bread slice,pan_rebanada,en,50
+leche,leche_entera,es,60
+whole milk,leche_entera,en,50
+frijoles,frijoles_cocidos,es,60
+beans,frijoles_cocidos,en,50
+arepa,arepa,es,80
+arepas,arepa,es,70
+platano,platano_maduro_frito,es,70
+plátano,platano_maduro_frito,es,70
+platano maduro,platano_maduro_frito,es,80
+plátano maduro,platano_maduro_frito,es,80
+maduro frito,platano_maduro_frito,es,60
+plantain,platano_maduro_frito,en,60
+ripe plantain,platano_maduro_frito,en,60
+aguacate,aguacate,es,80
+avocado,aguacate,en,70
+carne molida,carne_molida_cocida,es,80
+carne picada,carne_molida_cocida,es,60
+ground beef,carne_molida_cocida,en,70
+chicharron,chicharron,es,80
+chicharrón,chicharron,es,80
+pork belly,chicharron,en,55
+pork rind,chicharron,en,55
+chorizo,chorizo,es,80
+sausage,chorizo,en,55
+limon,limon,es,60
+limón,limon,es,60
+lemon,limon,en,55

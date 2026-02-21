@@ -1,0 +1,27 @@
+item_id,micro,level
+ensalada_mixta,Vitamina A,alto
+ensalada_mixta,Vitamina K,alto
+ensalada_mixta,Folato,medio
+manzana,Potasio,medio
+banano,Potasio,alto
+frijoles_cocidos,Hierro,medio
+frijoles_cocidos,Magnesio,medio
+frijoles_cocidos,Fibra,alto
+pollo_pechuga_asada,Niacina (B3),medio
+pollo_pechuga_asada,Selenio,medio
+leche_entera,Calcio,alto
+leche_entera,Vitamina B12,medio
+huevo,Colina,alto
+huevo,Vitamina D,bajo
+arroz_blanco_cocido,Manganeso,bajo
+pan_rebanada,Sodio,medio
+papa_frita,Sodio,alto
+papa_frita,Potasio,medio
+aguacate,Potasio,alto
+aguacate,Folato,medio
+platano_maduro_frito,Potasio,medio
+carne_molida_cocida,Hierro,medio
+carne_molida_cocida,Zinc,medio
+chorizo,Sodio,alto
+chicharron,Sodio,medio
+limon,Vitamina C,alto
