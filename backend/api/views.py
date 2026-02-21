@@ -10,7 +10,7 @@ import re
 import threading
 import secrets
 
-from devices.models import DeviceConnection, FitnessSync
+from devices.models import DeviceConnection, FitnessSync as DevicesFitnessSync
 from devices.scheduler_service import enqueue_sync_request
 
 import requests
@@ -1280,7 +1280,7 @@ def coach_context(request):
     ]
 
     fitness_by_provider = {}
-    recent_syncs = FitnessSync.objects.filter(user=user).order_by('-created_at')[:50]
+    recent_syncs = DevicesFitnessSync.objects.filter(user=user).order_by('-created_at')[:50]
     for sync in recent_syncs:
         if sync.provider not in fitness_by_provider:
             fitness_by_provider[sync.provider] = {
@@ -4384,7 +4384,7 @@ def chat_n8n(request):
 
                     # daily_metrics desde FitnessSync (último por día)
                     start_dt = timezone.now() - timedelta(days=days_i)
-                    qs = FitnessSync.objects.filter(user=user, created_at__gte=start_dt).only('created_at', 'metrics').order_by('created_at')
+                    qs = DevicesFitnessSync.objects.filter(user=user, created_at__gte=start_dt).only('created_at', 'metrics').order_by('created_at')
                     by_day = {}
                     for s in qs:
                         d = timezone.localdate(s.created_at).isoformat()
@@ -5179,7 +5179,7 @@ def chat_n8n(request):
                 fitness_by_provider = {}
                 latest_sync = None
                 recent_syncs = (
-                    FitnessSync.objects.filter(user=user)
+                    DevicesFitnessSync.objects.filter(user=user)
                     .order_by("-created_at")[:50]
                 )
                 for sync in recent_syncs:
@@ -6036,10 +6036,9 @@ def qaf_lifestyle(request):
     try:
         from datetime import timedelta
         from django.utils import timezone
-        from devices.models import FitnessSync
 
         start_dt = timezone.now() - timedelta(days=days_i)
-        qs = FitnessSync.objects.filter(user=user, created_at__gte=start_dt).only('created_at', 'metrics').order_by('created_at')
+        qs = DevicesFitnessSync.objects.filter(user=user, created_at__gte=start_dt).only('created_at', 'metrics').order_by('created_at')
         by_day = {}
         for s in qs:
             d = timezone.localdate(s.created_at).isoformat()
