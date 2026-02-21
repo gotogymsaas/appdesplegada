@@ -173,6 +173,26 @@
                 <input type="number" id="height" class="input-field" placeholder=" " min="0" step="0.01">
                     <label class="input-label">Altura (m)</label>
             </div>
+
+            <div class="form-group">
+                <input type="text" id="goal_type" class="input-field" placeholder=" " list="goalTypeOptions" autocomplete="off">
+                    <label class="input-label">Meta actual Peso (déficit / mantenimiento / masa)</label>
+                <datalist id="goalTypeOptions">
+                    <option value="deficit"></option>
+                    <option value="maintenance"></option>
+                    <option value="gain"></option>
+                </datalist>
+            </div>
+
+            <div class="form-group">
+                <input type="text" id="activity_level" class="input-field" placeholder=" " list="activityLevelOptions" autocomplete="off">
+                    <label class="input-label">Nivel de actividad fisica (bajo / moderado / alto)</label>
+                <datalist id="activityLevelOptions">
+                    <option value="low"></option>
+                    <option value="moderate"></option>
+                    <option value="high"></option>
+                </datalist>
+            </div>
             
             <div class="form-group">
                 <input type="text" id="profession" class="input-field" placeholder=" ">
@@ -325,6 +345,8 @@
                 document.getElementById('weight').value = user.weight ?? "";
                 document.getElementById('age').value = user.age ?? "";
                 document.getElementById('height').value = user.height ?? "";
+                document.getElementById('goal_type').value = user.goal_type ?? "";
+                document.getElementById('activity_level').value = user.activity_level ?? "";
                 document.getElementById('favorite_exercise_time').value = user.favorite_exercise_time || "";
                 document.getElementById('favorite_sport').value = user.favorite_sport || "";
             }
@@ -454,6 +476,8 @@
             const weight = document.getElementById('weight').value;
             const age = document.getElementById('age').value;
             const height = document.getElementById('height').value;
+            const goalType = document.getElementById('goal_type').value;
+            const activityLevel = document.getElementById('activity_level').value;
             const password = document.getElementById('password').value;
             const passwordConfirm = document.getElementById('password_confirm').value;
             
@@ -483,6 +507,8 @@
             formData.append('weight', weight);
             formData.append('age', age);
             formData.append('height', height);
+            formData.append('goal_type', goalType);
+            formData.append('activity_level', activityLevel);
             if (password) {
                 formData.append('password', password);
                 formData.append('password_confirm', passwordConfirm);

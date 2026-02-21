@@ -1324,6 +1324,9 @@ def coach_context(request):
             "profession": getattr(user, "profession", None),
             "favorite_exercise_time": getattr(user, "favorite_exercise_time", None),
             "favorite_sport": getattr(user, "favorite_sport", None),
+            "goal_type": getattr(user, "goal_type", None),
+            "activity_level": getattr(user, "activity_level", None),
+            "daily_target_kcal_override": getattr(user, "daily_target_kcal_override", None),
             "age_range": _range_bucket(user.age, 5),
             "weight_range": _range_bucket(user.weight, 5, lower=30, upper=200),
             "height_range": _range_bucket(user.height, 5, lower=120, upper=230),
@@ -3115,6 +3118,24 @@ def update_profile_settings(request):
         if not photo_only and 'full_name' in request.data: user.full_name = request.data['full_name']
         if not photo_only and 'favorite_exercise_time' in request.data: user.favorite_exercise_time = request.data['favorite_exercise_time']
         if not photo_only and 'favorite_sport' in request.data: user.favorite_sport = request.data['favorite_sport']
+
+        # Exp-002 (meta + actividad)
+        if not photo_only and 'goal_type' in request.data:
+            gt = str(request.data.get('goal_type') or '').strip().lower()
+            user.goal_type = gt if gt in ('deficit', 'maintenance', 'gain') else None
+        if not photo_only and 'activity_level' in request.data:
+            al = str(request.data.get('activity_level') or '').strip().lower()
+            user.activity_level = al if al in ('low', 'moderate', 'high') else None
+        if not photo_only and 'daily_target_kcal_override' in request.data:
+            raw = str(request.data.get('daily_target_kcal_override') or '').strip()
+            if raw == '':
+                user.daily_target_kcal_override = None
+            else:
+                try:
+                    v = float(raw)
+                    user.daily_target_kcal_override = v if v > 0 else None
+                except Exception:
+                    pass
         if not photo_only and 'age' in request.data:
             try:
                 user.age = int(request.data['age']) if str(request.data['age']).strip() != '' else None
@@ -3946,6 +3967,35 @@ def chat_n8n(request):
                     qaf_text_for_output_override = qaf_text
                     attachment_text = ((attachment_text or '').strip() + "\n\n" if (attachment_text or '').strip() else "") + f"[CALORÍAS ESTIMADAS]\n{qaf_text}".strip()
 
+                # 1.1) Exp-002: coherencia comida ↔ meta + alertas (si hay usuario)
+                try:
+                    if user and isinstance(qaf_result, dict):
+                        from .qaf_goal_coherence.engine import evaluate_meal, render_professional_summary as render_goal_summary
+
+                        meal_payload = {
+                            "total_calories": qaf_result.get("total_calories"),
+                            "uncertainty_score": ((qaf_result.get("uncertainty") or {}).get("uncertainty_score")),
+                            "needs_confirmation": bool(qaf_result.get("needs_confirmation")),
+                            "meal_slot": (request.data.get("meal_slot") or "unknown"),
+                        }
+
+                        user_context_payload = {
+                            "weight_kg": getattr(user, "weight", None),
+                            "age": getattr(user, "age", None),
+                            "height_cm": (float(getattr(user, "height", None)) * 100.0) if getattr(user, "height", None) else None,
+                            "goal_type": getattr(user, "goal_type", None),
+                            "goal_text": None,
+                            "activity_level": getattr(user, "activity_level", None),
+                            "daily_target_kcal_override": getattr(user, "daily_target_kcal_override", None),
+                        }
+
+                        goal_eval = evaluate_meal(user_context_payload, meal_payload)
+                        goal_text = render_goal_summary(goal_eval)
+                        if goal_text:
+                            attachment_text = ((attachment_text or '').strip() + "\n\n" if (attachment_text or '').strip() else "") + f"[COHERENCIA CON META]\n{goal_text}".strip()
+                except Exception as ex:
+                    print(f"QAF goal coherence warning: {ex}")
+
                 # Escritura memoria suave: solo confirmaciones explícitas
                 try:
                     if user and isinstance(confirmed_portions, list):
@@ -3973,6 +4023,7 @@ def chat_n8n(request):
 
         except Exception as ex:
             print(f"QAF calories warning: {ex}")
+
 
         # Construir prompt enriquecido (solo con texto real si se pudo)
         final_input = message or "Analisis de archivo adjunto"
@@ -4049,6 +4100,9 @@ def chat_n8n(request):
                     "age": user.age,
                     "weight": user.weight,
                     "height": user.height,
+                    "goal_type": getattr(user, "goal_type", None),
+                    "activity_level": getattr(user, "activity_level", None),
+                    "daily_target_kcal_override": getattr(user, "daily_target_kcal_override", None),
                     "profession": getattr(user, "profession", None),
                     "favorite_exercise_time": getattr(user, "favorite_exercise_time", None),
                     "favorite_sport": getattr(user, "favorite_sport", None),
@@ -4244,3 +4298,42 @@ def chat_n8n(request):
     except Exception as e:
         print(f"Error chat_n8n: {e}")
         return Response({'error': str(e)}, status=500)
+
+
+@api_view(['POST', 'OPTIONS'])
+@authentication_classes([JWTAuthentication])
+@permission_classes([IsAuthenticatedOrOptions])
+def qaf_meal_coherence(request):
+    """Evalúa coherencia de una comida vs meta (Exp-002).
+
+    Entrada (JSON):
+      { "meal": { total_calories, uncertainty_score, needs_confirmation, meal_slot }, "goal_text"?: str }
+
+    Usa el usuario autenticado como fuente de `goal_type`, `activity_level` y `weight`.
+    """
+
+    if request.method == 'OPTIONS':
+        return Response(status=status.HTTP_200_OK)
+
+    user = _resolve_request_user(request)
+    if not user:
+        return Response({'error': 'Autenticacion requerida'}, status=status.HTTP_401_UNAUTHORIZED)
+
+    payload = request.data if isinstance(request.data, dict) else {}
+    meal = payload.get('meal') if isinstance(payload.get('meal'), dict) else {}
+    goal_text = payload.get('goal_text') if isinstance(payload.get('goal_text'), str) else None
+
+    from .qaf_goal_coherence.engine import evaluate_meal
+
+    user_ctx = {
+        "weight_kg": getattr(user, "weight", None),
+        "age": getattr(user, "age", None),
+        "height_cm": (float(getattr(user, "height", None)) * 100.0) if getattr(user, "height", None) else None,
+        "goal_type": getattr(user, "goal_type", None),
+        "goal_text": goal_text,
+        "activity_level": getattr(user, "activity_level", None),
+        "daily_target_kcal_override": getattr(user, "daily_target_kcal_override", None),
+    }
+
+    result = evaluate_meal(user_ctx, meal)
+    return Response(result)

@@ -15,6 +15,21 @@ class User(AbstractUser):
     full_name = models.CharField(max_length=160, null=True, blank=True)
     favorite_exercise_time = models.CharField(max_length=80, null=True, blank=True)
     favorite_sport = models.CharField(max_length=120, null=True, blank=True)
+
+    # Objetivo nutricional (Exp-002 coherencia comida ↔ meta)
+    goal_type = models.CharField(
+        max_length=20,
+        choices=[("deficit", "deficit"), ("maintenance", "maintenance"), ("gain", "gain")],
+        null=True,
+        blank=True,
+    )
+    activity_level = models.CharField(
+        max_length=20,
+        choices=[("low", "low"), ("moderate", "moderate"), ("high", "high")],
+        null=True,
+        blank=True,
+    )
+    daily_target_kcal_override = models.FloatField(null=True, blank=True)
     happiness_index = models.FloatField(null=True, blank=True)
     scores = models.JSONField(default=dict, blank=True)
     profile_picture = models.ImageField(upload_to='profile_pics/', null=True, blank=True)

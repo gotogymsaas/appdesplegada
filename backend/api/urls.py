@@ -45,4 +45,7 @@ urlpatterns = [
     path('admin/dashboard/signups_series/', views.admin_dashboard_signups_series, name='admin_dashboard_signups_series'),
     path('admin/audit/', views.admin_audit_list, name='admin_audit_list'),
     path('billing/webhook/mercadopago/', views.mercadopago_webhook, name='mercadopago_webhook'),
+
+    # QAF experiments (API)
+    path('qaf/meal_coherence/', views.qaf_meal_coherence, name='qaf_meal_coherence'),
 ]
