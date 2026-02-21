@@ -3154,7 +3154,18 @@ def update_profile_settings(request):
                 pass
         if not photo_only and 'height' in request.data:
             try:
-                user.height = float(request.data['height']) if str(request.data['height']).strip() != '' else None
+                raw = str(request.data['height']).strip()
+                if raw == '':
+                    user.height = None
+                else:
+                    h = float(raw)
+                    # UX: en la UI el label es "Altura (m)", pero muchos usuarios ingresan cm (ej. 175).
+                    # Normalización: si es >3, asumimos cm y convertimos a metros.
+                    if h > 3.0:
+                        h = h / 100.0
+                    # Guardrail (m): rango humano típico
+                    if 0.5 <= h <= 2.6:
+                        user.height = float(h)
             except Exception:
                 pass
         # Add other fields as needed

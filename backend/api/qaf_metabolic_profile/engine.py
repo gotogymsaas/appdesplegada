@@ -100,6 +100,17 @@ def evaluate_weekly_metabolic_profile(
         height_cm = float(profile.get("height_cm"))
     except Exception:
         height_cm = 0.0
+
+    # Normalización defensiva de unidades:
+    # - si alguien pasa metros (1.75) en lugar de cm, lo convertimos.
+    # - si viene cm*100 (17500) por error de conversión, lo corregimos.
+    if 0.5 < height_cm < 3.0:
+        height_cm = height_cm * 100.0
+    elif 300.0 < height_cm <= 30000.0:
+        height_cm = height_cm / 100.0
+    # Guardrail: valores razonables (cm)
+    if height_cm and (height_cm < 80.0 or height_cm > 260.0):
+        height_cm = 0.0
     try:
         weight_kg = float(profile.get("weight_kg"))
     except Exception:
