@@ -16,7 +16,7 @@ return;
 // 1. Inyectar CSS
 const link = document.createElement('link');
 link.rel = "stylesheet";
-const CHAT_CSS_VERSION = '2026-02-21-7';
+const CHAT_CSS_VERSION = '2026-02-21-8';
 link.href = `/css/chat.css?v=${CHAT_CSS_VERSION}`; // Ruta absoluta desde raíz del servidor // frontend
 // Si estás en subcarpetas, esto funciona si el server sirve desde raíz.
 // Si falla, intentaremos ruta relativa automática
@@ -993,12 +993,18 @@ form.addEventListener('submit', async (e) => {
   const text = rawText.trim();
   const file = getSelectedFile();
   if (!text && !file) return;
-  const displayText = text || (file ? `Adjunto: ${file.name}` : '');
-  const pendingId = displayText
-    ? appendMessage(displayText, 'user pending', {
-        meta: { text: text, hasFile: !!file }
-      })
-    : null;
+  let pendingId = null;
+  if (file) {
+    const objectUrl = URL.createObjectURL(file);
+    pendingId = appendMessage(text || '', 'user pending', {
+      meta: { text: text, hasFile: true },
+      attachment: { file, objectUrl },
+    });
+  } else {
+    pendingId = appendMessage(text, 'user pending', {
+      meta: { text: text, hasFile: false }
+    });
+  }
   if (file) setAttachmentPreview(file, 'uploading');
   resetInput();
   clearSelectedFiles();
@@ -1169,6 +1175,40 @@ function escapeHtml(input) {
     .replaceAll("'", '&#39;');
 }
 
+function buildUserAttachmentHtml(file, objectUrl) {
+  if (!file || !objectUrl) return '';
+  const name = escapeHtml(file.name || 'adjunto');
+  const mime = String(file.type || '').toLowerCase();
+  const isImage = mime.startsWith('image/');
+  const isPdf = mime === 'application/pdf' || String(file.name || '').toLowerCase().endsWith('.pdf');
+
+  if (isImage) {
+    return `
+      <div class="user-attachment">
+        <img class="user-attachment-img" src="${objectUrl}" alt="${name}" loading="lazy" />
+        <div class="user-attachment-caption">${name}</div>
+      </div>
+    `;
+  }
+
+  if (isPdf) {
+    return `
+      <div class="user-attachment user-attachment-pdf">
+        <div class="user-attachment-pdf-badge">PDF</div>
+        <div class="user-attachment-caption">${name}</div>
+        <button type="button" class="user-attachment-open" data-url="${objectUrl}">Ver</button>
+      </div>
+    `;
+  }
+
+  return `
+    <div class="user-attachment user-attachment-file">
+      <div class="user-attachment-file-badge">FILE</div>
+      <div class="user-attachment-caption">${name}</div>
+    </div>
+  `;
+}
+
 function sanitizeUrl(url) {
   const raw = String(url || '').trim();
   if (!raw) return '';
@@ -1308,15 +1348,40 @@ if (opts.meta) {
   div.dataset.hasFile = opts.meta.hasFile ? '1' : '0';
 }
 // Bot: mantener formato (subconjunto Markdown) sin depender de librerías externas.
-// User: mantener texto plano.
+// User: texto plano, salvo cuando agregamos adjuntos (HTML controlado por nosotros).
 if (className.includes('bot')) {
   div.innerHTML = renderBotRichText(text);
 } else {
-  div.textContent = text;
+  const safeText = escapeHtml(text || '');
+  const attachmentHtml = opts.attachment && opts.attachment.file && opts.attachment.objectUrl
+    ? buildUserAttachmentHtml(opts.attachment.file, opts.attachment.objectUrl)
+    : '';
+  if (attachmentHtml) {
+    const hasText = !!safeText.trim();
+    div.innerHTML = `${hasText ? `<div class="user-text">${safeText}</div>` : ''}${attachmentHtml}`;
+  } else {
+    div.textContent = text;
+  }
 }
 const id = 'msg-' + Date.now();
 div.id = id;
 messages.appendChild(div);
+
+// Delegación simple para abrir adjuntos PDF inline
+if (!className.includes('bot')) {
+  const openBtn = div.querySelector('.user-attachment-open');
+  if (openBtn) {
+    openBtn.addEventListener('click', () => {
+      const url = openBtn.getAttribute('data-url') || '';
+      if (!url) return;
+      try {
+        window.open(url, '_blank', 'noopener');
+      } catch (e) {
+        // ignore
+      }
+    });
+  }
+}
 const doScroll = opts.forceScroll || shouldAutoScroll();
 if (doScroll) messages.scrollTop = messages.scrollHeight;
 updateScrollControls();
