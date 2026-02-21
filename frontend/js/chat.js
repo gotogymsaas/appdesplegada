@@ -16,7 +16,7 @@ return;
 // 1. Inyectar CSS
 const link = document.createElement('link');
 link.rel = "stylesheet";
-const CHAT_CSS_VERSION = '2026-02-21-6';
+const CHAT_CSS_VERSION = '2026-02-21-7';
 link.href = `/css/chat.css?v=${CHAT_CSS_VERSION}`; // Ruta absoluta desde raíz del servidor // frontend
 // Si estás en subcarpetas, esto funciona si el server sirve desde raíz.
 // Si falla, intentaremos ruta relativa automática
@@ -207,7 +207,7 @@ function applyViewportOffset() {
   widgetContainer.style.setProperty('--gtg-vv-offset', `${offset}px`);
 
   const vv = window.visualViewport;
-  const height = vv ? Math.max(0, Math.round(vv.height)) : Math.max(0, Math.round(window.innerHeight));
+  const height = vv ? Math.max(320, Math.round(vv.height)) : Math.max(320, Math.round(window.innerHeight));
   widgetContainer.style.setProperty('--gtg-vv-height', `${height}px`);
 
   scheduleFooterMetricsUpdate();
@@ -752,6 +752,45 @@ const loadChatHistory = () => {
 
 let chatHistory = loadChatHistory();
 
+// --- Robust body scroll lock (mobile web + webview) ---
+const bodyScrollLockState = {
+  locked: false,
+  scrollY: 0,
+};
+
+function lockBodyScroll() {
+  if (bodyScrollLockState.locked) return;
+  const y = window.scrollY || document.documentElement.scrollTop || 0;
+  bodyScrollLockState.scrollY = y;
+  bodyScrollLockState.locked = true;
+
+  document.body.classList.add('gtg-chat-open');
+  document.body.style.position = 'fixed';
+  document.body.style.top = `-${y}px`;
+  document.body.style.left = '0';
+  document.body.style.right = '0';
+  document.body.style.width = '100%';
+}
+
+function unlockBodyScroll() {
+  if (!bodyScrollLockState.locked) return;
+  const y = bodyScrollLockState.scrollY || 0;
+  bodyScrollLockState.locked = false;
+
+  document.body.classList.remove('gtg-chat-open');
+  document.body.style.position = '';
+  document.body.style.top = '';
+  document.body.style.left = '';
+  document.body.style.right = '';
+  document.body.style.width = '';
+
+  try {
+    window.scrollTo(0, y);
+  } catch (e) {
+    // ignore
+  }
+}
+
 function isToolsMenuOpen() {
   return !!(toolsMenu && !toolsMenu.hidden);
 }
@@ -788,10 +827,9 @@ const isOpen = chatWindow.classList.contains('open');
 
 // En mobile web, bloquear scroll del body para que no se vea la pantalla de atrás.
 try {
-  if (isOpen && window.matchMedia && window.matchMedia('(max-width: 480px)').matches) {
-    document.body.classList.add('gtg-chat-open');
-  } else {
-    document.body.classList.remove('gtg-chat-open');
+  if (window.matchMedia && window.matchMedia('(max-width: 480px)').matches) {
+    if (isOpen) lockBodyScroll();
+    else unlockBodyScroll();
   }
 } catch (e) {
   // ignore
