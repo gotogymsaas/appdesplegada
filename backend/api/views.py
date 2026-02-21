@@ -4367,7 +4367,6 @@ def chat_n8n(request):
 
                 if want_lifestyle:
                     from datetime import timedelta
-                    from devices.models import FitnessSync
                     from .qaf_lifestyle.engine import evaluate_lifestyle, render_professional_summary
 
                     days_i = 14
