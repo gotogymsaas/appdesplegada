@@ -204,6 +204,7 @@ def evaluate_lifestyle(payload: dict[str, Any]) -> LifestyleResult:
     # Self report (opcional)
     stress_sr, c_stress_sr = _normalize_self_report_1_5(self_report.get("stress_1_5"))
     sleepq_sr, c_sleepq_sr = _normalize_self_report_1_5(self_report.get("sleep_quality_1_5"))
+    movement_sr, c_movement_sr = _normalize_self_report_1_5(self_report.get("movement_1_5"))
 
     # Combinar stress: preferimos RHR si existe; si no, self-report.
     stress_score = s_stress_inv
@@ -218,9 +219,17 @@ def evaluate_lifestyle(payload: dict[str, Any]) -> LifestyleResult:
     sleep_score = s_sleep
     sleep_conf = c_sleep
     if sleep_score is not None and sleepq_sr is not None:
-        # mezcla leve
         sleep_score = _clamp01((0.85 * float(sleep_score)) + (0.15 * float(sleepq_sr)))
         sleep_conf = _clamp01((0.85 * float(sleep_conf)) + (0.15 * float(c_sleepq_sr)))
+    elif sleep_score is None and sleepq_sr is not None:
+        sleep_score = _clamp01(float(sleepq_sr))
+        sleep_conf = 0.45
+
+    steps_score = s_steps
+    steps_conf = c_steps
+    if steps_score is None and movement_sr is not None:
+        steps_score = _clamp01(float(movement_sr))
+        steps_conf = 0.42
 
     # Actividad previa: proxy por calorías
     activity_score = s_cal
@@ -239,7 +248,7 @@ def evaluate_lifestyle(payload: dict[str, Any]) -> LifestyleResult:
     missing: list[str] = []
     if sleep_score is None:
         missing.append("sleep")
-    if s_steps is None:
+    if steps_score is None:
         missing.append("steps")
 
     # Si falta hidratación, no la penalizamos (solo baja confianza si el producto la exige).
@@ -258,8 +267,8 @@ def evaluate_lifestyle(payload: dict[str, Any]) -> LifestyleResult:
     parts: list[tuple[float, float]] = []
     if sleep_score is not None:
         parts.append((float(sleep_score), float(sleep_conf) * w_sleep))
-    if s_steps is not None:
-        parts.append((float(s_steps), float(c_steps) * w_move))
+    if steps_score is not None:
+        parts.append((float(steps_score), float(steps_conf) * w_move))
     if stress_score is not None:
         parts.append((float(stress_score), float(stress_conf) * w_stress))
     if hydration_score is not None:
@@ -274,8 +283,8 @@ def evaluate_lifestyle(payload: dict[str, Any]) -> LifestyleResult:
         if sleep_score is not None:
             value += float(sleep_score) * w_sleep
             denom += w_sleep
-        if s_steps is not None:
-            value += float(s_steps) * w_move
+        if steps_score is not None:
+            value += float(steps_score) * w_move
             denom += w_move
         if stress_score is not None:
             value += float(stress_score) * w_stress
@@ -370,7 +379,7 @@ def evaluate_lifestyle(payload: dict[str, Any]) -> LifestyleResult:
         },
         "signals": {
             "sleep": {"value": sleep_minutes, "score01": (round(float(sleep_score), 4) if sleep_score is not None else None)},
-            "steps": {"value": steps, "score01": (round(float(s_steps), 4) if s_steps is not None else None)},
+            "steps": {"value": steps, "score01": (round(float(steps_score), 4) if steps_score is not None else None), "proxy": ("self_report" if s_steps is None and steps_score is not None else "wearable" if s_steps is not None else None)},
             "stress_inv": {"value": rhr, "score01": (round(float(stress_score), 4) if stress_score is not None else None), "method": stress_method, "meta": rhr_meta},
             "activity_prev": {"value": calories, "score01": (round(float(activity_score), 4) if activity_score is not None else None)},
             "hydration": {"value": hydration_ml, "score01": (round(float(hydration_score), 4) if hydration_score is not None else None)},

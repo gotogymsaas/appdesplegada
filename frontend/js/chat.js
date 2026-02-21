@@ -946,10 +946,20 @@ function buildQuickActions(context) {
 
   // Mantener 3 botones máximo, pero sin perder los pilares.
   // 1) Contextual (uno solo)
+  // - Si hay plan: "Revisar plan"
+  // - Si no hay dispositivo: "Sincronizar"
+  // - Si hay dispositivo: "Estado de hoy" (Exp-007)
   if (hasPlan) {
     actions.push({ label: 'Revisar plan', type: 'link', href: '/pages/settings/PlanEntrenamiento.html' });
   } else if (!hasDevice) {
     actions.push({ label: 'Sincronizar', type: 'link', href: '/pages/settings/Dispositivos.html' });
+  } else {
+    actions.push({
+      label: 'Estado de hoy',
+      type: 'message',
+      text: 'Estado de hoy',
+      payload: { lifestyle_request: { days: 14 } },
+    });
   }
 
   // 2) Postura (Exp-006)

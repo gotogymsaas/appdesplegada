@@ -16,6 +16,16 @@ class TestQAFLifestyleIntelligence(unittest.TestCase):
         qs = r.get("follow_up_questions") or []
         self.assertTrue(qs)
 
+    def test_self_report_can_unblock_missing_metrics(self):
+        r = evaluate_lifestyle({
+            "daily_metrics": [{"date": "2026-02-21"}],
+            "self_report": {"sleep_quality_1_5": 4, "movement_1_5": 3, "stress_1_5": 2},
+        }).payload
+        # Con auto-reporte, debería poder aceptar (o al menos no forzar por sueño/pasos)
+        missing = (r.get('confidence') or {}).get('missing') or []
+        self.assertFalse('sleep' in missing)
+        self.assertFalse('steps' in missing)
+
     def test_microhabits_max_3(self):
         payload = {
             "daily_metrics": [

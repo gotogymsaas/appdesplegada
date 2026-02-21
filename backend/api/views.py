@@ -3822,6 +3822,11 @@ def chat_n8n(request):
         posture_text_for_output_override = ""
         posture_quick_actions_out = []
 
+        # Exp-007 (lifestyle): resultado + texto + quick-actions
+        lifestyle_result = None
+        lifestyle_text_for_output_override = ""
+        lifestyle_quick_actions_out: list[dict[str, Any]] = []
+
         def _week_weights_from_state(state, week_id: str):
             try:
                 ww = state.get('weekly_weights') if isinstance(state.get('weekly_weights'), dict) else {}
@@ -4318,6 +4323,158 @@ def chat_n8n(request):
                         )
         except Exception as ex:
             print(f"QAF posture warning: {ex}")
+
+        # 0.6) Exp-007: Estado de hoy (Lifestyle Intelligence)
+        try:
+            if user:
+                lr = request.data.get('lifestyle_request') if isinstance(request.data, dict) else None
+                habit_done = request.data.get('lifestyle_habit_done') if isinstance(request.data, dict) else None
+
+                want_lifestyle = False
+                if isinstance(lr, dict) or isinstance(habit_done, dict):
+                    want_lifestyle = True
+                else:
+                    msg_low = str(message or '').lower()
+                    if re.search(r"\b(estado\s+de\s+hoy|como\s+voy\s+hoy|mi\s+energia\s+hoy|dhss|lifestyle)\b", msg_low):
+                        want_lifestyle = True
+
+                # Registrar hábito como hecho (sin UI nueva)
+                try:
+                    if isinstance(habit_done, dict):
+                        hid = str(habit_done.get('id') or '').strip()
+                        if hid:
+                            cs = getattr(user, 'coach_state', {}) or {}
+                            cs2 = dict(cs)
+                            done = cs2.get('lifestyle_done') if isinstance(cs2.get('lifestyle_done'), dict) else {}
+                            dkey = timezone.localdate().isoformat()
+                            day_list = done.get(dkey) if isinstance(done.get(dkey), list) else []
+                            day_list2 = [str(x) for x in day_list if str(x).strip()]
+                            if hid not in day_list2:
+                                day_list2.append(hid)
+                            done2 = dict(done)
+                            done2[dkey] = day_list2[:10]
+                            cs2['lifestyle_done'] = done2
+                            user.coach_state = cs2
+                            user.coach_state_updated_at = timezone.now()
+                            user.save(update_fields=['coach_state', 'coach_state_updated_at'])
+                except Exception:
+                    pass
+
+                if want_lifestyle:
+                    from datetime import timedelta
+                    from devices.models import FitnessSync
+                    from .qaf_lifestyle.engine import evaluate_lifestyle, render_professional_summary
+
+                    days_i = 14
+                    if isinstance(lr, dict) and lr.get('days') is not None:
+                        try:
+                            days_i = int(lr.get('days'))
+                        except Exception:
+                            days_i = 14
+                    days_i = max(3, min(30, int(days_i)))
+
+                    # Self-report puede venir por confirmaciones rápidas
+                    self_report = {}
+                    if isinstance(lr, dict) and isinstance(lr.get('self_report'), dict):
+                        self_report = dict(lr.get('self_report'))
+
+                    # daily_metrics desde FitnessSync (último por día)
+                    start_dt = timezone.now() - timedelta(days=days_i)
+                    qs = FitnessSync.objects.filter(user=user, created_at__gte=start_dt).only('created_at', 'metrics').order_by('created_at')
+                    by_day = {}
+                    for s in qs:
+                        d = timezone.localdate(s.created_at).isoformat()
+                        by_day[d] = (s.metrics or {})
+
+                    daily_metrics = []
+                    for d, m in sorted(by_day.items()):
+                        row = {'date': d}
+                        if isinstance(m, dict):
+                            for k in ('steps', 'sleep_minutes', 'calories', 'resting_heart_rate_bpm', 'avg_heart_rate_bpm', 'distance_m', 'distance_km'):
+                                if k in m:
+                                    row[k] = m.get(k)
+                        daily_metrics.append(row)
+
+                    # memory desde coach_state
+                    cs = getattr(user, 'coach_state', {}) or {}
+                    mem = cs.get('lifestyle_memory') if isinstance(cs.get('lifestyle_memory'), dict) else {}
+
+                    lifestyle_result = evaluate_lifestyle({'daily_metrics': daily_metrics, 'self_report': self_report, 'memory': mem}).payload
+                    ltext = render_professional_summary(lifestyle_result)
+                    if ltext:
+                        lifestyle_text_for_output_override = ltext
+                        attachment_text = ((attachment_text or '').strip() + "\n\n" if (attachment_text or '').strip() else "") + f"[ESTADO DE HOY]\n{ltext}".strip()
+
+                    # Persistir memoria mínima (last_ids)
+                    try:
+                        micro = lifestyle_result.get('microhabits') if isinstance(lifestyle_result.get('microhabits'), list) else []
+                        ids = [str(x.get('id')) for x in micro if isinstance(x, dict) and x.get('id')]
+                        mem2 = dict(mem)
+                        mem2['last_ids'] = ids[:3]
+                        cs2 = dict(cs)
+                        cs2['lifestyle_memory'] = mem2
+                        cs2['lifestyle_last'] = {'result': lifestyle_result, 'updated_at': timezone.now().isoformat()}
+                        user.coach_state = cs2
+                        user.coach_state_updated_at = timezone.now()
+                        user.save(update_fields=['coach_state', 'coach_state_updated_at'])
+                    except Exception:
+                        pass
+
+                    # Quick actions de confirmación mínima (sin usar follow_up_questions del frontend)
+                    try:
+                        if isinstance(lifestyle_result, dict) and lifestyle_result.get('decision') == 'needs_confirmation':
+                            missing = ((lifestyle_result.get('confidence') or {}).get('missing') or [])
+                            missing = [str(x) for x in missing]
+
+                            def _mk_scale_actions(prefix_label: str, key: str):
+                                out = []
+                                for i in range(1, 6):
+                                    out.append({
+                                        'label': f"{prefix_label} {i}/5",
+                                        'type': 'message',
+                                        'text': f"{prefix_label} {i}/5",
+                                        'payload': {
+                                            'lifestyle_request': {
+                                                'days': days_i,
+                                                'self_report': {**self_report, key: i},
+                                            }
+                                        },
+                                    })
+                                return out
+
+                            if 'sleep' in missing:
+                                lifestyle_quick_actions_out.extend(_mk_scale_actions('Sueño', 'sleep_quality_1_5'))
+                            if 'steps' in missing:
+                                lifestyle_quick_actions_out.extend(_mk_scale_actions('Movimiento', 'movement_1_5'))
+                            # si no hay stress, permitir confirmarlo también
+                            sig = lifestyle_result.get('signals') if isinstance(lifestyle_result.get('signals'), dict) else {}
+                            if (sig.get('stress_inv') or {}).get('score01') is None:
+                                lifestyle_quick_actions_out.extend(_mk_scale_actions('Estrés', 'stress_1_5'))
+
+                            lifestyle_quick_actions_out = lifestyle_quick_actions_out[:6]
+                        else:
+                            # Si ya está aceptado, ofrecer marcar micro-hábitos como hechos (máx 3)
+                            micro = lifestyle_result.get('microhabits') if isinstance(lifestyle_result.get('microhabits'), list) else []
+                            for mh in micro[:3]:
+                                if not isinstance(mh, dict):
+                                    continue
+                                hid = str(mh.get('id') or '').strip()
+                                lab = str(mh.get('label') or '').strip()
+                                if not hid or not lab:
+                                    continue
+                                # Etiqueta corta
+                                short = (lab[:32] + '…') if len(lab) > 33 else lab
+                                lifestyle_quick_actions_out.append({
+                                    'label': f"✅ {short}",
+                                    'type': 'message',
+                                    'text': f"✅ {short}",
+                                    'payload': {'lifestyle_habit_done': {'id': hid}},
+                                })
+                            lifestyle_quick_actions_out = lifestyle_quick_actions_out[:6]
+                    except Exception:
+                        pass
+        except Exception as ex:
+            print(f"QAF lifestyle warning: {ex}")
 
         # 0) Si llega qaf_context (ej. click en botones), usamos eso para estimar sin Vision.
         try:
@@ -4972,6 +5129,26 @@ def chat_n8n(request):
                             data['output'] = posture_text_for_output_override
                         elif not has_posture:
                             data['output'] = (posture_text_for_output_override.strip() + "\n\n" + out_text.strip()).strip()
+            except Exception:
+                pass
+
+            # Exp-007: lifestyle (quick-actions + resultado)
+            try:
+                if isinstance(data, dict):
+                    if lifestyle_quick_actions_out:
+                        existing = data.get('quick_actions') if isinstance(data.get('quick_actions'), list) else []
+                        data['quick_actions'] = (existing + lifestyle_quick_actions_out)[:6]
+                    if lifestyle_result:
+                        data.setdefault('qaf_lifestyle', lifestyle_result)
+
+                    out_text = data.get('output')
+                    if isinstance(out_text, str) and lifestyle_text_for_output_override:
+                        low = out_text.lower()
+                        has_state = ('estado de hoy' in low) or ('dhss' in low) or ('micro' in low)
+                        if (not out_text.strip()) or ('problema tecnico' in low) or ('problema técnico' in low):
+                            data['output'] = lifestyle_text_for_output_override
+                        elif not has_state:
+                            data['output'] = (lifestyle_text_for_output_override.strip() + "\n\n" + out_text.strip()).strip()
             except Exception:
                 pass
 
