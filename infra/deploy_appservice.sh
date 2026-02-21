@@ -7,7 +7,7 @@ set -e
 #   export DATABASE_URL='postgresql://user:pass@host:5432/gotogym_db'
 #   export DJANGO_SECRET_KEY='replace-me'
 #   export ALLOWED_HOSTS='gotogym-api.azurewebsites.net,api.gotogym.store'
-#   export CORS_ALLOWED_ORIGINS='https://gotogym.store,https://app.gotogym.store'
+#   export CORS_ALLOWED_ORIGINS='https://www.gotogym.store,https://gotogym.store,https://app.gotogym.store'
 #   export ACS_EMAIL_CONNECTION_STRING='endpoint=...'
 #   export CONTACT_EMAIL_FROM='DoNotReply@gotogym.store'
 #   export CONTACT_EMAIL_TO='support@gotogym.store'

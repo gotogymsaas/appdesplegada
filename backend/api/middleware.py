@@ -1,5 +1,7 @@
 import os
 
+from django.http import HttpResponse
+
 
 class AzureInternalHostMiddleware:
     def __init__(self, get_response):
@@ -28,8 +30,22 @@ class CorsMiddleware:
         self.get_response = get_response
 
     def __call__(self, request):
-        response = self.get_response(request)
+        # Responder preflight sin depender de las vistas.
+        if request.method == 'OPTIONS':
+            response = HttpResponse(status=204)
+        else:
+            try:
+                response = self.get_response(request)
+            except Exception:
+                # Importante: devolver un 500 con CORS para que el navegador no oculte el error.
+                response = HttpResponse('Internal Server Error', status=500)
+
         response['Access-Control-Allow-Origin'] = '*'
-        response['Access-Control-Allow-Headers'] = 'Content-Type, Authorization'
         response['Access-Control-Allow-Methods'] = 'GET, POST, PUT, PATCH, DELETE, OPTIONS'
+
+        # Si el browser pidió headers específicos (preflight), los reflejamos.
+        requested_headers = request.headers.get('Access-Control-Request-Headers')
+        response['Access-Control-Allow-Headers'] = requested_headers or 'Content-Type, Authorization'
+        response['Vary'] = 'Origin'
+
         return response

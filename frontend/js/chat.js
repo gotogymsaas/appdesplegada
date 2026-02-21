@@ -694,12 +694,21 @@ function buildQuickActions(context) {
 async function fetchCoachContext() {
   const user = getUserProfile();
   const username = user?.username || localStorage.getItem('username');
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        }
+  const token = getAuthToken();
+
+  // Sin username/token no podemos pedir contexto autenticado.
+  if (!username || !token) return null;
+
+  try {
+    const authFetch = window.authFetch || fetch;
+    const url = `${API_URL}coach_context/?username=${encodeURIComponent(username)}`;
+    const res = await authFetch(url, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
       }
-    );
+    });
     if (!res.ok) return null;
     const data = await res.json();
     localStorage.setItem(CONTEXT_CACHE_KEY, JSON.stringify(data));
