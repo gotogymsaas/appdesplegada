@@ -747,15 +747,26 @@ def _describe_image_with_azure_openai(image_url: str, *, image_bytes: bytes | No
         if not final_image_url:
             return "", "vision_missing_image_url"
 
+        # Nota: esta salida se usa como "router" de imágenes en `chat_n8n`.
+        # Mantener compatibilidad con `is_food/items/portion_estimate/notes`.
         system_msg = (
-            "Eres un nutricionista y coach. Describe la imagen con precisión en español, "
-            "enfocándote en comida/alimentos, ingredientes visibles y porciones aproximadas. "
-            "Si no es comida, descríbela igual y di que no es comida."
+            "Eres un router multimodal para un coach fitness. Tu trabajo es clasificar "
+            "una imagen en una de 4 rutas finales de negocio y extraer señales mínimas. "
+            "Responde en español, pero tu salida DEBE ser SOLO JSON válido."
         )
         user_text = (
-            "Analiza la imagen y responde SOLO en JSON con estas claves: "
-            "is_food (boolean), items (lista de strings), portion_estimate (string), "
-            "notes (string). Sé breve."
+            "Analiza la imagen y responde SOLO en JSON con estas claves:\n"
+            "- route (string): una de 'nutrition', 'training', 'health', 'quantum'\n"
+            "- route_confidence (number 0..1)\n"
+            "- is_food (boolean)\n"
+            "- items (array de strings): SOLO si is_food=true; si no, []\n"
+            "- portion_estimate (string)\n"
+            "- notes (string): breve, p.ej. 'selfie/rostro', 'cuerpo completo', 'primer plano piel/músculo', 'etiqueta nutricional', 'contexto gimnasio'\n"
+            "- has_person (boolean)\n"
+            "- has_nutrition_label (boolean)\n"
+            "- is_closeup_skin_or_muscle (boolean)\n"
+            "Reglas: si ves comida o etiqueta nutricional => route='nutrition'. Si es una persona entrenando o en contexto gimnasio => route='training'. "
+            "Si es primer plano de piel/músculo/rostro para salud/belleza => route='health'. Si no encaja => route='quantum'."
         )
 
         payload = {
@@ -4325,6 +4336,15 @@ def chat_n8n(request):
                     if re.search(r"\b(postura|posture|hombros\s+adelantados|cabeza\s+adelantada|joroba)\b", msg_low):
                         want_posture = True
 
+                # Router por imagen: si Vision clasificó como entrenamiento, activar guía de captura postural.
+                try:
+                    if (not want_posture) and isinstance(vision_parsed, dict):
+                        vr = str(vision_parsed.get('route') or '').strip().lower()
+                        if vr in ('training', 'entrenamiento'):
+                            want_posture = True
+                except Exception:
+                    pass
+
                 if want_posture:
                     from .qaf_posture.engine import evaluate_posture, render_professional_summary
 
@@ -5041,7 +5061,16 @@ def chat_n8n(request):
                                 portion = str(parsed.get("portion_estimate") or "").strip()
                                 notes = str(parsed.get("notes") or "").strip()
                                 is_food = parsed.get("is_food")
+                                route = str(parsed.get("route") or "").strip().lower()
+                                route_conf = parsed.get("route_confidence")
                                 summary = []
+                                if route:
+                                    summary.append(f"route: {route}")
+                                if route_conf is not None:
+                                    try:
+                                        summary.append(f"route_confidence: {round(float(route_conf), 2)}")
+                                    except Exception:
+                                        pass
                                 summary.append(f"is_food: {bool(is_food)}")
                                 if items_str:
                                     summary.append(f"items: {items_str}")
@@ -5059,9 +5088,66 @@ def chat_n8n(request):
         except Exception as ex:
             print(f"Vision image description warning: {ex}")
 
-        # 1) QAF (post-proceso): si tenemos vision_parsed con items, estimamos y devolvemos botones.
+        # Router: si la imagen cae en Salud, pedimos intención mínima (módulo) y evitamos inferencias.
         try:
-            if isinstance(vision_parsed, dict) and isinstance(vision_parsed.get('items'), list):
+            if attachment_url and isinstance(vision_parsed, dict):
+                vr = str(vision_parsed.get('route') or '').strip().lower()
+                if vr in ('health', 'salud'):
+                    attachment_text = ((attachment_text or '').strip() + "\n\n" if (attachment_text or '').strip() else "") + (
+                        "[SALUD / IMAGEN]\n"
+                        "Detecté una imagen tipo salud (primer plano de piel/músculo/rostro).\n"
+                        "¿Qué quieres hacer con esta foto?\n"
+                        "- Comparar/medir músculo\n"
+                        "- Belleza/piel\n"
+                        "Responde con una opción."
+                    )
+                    qa = quick_actions_out if isinstance(quick_actions_out, list) else []
+                    qa.extend([
+                        {'label': 'Comparar músculo', 'type': 'message', 'text': 'Comparar músculo'},
+                        {'label': 'Belleza / piel', 'type': 'message', 'text': 'Belleza / piel'},
+                    ])
+                    quick_actions_out = qa[:6]
+        except Exception:
+            pass
+
+        # Router: si la imagen cae en Entrenamiento, guiar captura postural (sin intentar calorías).
+        try:
+            if attachment_url and isinstance(vision_parsed, dict):
+                vr = str(vision_parsed.get('route') or '').strip().lower()
+                if vr in ('training', 'entrenamiento'):
+                    # Guardrail UX: no mezclar check-ins/metabólico si el usuario está en modo entrenamiento por imagen.
+                    try:
+                        suppress_weekly_checkins = True
+                    except Exception:
+                        pass
+
+                    attachment_text = ((attachment_text or '').strip() + "\n\n" if (attachment_text or '').strip() else "") + (
+                        "[ENTRENAMIENTO / IMAGEN]\n"
+                        "Puedo ayudarte con técnica/postura, pero necesito 2 fotos: frontal y lateral (cuerpo completo, buena luz, cámara a la altura del pecho, 2–3m).\n"
+                        "Si solo es una selfie o una foto casual, también puedo responder como Quantum Coach."
+                    )
+                    qa = quick_actions_out if isinstance(quick_actions_out, list) else []
+                    qa.extend([
+                        {'label': 'Tomar foto frontal', 'type': 'open_camera'},
+                        {'label': 'Tomar foto lateral', 'type': 'open_camera'},
+                        {'label': 'Adjuntar fotos', 'type': 'open_attach'},
+                    ])
+                    quick_actions_out = qa[:6]
+        except Exception:
+            pass
+
+        # 1) QAF (post-proceso): solo si Vision confirmó ruta Nutrición/Comida.
+        try:
+            food_ok = False
+            try:
+                if isinstance(vision_parsed, dict):
+                    vr = str(vision_parsed.get('route') or '').strip().lower()
+                    is_food = vision_parsed.get('is_food')
+                    food_ok = (is_food is True) or (vr in ('nutrition', 'nutricion', 'food'))
+            except Exception:
+                food_ok = False
+
+            if food_ok and isinstance(vision_parsed, dict) and isinstance(vision_parsed.get('items'), list):
                 from .qaf_calories.engine import (
                     load_aliases,
                     load_calorie_db,
