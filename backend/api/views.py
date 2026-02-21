@@ -3837,6 +3837,14 @@ def chat_n8n(request):
         progression_text_for_output_override = ""
         progression_quick_actions_out: list[dict[str, Any]] = []
 
+        # Guardrail UX: si el usuario está en un flujo de Postura, no mezclar check-ins/metabólico.
+        try:
+            pr0 = request.data.get('posture_request') if isinstance(request.data, dict) else None
+            msg_low0 = str(message or '').lower()
+            suppress_weekly_checkins = bool(isinstance(pr0, dict) or re.search(r"\b(postura|posture)\b", msg_low0))
+        except Exception:
+            suppress_weekly_checkins = False
+
         def _week_weights_from_state(state, week_id: str):
             try:
                 ww = state.get('weekly_weights') if isinstance(state.get('weekly_weights'), dict) else {}
@@ -5112,7 +5120,7 @@ def chat_n8n(request):
 
         # Exp-003: Perfil metabólico dinámico (si hay usuario)
         try:
-            if user:
+            if user and not suppress_weekly_checkins:
                 week_id_now = _week_id()
                 weekly_state = getattr(user, 'coach_weekly_state', {}) or {}
                 coach_state = getattr(user, 'coach_state', {}) or {}
