@@ -3827,6 +3827,11 @@ def chat_n8n(request):
         lifestyle_text_for_output_override = ""
         lifestyle_quick_actions_out: list[dict[str, Any]] = []
 
+        # Exp-008 (motivación): resultado + texto + quick-actions
+        motivation_result = None
+        motivation_text_for_output_override = ""
+        motivation_quick_actions_out: list[dict[str, Any]] = []
+
         def _week_weights_from_state(state, week_id: str):
             try:
                 ww = state.get('weekly_weights') if isinstance(state.get('weekly_weights'), dict) else {}
@@ -4475,6 +4480,146 @@ def chat_n8n(request):
                         pass
         except Exception as ex:
             print(f"QAF lifestyle warning: {ex}")
+
+        # 0.7) Exp-008: Motivación (perfil + estado + reto) usando chat como sensor
+        try:
+            if user:
+                mr = request.data.get('motivation_request') if isinstance(request.data, dict) else None
+                ma = request.data.get('motivation_action') if isinstance(request.data, dict) else None
+
+                want_motivation = False
+                if isinstance(mr, dict) or isinstance(ma, dict):
+                    want_motivation = True
+                else:
+                    msg_low = str(message or '').lower()
+                    if re.search(r"\b(motivaci[oó]n|me\s+cuesta|no\s+quiero|no\s+pude|me\s+dio\s+pereza|estoy\s+agotad|estoy\s+cansad)\b", msg_low):
+                        want_motivation = True
+
+                cs = getattr(user, 'coach_state', {}) or {}
+                mem = cs.get('motivation_memory') if isinstance(cs.get('motivation_memory'), dict) else {}
+                prefs = cs.get('motivation_preferences') if isinstance(cs.get('motivation_preferences'), dict) else {}
+
+                # Actualizar preferencias desde botones
+                if isinstance(mr, dict) and isinstance(mr.get('preferences'), dict):
+                    prefs = {**prefs, **mr.get('preferences')}
+
+                # Registrar acciones (lo hago / modo fácil) como memoria simple
+                if isinstance(ma, dict):
+                    try:
+                        cs2 = dict(cs)
+                        acts = cs2.get('motivation_actions') if isinstance(cs2.get('motivation_actions'), list) else []
+                        acts2 = [a for a in acts if isinstance(a, dict)][:20]
+                        acts2.append({'at': timezone.now().isoformat(), 'action': ma})
+                        cs2['motivation_actions'] = acts2[-20:]
+                        user.coach_state = cs2
+                        user.coach_state_updated_at = timezone.now()
+                        user.save(update_fields=['coach_state', 'coach_state_updated_at'])
+                        cs = cs2
+                    except Exception:
+                        pass
+
+                # Inferir days_inactive por última interacción guardada
+                try:
+                    last_seen = mem.get('last_seen_at')
+                    if isinstance(last_seen, str) and last_seen:
+                        last_dt = timezone.datetime.fromisoformat(last_seen.replace('Z', '+00:00'))
+                        delta = timezone.now() - last_dt
+                        mem = dict(mem)
+                        mem['days_inactive'] = int(delta.total_seconds() // (24 * 3600))
+                except Exception:
+                    pass
+
+                if want_motivation:
+                    lifestyle_last = None
+                    try:
+                        lifestyle_last = (cs.get('lifestyle_last') or {}).get('result')
+                    except Exception:
+                        lifestyle_last = None
+
+                    gam = {
+                        'streak': int(getattr(user, 'current_streak', 0) or 0),
+                        'badges': getattr(user, 'badges', []) or [],
+                    }
+
+                    from .qaf_motivation.engine import evaluate_motivation, render_professional_summary
+
+                    motivation_result = evaluate_motivation({
+                        'message': str(message or ''),
+                        'memory': mem,
+                        'preferences': prefs,
+                        'gamification': gam,
+                        'lifestyle': lifestyle_last or {},
+                    }).payload
+
+                    mtext = render_professional_summary(motivation_result)
+                    if mtext:
+                        motivation_text_for_output_override = mtext
+                        attachment_text = ((attachment_text or '').strip() + "\n\n" if (attachment_text or '').strip() else "") + f"[MOTIVACIÓN]\n{mtext}".strip()
+
+                    # Persistir memoria (vector + last_seen)
+                    try:
+                        vec = ((motivation_result.get('profile') or {}).get('vector')) if isinstance(motivation_result.get('profile'), dict) else None
+                        mem2 = dict(mem)
+                        if isinstance(vec, dict):
+                            mem2['vector'] = vec
+                        mem2['last_seen_at'] = timezone.now().isoformat()
+                        cs2 = dict(cs)
+                        cs2['motivation_memory'] = mem2
+                        cs2['motivation_preferences'] = prefs
+                        cs2['motivation_last'] = {'result': motivation_result, 'updated_at': timezone.now().isoformat()}
+                        user.coach_state = cs2
+                        user.coach_state_updated_at = timezone.now()
+                        user.save(update_fields=['coach_state', 'coach_state_updated_at'])
+                        cs = cs2
+                    except Exception:
+                        pass
+
+                    # Quick actions: confirmación mínima (pressure) y CTAs
+                    try:
+                        if isinstance(motivation_result, dict) and motivation_result.get('decision') == 'needs_confirmation':
+                            motivation_quick_actions_out.extend([
+                                {
+                                    'label': 'Suave',
+                                    'type': 'message',
+                                    'text': 'Suave',
+                                    'payload': {'motivation_request': {'preferences': {'pressure': 'suave'}}},
+                                },
+                                {
+                                    'label': 'Medio',
+                                    'type': 'message',
+                                    'text': 'Medio',
+                                    'payload': {'motivation_request': {'preferences': {'pressure': 'medio'}}},
+                                },
+                                {
+                                    'label': 'Firme',
+                                    'type': 'message',
+                                    'text': 'Firme',
+                                    'payload': {'motivation_request': {'preferences': {'pressure': 'firme'}}},
+                                },
+                            ])
+                        else:
+                            cid = None
+                            try:
+                                cid = (motivation_result.get('challenge') or {}).get('id')
+                            except Exception:
+                                cid = None
+                            motivation_quick_actions_out.append({
+                                'label': '✅ Lo hago',
+                                'type': 'message',
+                                'text': '✅ Lo hago',
+                                'payload': {'motivation_action': {'accept': True, 'challenge_id': cid}},
+                            })
+                            motivation_quick_actions_out.append({
+                                'label': '🟡 Modo fácil 7 días',
+                                'type': 'message',
+                                'text': '🟡 Modo fácil 7 días',
+                                'payload': {'motivation_action': {'mode': 'renacer_7d'}},
+                            })
+                        motivation_quick_actions_out = motivation_quick_actions_out[:6]
+                    except Exception:
+                        pass
+        except Exception as ex:
+            print(f"QAF motivation warning: {ex}")
 
         # 0) Si llega qaf_context (ej. click en botones), usamos eso para estimar sin Vision.
         try:
@@ -5149,6 +5294,26 @@ def chat_n8n(request):
                             data['output'] = lifestyle_text_for_output_override
                         elif not has_state:
                             data['output'] = (lifestyle_text_for_output_override.strip() + "\n\n" + out_text.strip()).strip()
+            except Exception:
+                pass
+
+            # Exp-008: motivación (quick-actions + resultado)
+            try:
+                if isinstance(data, dict):
+                    if motivation_quick_actions_out:
+                        existing = data.get('quick_actions') if isinstance(data.get('quick_actions'), list) else []
+                        data['quick_actions'] = (existing + motivation_quick_actions_out)[:6]
+                    if motivation_result:
+                        data.setdefault('qaf_motivation', motivation_result)
+
+                    out_text = data.get('output')
+                    if isinstance(out_text, str) and motivation_text_for_output_override:
+                        low = out_text.lower()
+                        has_mot = ('motiv' in low) or ('reto:' in low) or ('perfil dominante' in low)
+                        if (not out_text.strip()) or ('problema tecnico' in low) or ('problema técnico' in low):
+                            data['output'] = motivation_text_for_output_override
+                        elif not has_mot:
+                            data['output'] = (motivation_text_for_output_override.strip() + "\n\n" + out_text.strip()).strip()
             except Exception:
                 pass
 
@@ -5842,5 +6007,61 @@ def qaf_lifestyle(request):
         pass
 
     return Response({'success': True, 'result': res, 'text': text, 'daily_metrics': daily_metrics[-7:]})
+
+
+@api_view(['POST', 'OPTIONS'])
+@authentication_classes([JWTAuthentication])
+@permission_classes([IsAuthenticatedOrOptions])
+def qaf_motivation(request):
+    """Exp-008: Motivación psicológica personalizada (perfil vectorial + estado + reto)."""
+
+    if request.method == 'OPTIONS':
+        return Response(status=status.HTTP_200_OK)
+
+    user = _resolve_request_user(request)
+    if not user:
+        return Response({'error': 'Autenticacion requerida'}, status=status.HTTP_401_UNAUTHORIZED)
+
+    payload = request.data if isinstance(request.data, dict) else {}
+    message = str(payload.get('message') or payload.get('text') or '').strip() or 'Necesito motivación.'
+
+    cs = getattr(user, 'coach_state', {}) or {}
+    mem = cs.get('motivation_memory') if isinstance(cs.get('motivation_memory'), dict) else {}
+    prefs = cs.get('motivation_preferences') if isinstance(cs.get('motivation_preferences'), dict) else {}
+    if isinstance(payload.get('preferences'), dict):
+        prefs = {**prefs, **payload.get('preferences')}
+
+    gam = {
+        'streak': int(getattr(user, 'current_streak', 0) or 0),
+        'badges': getattr(user, 'badges', []) or [],
+    }
+
+    lifestyle = None
+    try:
+        lifestyle = (cs.get('lifestyle_last') or {}).get('result')
+    except Exception:
+        lifestyle = None
+
+    from .qaf_motivation.engine import evaluate_motivation, render_professional_summary
+    res = evaluate_motivation({'message': message, 'memory': mem, 'preferences': prefs, 'gamification': gam, 'lifestyle': lifestyle or {}}).payload
+    text = render_professional_summary(res)
+
+    try:
+        cs2 = dict(cs)
+        vec = ((res.get('profile') or {}).get('vector')) if isinstance(res.get('profile'), dict) else None
+        mem2 = dict(mem)
+        if isinstance(vec, dict):
+            mem2['vector'] = vec
+        mem2['last_seen_at'] = timezone.now().isoformat()
+        cs2['motivation_memory'] = mem2
+        cs2['motivation_preferences'] = prefs
+        cs2['motivation_last'] = {'result': res, 'updated_at': timezone.now().isoformat()}
+        user.coach_state = cs2
+        user.coach_state_updated_at = timezone.now()
+        user.save(update_fields=['coach_state', 'coach_state_updated_at'])
+    except Exception:
+        pass
+
+    return Response({'success': True, 'result': res, 'text': text})
 
 

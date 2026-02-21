@@ -1,0 +1,3 @@
+{"id":"logro","input":{"message":"Hoy vamos por record, quiero subir 5% en mi press. Mi meta es progreso.","memory":{"vector":{"logro":0.7,"disciplina":0.2,"salud":0.05,"estetica":0.03,"comunidad":0.02}},"preferences":{"pressure":"firme"},"gamification":{"streak":7}}}
+{"id":"fatiga","input":{"message":"Estoy cansado, no dormi y estoy estresado.","memory":{"days_inactive":1},"preferences":{"pressure":"suave"},"gamification":{"streak":1},"lifestyle":{"dhss":{"band":"recovery"}}}}
+{"id":"missing_pref","input":{"message":"Me cuesta mantener la constancia, quiero un empujon.","memory":{},"preferences":{},"gamification":{"streak":0}}}
