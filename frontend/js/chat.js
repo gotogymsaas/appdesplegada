@@ -16,7 +16,7 @@ return;
 // 1. Inyectar CSS
 const link = document.createElement('link');
 link.rel = "stylesheet";
-const CHAT_CSS_VERSION = '2026-02-21-4';
+const CHAT_CSS_VERSION = '2026-02-21-5';
 link.href = `/css/chat.css?v=${CHAT_CSS_VERSION}`; // Ruta absoluta desde raíz del servidor // frontend
 // Si estás en subcarpetas, esto funciona si el server sirve desde raíz.
 // Si falla, intentaremos ruta relativa automática
@@ -725,12 +725,27 @@ const containerWidget =
 document.getElementById('chat-widget-container');
 chatWindow.classList.toggle('open');
 containerWidget.classList.toggle('expanded'); // Critical for Mobile // CSS
-if (chatWindow.classList.contains('open')) {
+const isOpen = chatWindow.classList.contains('open');
+
+// En mobile web, bloquear scroll del body para que no se vea la pantalla de atrás.
+try {
+  if (isOpen && window.matchMedia && window.matchMedia('(max-width: 480px)').matches) {
+    document.body.classList.add('gtg-chat-open');
+  } else {
+    document.body.classList.remove('gtg-chat-open');
+  }
+} catch (e) {
+  // ignore
+}
+
+if (isOpen) {
 if (window.innerWidth > 480) input.focus();
 // Recalcular visibilidad de los controles de scroll al abrir.
 setTimeout(updateScrollControls, 50);
 scheduleViewportOffsetUpdate();
 scheduleFooterMetricsUpdate();
+} else {
+  closeToolsMenu();
 }
 }
 toggleBtn.addEventListener('click', toggleChat);
