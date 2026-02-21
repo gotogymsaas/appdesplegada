@@ -4561,6 +4561,8 @@ def chat_n8n(request):
                             'kcal_day': ((mr.payload.get('recommendation') or {}).get('kcal_day')),
                             'weekly_adjustment_kcal_day': ((mr.payload.get('recommendation') or {}).get('weekly_adjustment_kcal_day')),
                             'adaptation_alpha': ((mr.payload.get('metabolic') or {}).get('adaptation_alpha')),
+                            'tdee_effective_kcal_day': ((mr.payload.get('metabolic') or {}).get('tdee_effective_kcal_day')),
+                            'tdee_base_kcal_day': ((mr.payload.get('metabolic') or {}).get('tdee_base_kcal_day')),
                             'confidence': ((mr.payload.get('confidence') or {}).get('score')),
                             'updated_at': timezone.now().isoformat(),
                             'week_id': week_id_now,
@@ -5050,6 +5052,8 @@ def qaf_metabolic_profile(request):
                 'kcal_day': ((res.payload.get('recommendation') or {}).get('kcal_day')),
                 'weekly_adjustment_kcal_day': ((res.payload.get('recommendation') or {}).get('weekly_adjustment_kcal_day')),
                 'adaptation_alpha': ((res.payload.get('metabolic') or {}).get('adaptation_alpha')),
+                'tdee_effective_kcal_day': ((res.payload.get('metabolic') or {}).get('tdee_effective_kcal_day')),
+                'tdee_base_kcal_day': ((res.payload.get('metabolic') or {}).get('tdee_base_kcal_day')),
                 'confidence': ((res.payload.get('confidence') or {}).get('score')),
                 'updated_at': timezone.now().isoformat(),
                 'week_id': week_id_now,
@@ -5380,8 +5384,28 @@ def qaf_body_trend(request):
 
     # fallback tdee: aproximación por activity (si no hay metabolic_last)
     if tdee is None:
-        # rough fallback
-        tdee = float(reco) if reco is not None else None
+        try:
+            from .qaf_metabolic_profile.engine import evaluate_weekly_metabolic_profile
+
+            prof = {
+                'sex': getattr(user, 'sex', None),
+                'age': getattr(user, 'age', None),
+                'height_cm': (float(getattr(user, 'height', None)) * 100.0) if getattr(user, 'height', None) else None,
+                'weight_kg': float(cur_w or getattr(user, 'weight', 0) or 0),
+                'goal_type': getattr(user, 'goal_type', None),
+                'activity_level': getattr(user, 'activity_level', None),
+                'daily_target_kcal_override': getattr(user, 'daily_target_kcal_override', None),
+            }
+            weights_payload = {
+                'current_week': [float(cur_w)] if (cur_w is not None and float(cur_w) > 0) else [],
+                'previous_week': [float(prev_w)] if (prev_w is not None and float(prev_w) > 0) else [],
+            }
+            mr = evaluate_weekly_metabolic_profile(prof, weights_payload, last_alpha=None)
+            tdee = float(((mr.payload.get('metabolic') or {}).get('tdee_effective_kcal_day')) or 0.0) or None
+            if reco is None:
+                reco = (mr.payload.get('recommendation') or {}).get('kcal_day')
+        except Exception:
+            tdee = float(reco) if reco is not None else None
 
     profile = {
         'tdee_kcal_day': tdee,

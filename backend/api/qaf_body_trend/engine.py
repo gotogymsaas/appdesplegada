@@ -155,14 +155,26 @@ def render_professional_summary(result: dict[str, Any]) -> str:
             lines.append(f"confidence: {round(float(conf.get('score')), 3)}")
         except Exception:
             pass
-    main = scenarios.get('baseline') or scenarios.get('follow_plan')
-    if isinstance(main, dict):
-        traj = main.get('trajectory') if isinstance(main.get('trajectory'), list) else []
-        if traj:
-            last = traj[-1] if isinstance(traj[-1], dict) else None
-            if last:
-                lines.append(f"weight_in_{len(traj)}w: {last.get('weight_kg')} kg")
-                lines.append(f"range_in_{len(traj)}w: {last.get('weight_kg_min')}–{last.get('weight_kg_max')} kg")
+    # Resumen WOW: 6 semanas para 2-3 escenarios (si existen)
+    def _last(traj: Any):
+        if not isinstance(traj, list) or not traj:
+            return None
+        return traj[-1] if isinstance(traj[-1], dict) else None
+
+    def _fmt_last(label: str, sc: Any):
+        if not isinstance(sc, dict):
+            return
+        last = _last(sc.get('trajectory'))
+        if not last:
+            return
+        lines.append(
+            f"{label}: {last.get('weight_kg')} kg (rango {last.get('weight_kg_min')}–{last.get('weight_kg_max')})"
+        )
+
+    if scenarios:
+        _fmt_last("baseline", scenarios.get('baseline'))
+        _fmt_last("follow_plan", scenarios.get('follow_plan'))
+        _fmt_last("minus_200", scenarios.get('minus_200'))
     explain = result.get('explainability')
     if isinstance(explain, list):
         for x in explain[:2]:
@@ -174,26 +186,28 @@ def render_professional_summary(result: dict[str, Any]) -> str:
 def build_quick_actions_for_trend(*, has_intake: bool) -> list[dict[str, Any]]:
     # Mantener máximo 3 botones como el resto de la UX.
     actions: list[dict[str, Any]] = []
-    actions.append({
-        'label': 'Simular recomendación',
-        'type': 'message',
-        'text': 'Simular recomendación',
-        'payload': {'body_trend_request': {'scenario': 'follow_plan'}},
-    })
-    actions.append({
-        'label': 'Simular -200 kcal',
-        'type': 'message',
-        'text': 'Simular -200 kcal',
-        'payload': {'body_trend_request': {'scenario': 'minus_200'}},
-    })
     if not has_intake:
-        actions.append({
-            'label': 'Usar mi ingesta (escribir)',
-            'type': 'message',
-            'text': 'Mi ingesta promedio fue 2000 kcal/día',
-            'payload': None,
-        })
+        # WOW: 1 tap para registrar ingesta promedio (sin UI extra)
+        for kcal in (1800, 2000, 2200):
+            actions.append({
+                'label': f'Registrar {kcal} kcal/día',
+                'type': 'message',
+                'text': f'Registrar {kcal} kcal/día',
+                'payload': {'body_trend_request': {'kcal_in_avg_day': float(kcal)}},
+            })
     else:
+        actions.append({
+            'label': 'Simular recomendación',
+            'type': 'message',
+            'text': 'Simular recomendación',
+            'payload': {'body_trend_request': {'scenario': 'follow_plan'}},
+        })
+        actions.append({
+            'label': 'Simular -200 kcal',
+            'type': 'message',
+            'text': 'Simular -200 kcal',
+            'payload': {'body_trend_request': {'scenario': 'minus_200'}},
+        })
         actions.append({
             'label': 'Simular +200 kcal',
             'type': 'message',
