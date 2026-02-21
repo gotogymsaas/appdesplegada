@@ -4661,6 +4661,21 @@ def chat_n8n(request):
                         motivation_quick_actions_out = motivation_quick_actions_out[:6]
                     except Exception:
                         pass
+
+                    # UX: si el usuario está interactuando con botones/payloads de motivación,
+                    # respondemos directo para no depender de n8n (más consistente y rápido).
+                    try:
+                        if (isinstance(mr, dict) or isinstance(ma, dict)) and motivation_text_for_output_override:
+                            qa_existing = quick_actions_out if isinstance(quick_actions_out, list) else []
+                            qa_existing2 = [x for x in qa_existing if isinstance(x, dict)]
+                            out_actions = (qa_existing2 + motivation_quick_actions_out)[:6] if motivation_quick_actions_out else qa_existing2[:6]
+                            return Response({
+                                'output': motivation_text_for_output_override,
+                                'quick_actions': out_actions,
+                                'qaf_motivation': motivation_result,
+                            })
+                    except Exception:
+                        pass
         except Exception as ex:
             print(f"QAF motivation warning: {ex}")
 
@@ -5216,12 +5231,31 @@ def chat_n8n(request):
             "qaf_meal_plan": meal_plan_result,
             "qaf_body_trend": body_trend_result,
             "qaf_posture": posture_result,
+            "qaf_motivation": motivation_result,
             "fitness": fitness_payload,
             "profile": profile_payload,
             "if_snapshot": if_snapshot,
             "integrations": integrations_payload,
             "documents": documents_payload,
         }
+
+        # Enriquecer reglas para n8n (mejor tono / framing) si se calculó motivación.
+        try:
+            if isinstance(motivation_result, dict):
+                prof = motivation_result.get('profile') if isinstance(motivation_result.get('profile'), dict) else {}
+                state = motivation_result.get('state') if isinstance(motivation_result.get('state'), dict) else {}
+                tone = motivation_result.get('tone') if isinstance(motivation_result.get('tone'), dict) else {}
+                chall = motivation_result.get('challenge') if isinstance(motivation_result.get('challenge'), dict) else {}
+                payload.setdefault('system_rules', {})
+                payload['system_rules']['motivation_context'] = {
+                    'profile_top': prof.get('top'),
+                    'mood': state.get('mood'),
+                    'tone_style': tone.get('style'),
+                    'challenge_label': chall.get('label'),
+                    'decision': motivation_result.get('decision'),
+                }
+        except Exception:
+            pass
 
         # 3. Enviar a n8n
         # Timeout corto por si n8n tarda
