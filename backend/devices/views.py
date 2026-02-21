@@ -280,10 +280,18 @@ def device_sync(request, provider):
                         except Exception:
                             continue
 
+        credited = False
+        reason = "no_real_data"
         if res.ok and has_real_data:
             from api.gamification_service import update_user_streak
             update_user_streak(request.user, source=f"device_sync:{provider}")
-            payload["streak"] = int(getattr(request.user, "current_streak", 0) or 0)
+            credited = True
+            reason = "real_data"
+
+        # Siempre devolver streak para que el cliente pueda mostrarlo aunque no haya acreditado.
+        payload["streak"] = int(getattr(request.user, "current_streak", 0) or 0)
+        payload["streak_credited"] = bool(credited)
+        payload["streak_reason"] = reason
     except Exception:
         # Nunca bloquear sync por gamificación.
         pass

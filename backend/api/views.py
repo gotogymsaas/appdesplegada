@@ -2941,6 +2941,14 @@ def submit_if_answer(request):
         answered_date=answered_date,
     )
 
+    # Gamificación: cada check-in cuenta como 1 acción válida del día.
+    try:
+        from api.gamification_service import update_user_streak
+        update_user_streak(user, activity_date=answered_date, source=f"if_answer:{source}")
+    except Exception:
+        # Nunca bloquear el flujo del IF por gamificación.
+        pass
+
     total = IFQuestion.objects.filter(active=True).count()
     answered = IFAnswer.objects.filter(user=user, week_id=week_id).values('question').distinct().count()
 
@@ -2948,7 +2956,8 @@ def submit_if_answer(request):
         'success': True,
         'week_id': week_id,
         'progress': {'answered': answered, 'total': total},
-        'message': 'Respuesta guardada'
+        'message': 'Respuesta guardada',
+        'current_streak': int(getattr(user, 'current_streak', 0) or 0),
     }
 
     if answered >= total:
