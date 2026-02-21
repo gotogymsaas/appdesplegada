@@ -16,7 +16,7 @@ return;
 // 1. Inyectar CSS
 const link = document.createElement('link');
 link.rel = "stylesheet";
-const CHAT_CSS_VERSION = '2026-02-21-9';
+const CHAT_CSS_VERSION = '2026-02-21-10';
 link.href = `/css/chat.css?v=${CHAT_CSS_VERSION}`; // Ruta absoluta desde raíz del servidor // frontend
 // Si estás en subcarpetas, esto funciona si el server sirve desde raíz.
 // Si falla, intentaremos ruta relativa automática
@@ -836,7 +836,13 @@ try {
 }
 
 if (isOpen) {
-if (window.innerWidth > 480) input.focus();
+if (window.innerWidth > 480) {
+  try {
+    input.focus({ preventScroll: true });
+  } catch (e) {
+    input.focus();
+  }
+}
 // Recalcular visibilidad de los controles de scroll al abrir.
 setTimeout(updateScrollControls, 50);
 scheduleViewportOffsetUpdate();

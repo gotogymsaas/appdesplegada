@@ -692,13 +692,16 @@ body[data-theme="light"] #chat-widget-container {
     flex-direction: column !important;
     justify-content: flex-start;
 
-    transform: translateY(100%);
-    transition: transform 0.3s ease-in-out;
+    visibility: hidden;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.2s ease-in-out;
   }
 
   #chat-window.open {
-    transform: translateY(0);
+    visibility: visible;
     opacity: 1 !important;
+    pointer-events: all;
   }
 
   /* Header */
