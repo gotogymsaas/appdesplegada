@@ -16,7 +16,7 @@ return;
 // 1. Inyectar CSS
 const link = document.createElement('link');
 link.rel = "stylesheet";
-const CHAT_CSS_VERSION = '2026-02-21-5';
+const CHAT_CSS_VERSION = '2026-02-21-6';
 link.href = `/css/chat.css?v=${CHAT_CSS_VERSION}`; // Ruta absoluta desde raíz del servidor // frontend
 // Si estás en subcarpetas, esto funciona si el server sirve desde raíz.
 // Si falla, intentaremos ruta relativa automática
@@ -277,23 +277,82 @@ function formatFileSize(bytes) {
   return `${mb.toFixed(1)} MB`;
 }
 
+let attachmentPreviewObjectUrl = '';
+
+function revokeAttachmentPreviewUrl() {
+  if (!attachmentPreviewObjectUrl) return;
+  try {
+    URL.revokeObjectURL(attachmentPreviewObjectUrl);
+  } catch (e) {
+    // ignore
+  }
+  attachmentPreviewObjectUrl = '';
+}
+
 function setAttachmentPreview(file, state = 'ready') {
   if (!attachmentPreview) return;
   if (!file) {
+    revokeAttachmentPreviewUrl();
     attachmentPreview.hidden = true;
     attachmentPreview.innerHTML = '';
     scheduleFooterMetricsUpdate();
     return;
   }
+
+  revokeAttachmentPreviewUrl();
+  attachmentPreviewObjectUrl = URL.createObjectURL(file);
+
+  const fileName = escapeHtml(file.name || 'adjunto');
   const size = formatFileSize(file.size);
+  const mime = String(file.type || '').toLowerCase();
+  const isImage = mime.startsWith('image/');
+  const isPdf = mime === 'application/pdf' || String(file.name || '').toLowerCase().endsWith('.pdf');
+
+  let previewHtml = '';
+  if (isImage) {
+    previewHtml = `<img class="attachment-thumb" src="${attachmentPreviewObjectUrl}" alt="Vista previa" />`;
+  } else if (isPdf) {
+    previewHtml = `
+      <div class="attachment-thumb attachment-thumb-pdf" aria-hidden="true">
+        <span class="attachment-pdf-badge">PDF</span>
+      </div>
+    `;
+  } else {
+    previewHtml = `
+      <div class="attachment-thumb attachment-thumb-file" aria-hidden="true">
+        <span class="attachment-file-badge">FILE</span>
+      </div>
+    `;
+  }
+
   attachmentPreview.hidden = false;
   attachmentPreview.dataset.state = state;
   attachmentPreview.innerHTML = `
-    <span class="attachment-name">${file.name}</span>
-    <span class="attachment-size">${size}</span>
-    <span class="attachment-state">${state === 'uploading' ? 'Subiendo...' : 'Adjunto listo'}</span>
-    <button type="button" class="attachment-clear" title="Quitar">✕</button>
+    ${previewHtml}
+    <div class="attachment-meta">
+      <span class="attachment-name">${fileName}</span>
+      <span class="attachment-size">${size}</span>
+    </div>
+    <div class="attachment-actions">
+      ${isPdf ? '<button type="button" class="attachment-open" title="Ver PDF">Ver</button>' : ''}
+      <span class="attachment-state">${state === 'uploading' ? 'Subiendo...' : 'Adjunto listo'}</span>
+      <button type="button" class="attachment-clear" title="Quitar">✕</button>
+    </div>
   `;
+
+  const openBtn = attachmentPreview.querySelector('.attachment-open');
+  if (openBtn) {
+    openBtn.disabled = state === 'uploading';
+    openBtn.addEventListener('click', () => {
+      if (!attachmentPreviewObjectUrl) return;
+      try {
+        window.open(attachmentPreviewObjectUrl, '_blank', 'noopener');
+      } catch (e) {
+        // ignore
+      }
+    });
+  }
+
   const clearBtn = attachmentPreview.querySelector('.attachment-clear');
   if (clearBtn) {
     clearBtn.disabled = state === 'uploading';
