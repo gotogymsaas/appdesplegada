@@ -15,6 +15,11 @@ fi
 
 cd "$BACKEND_DIR"
 
+# Evitar que Django cargue migraciones antiguas desde .pyc (sourceless) tras despliegues ZIP.
+# Esto puede provocar conflictos de migraciones si quedó cache de archivos renombrados/eliminados.
+find "$BACKEND_DIR" -type d -name "__pycache__" -prune -exec rm -rf {} + 2>/dev/null || true
+find "$BACKEND_DIR" -type f -name "*.pyc" -delete 2>/dev/null || true
+
 INSTALL_OCR_SYSTEM_DEPS="${INSTALL_OCR_SYSTEM_DEPS:-${CHAT_ATTACHMENT_INSTALL_OCR_DEPS:-}}"
 INSTALL_PDF_OCR_SYSTEM_DEPS="${INSTALL_PDF_OCR_SYSTEM_DEPS:-${CHAT_ATTACHMENT_INSTALL_PDF_OCR_DEPS:-}}"
 
