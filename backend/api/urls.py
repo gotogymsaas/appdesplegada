@@ -52,4 +52,5 @@ urlpatterns = [
     path('qaf/meal_plan/', views.qaf_meal_plan, name='qaf_meal_plan'),
     path('qaf/meal_plan/apply/', views.qaf_meal_plan_apply, name='qaf_meal_plan_apply'),
     path('qaf/meal_plan/mutate/', views.qaf_meal_plan_mutate, name='qaf_meal_plan_mutate'),
+    path('qaf/body_trend/', views.qaf_body_trend, name='qaf_body_trend'),
 ]

@@ -1,0 +1,2 @@
+{"id":"case-01_with_intake","profile":{"tdee_kcal_day":2500,"recommended_kcal_day":2100},"observations":{"weight_current_week_avg_kg":80.0,"weight_previous_week_avg_kg":80.5,"kcal_in_avg_day":2300},"expected":{"weeks":6}}
+{"id":"case-02_missing_intake","profile":{"tdee_kcal_day":2300,"recommended_kcal_day":1900},"observations":{"weight_current_week_avg_kg":70.0,"weight_previous_week_avg_kg":70.2},"expected":{"decision":"needs_confirmation"}}

@@ -3813,6 +3813,10 @@ def chat_n8n(request):
         meal_plan_result = None
         meal_plan_text_for_output_override = ""
 
+        # Exp-005 (predictor de tendencia corporal): resultado + texto
+        body_trend_result = None
+        body_trend_text_for_output_override = ""
+
         def _week_weights_from_state(state, week_id: str):
             try:
                 ww = state.get('weekly_weights') if isinstance(state.get('weekly_weights'), dict) else {}
@@ -4104,6 +4108,125 @@ def chat_n8n(request):
                         pass
         except Exception as ex:
             print(f"QAF meal planner warning: {ex}")
+
+        # 0.4) Exp-005: Predictor de tendencias corporales (6 semanas)
+        try:
+            if user:
+                bt_req = request.data.get('body_trend_request') if isinstance(request.data, dict) else None
+                want_trend = False
+                if isinstance(bt_req, dict):
+                    want_trend = True
+                else:
+                    msg_low = str(message or '').lower()
+                    if re.search(r"\b(proyecci[oó]n|tendencia|si\s+contin[uú]o|peso\s+en\s+6|6\s+semanas|escenario)\b", msg_low):
+                        want_trend = True
+
+                # Capturar kcal promedio si el usuario lo escribió (MVP)
+                kcal_in_from_text = None
+                try:
+                    if message:
+                        m = re.search(r"\b(\d{3,4})\s*(kcal|cal)\b", str(message).lower())
+                        if m:
+                            kcal_in_from_text = float(m.group(1))
+                except Exception:
+                    kcal_in_from_text = None
+
+                if want_trend:
+                    week_id_now = _week_id()
+                    weekly_state = getattr(user, 'coach_weekly_state', {}) or {}
+
+                    # pesos semanales
+                    cur_w = None
+                    prev_w = None
+                    try:
+                        ww = weekly_state.get('weekly_weights') if isinstance(weekly_state.get('weekly_weights'), dict) else {}
+                        row = ww.get(week_id_now)
+                        cur_w = float(row.get('avg_weight_kg')) if isinstance(row, dict) else float(row)
+                        prev_keys = [k for k in ww.keys() if isinstance(k, str) and k != week_id_now]
+                        if prev_keys:
+                            prev_key = sorted(prev_keys)[-1]
+                            row2 = ww.get(prev_key)
+                            prev_w = float(row2.get('avg_weight_kg')) if isinstance(row2, dict) else float(row2)
+                    except Exception:
+                        cur_w = getattr(user, 'weight', None)
+                        prev_w = None
+
+                    # kcal ingreso promedio: request > texto > cache
+                    kcal_in_avg = None
+                    if isinstance(bt_req, dict) and bt_req.get('kcal_in_avg_day') is not None:
+                        try:
+                            kcal_in_avg = float(bt_req.get('kcal_in_avg_day'))
+                        except Exception:
+                            kcal_in_avg = None
+                    if kcal_in_avg is None and kcal_in_from_text is not None:
+                        kcal_in_avg = kcal_in_from_text
+                    try:
+                        kbw = weekly_state.get('kcal_avg_by_week') if isinstance(weekly_state.get('kcal_avg_by_week'), dict) else {}
+                        if kcal_in_avg is None and week_id_now in kbw:
+                            row = kbw.get(week_id_now)
+                            kcal_in_avg = float(row.get('kcal_in_avg_day')) if isinstance(row, dict) else float(row)
+                    except Exception:
+                        pass
+
+                    # tdee + recomendación desde metabolic_last
+                    tdee = None
+                    reco = None
+                    try:
+                        ml = weekly_state.get('metabolic_last') if isinstance(weekly_state.get('metabolic_last'), dict) else {}
+                        tdee = float(ml.get('tdee_effective_kcal_day')) if ml.get('tdee_effective_kcal_day') is not None else None
+                        reco = float(ml.get('kcal_day')) if ml.get('kcal_day') is not None else None
+                    except Exception:
+                        tdee = None
+                        reco = None
+                    if tdee is None:
+                        tdee = float(reco) if reco is not None else None
+
+                    profile = {
+                        'tdee_kcal_day': tdee,
+                        'recommended_kcal_day': (float(getattr(user, 'daily_target_kcal_override', None)) if getattr(user, 'daily_target_kcal_override', None) else reco),
+                    }
+                    observations = {
+                        'weight_current_week_avg_kg': cur_w,
+                        'weight_previous_week_avg_kg': prev_w,
+                        'kcal_in_avg_day': kcal_in_avg,
+                    }
+
+                    from .qaf_body_trend.engine import evaluate_body_trend, render_professional_summary, build_quick_actions_for_trend
+
+                    body_trend_result = evaluate_body_trend(profile, observations, horizon_weeks=6).payload
+
+                    # Si el usuario pidió un escenario específico, priorizarlo en el texto (sin cambiar JSON)
+                    scenario = None
+                    if isinstance(bt_req, dict):
+                        scenario = str(bt_req.get('scenario') or '').strip().lower() or None
+
+                    bt_text = render_professional_summary(body_trend_result)
+                    if bt_text:
+                        body_trend_text_for_output_override = bt_text
+                        attachment_text = ((attachment_text or '').strip() + "\n\n" if (attachment_text or '').strip() else "") + f"[PROYECCIÓN CORPORAL (6 SEMANAS)]\n{bt_text}".strip()
+
+                    # Persistir kcal promedio si se obtuvo
+                    if kcal_in_avg is not None and kcal_in_avg > 0:
+                        try:
+                            ws2 = dict(weekly_state)
+                            kbw = ws2.get('kcal_avg_by_week') if isinstance(ws2.get('kcal_avg_by_week'), dict) else {}
+                            kbw2 = dict(kbw)
+                            kbw2[week_id_now] = {'kcal_in_avg_day': float(kcal_in_avg), 'updated_at': timezone.now().isoformat()}
+                            ws2['kcal_avg_by_week'] = kbw2
+                            ws2['body_trend_last'] = {'result': body_trend_result, 'updated_at': timezone.now().isoformat()}
+                            user.coach_weekly_state = ws2
+                            user.coach_weekly_updated_at = timezone.now()
+                            user.save(update_fields=['coach_weekly_state', 'coach_weekly_updated_at'])
+                        except Exception:
+                            pass
+
+                    # Quick-actions
+                    try:
+                        quick_actions_out.extend(build_quick_actions_for_trend(has_intake=(kcal_in_avg is not None)))
+                    except Exception:
+                        pass
+        except Exception as ex:
+            print(f"QAF body trend warning: {ex}")
 
         # 0) Si llega qaf_context (ej. click en botones), usamos eso para estimar sin Vision.
         try:
@@ -4653,6 +4776,7 @@ def chat_n8n(request):
             "qaf_context": {"vision": vision_parsed} if isinstance(vision_parsed, dict) else None,
             "qaf_metabolic": metabolic_result,
             "qaf_meal_plan": meal_plan_result,
+            "qaf_body_trend": body_trend_result,
             "fitness": fitness_payload,
             "profile": profile_payload,
             "if_snapshot": if_snapshot,
@@ -4751,6 +4875,23 @@ def chat_n8n(request):
                             data['output'] = meal_plan_text_for_output_override
                         elif not has_menu:
                             data['output'] = (meal_plan_text_for_output_override.strip() + "\n\n" + out_text.strip()).strip()
+            except Exception:
+                pass
+
+            # Exp-005: tendencia corporal + posible override de texto
+            try:
+                if isinstance(data, dict):
+                    if body_trend_result:
+                        data.setdefault('qaf_body_trend', body_trend_result)
+
+                    out_text = data.get('output')
+                    if isinstance(out_text, str) and body_trend_text_for_output_override:
+                        low = out_text.lower()
+                        has_trend = ("proye" in low) or ("tendenc" in low) or ("6 semanas" in low)
+                        if (not out_text.strip()) or ("problema tecnico" in low) or ("problema técnico" in low):
+                            data['output'] = body_trend_text_for_output_override
+                        elif not has_trend:
+                            data['output'] = (body_trend_text_for_output_override.strip() + "\n\n" + out_text.strip()).strip()
             except Exception:
                 pass
             return Response(data)
@@ -5175,3 +5316,108 @@ def qaf_meal_plan_mutate(request):
     text = render_professional_summary(mutated)
     quick_actions = build_quick_actions_for_menu(variety_level=str(((mutated.get('inputs') or {}).get('variety')) or 'normal'))
     return Response({'success': True, 'result': mutated, 'text': text, 'quick_actions': quick_actions})
+
+
+@api_view(['POST', 'OPTIONS'])
+@authentication_classes([JWTAuthentication])
+@permission_classes([IsAuthenticatedOrOptions])
+def qaf_body_trend(request):
+    """Proyección de tendencia corporal a 6 semanas (Exp-005)."""
+
+    if request.method == 'OPTIONS':
+        return Response(status=status.HTTP_200_OK)
+
+    user = _resolve_request_user(request)
+    if not user:
+        return Response({'error': 'Autenticacion requerida'}, status=status.HTTP_401_UNAUTHORIZED)
+
+    payload = request.data if isinstance(request.data, dict) else {}
+    week_id_now = _week_id()
+    weekly_state = getattr(user, 'coach_weekly_state', {}) or {}
+
+    # pesos semanales
+    cur_w = None
+    prev_w = None
+    try:
+        ww = weekly_state.get('weekly_weights') if isinstance(weekly_state.get('weekly_weights'), dict) else {}
+        row = ww.get(week_id_now)
+        cur_w = float(row.get('avg_weight_kg')) if isinstance(row, dict) else float(row)
+        prev_keys = [k for k in ww.keys() if isinstance(k, str) and k != week_id_now]
+        if prev_keys:
+            prev_key = sorted(prev_keys)[-1]
+            row2 = ww.get(prev_key)
+            prev_w = float(row2.get('avg_weight_kg')) if isinstance(row2, dict) else float(row2)
+    except Exception:
+        cur_w = getattr(user, 'weight', None)
+        prev_w = None
+
+    # kcal ingreso promedio: payload > cache semanal
+    kcal_in_avg = None
+    if payload.get('kcal_in_avg_day') is not None:
+        try:
+            kcal_in_avg = float(payload.get('kcal_in_avg_day'))
+        except Exception:
+            kcal_in_avg = None
+
+    try:
+        kcal_week = weekly_state.get('kcal_avg_by_week') if isinstance(weekly_state.get('kcal_avg_by_week'), dict) else {}
+        if kcal_in_avg is None and week_id_now in kcal_week:
+            row = kcal_week.get(week_id_now)
+            kcal_in_avg = float(row.get('kcal_in_avg_day')) if isinstance(row, dict) else float(row)
+    except Exception:
+        pass
+
+    # recommended y tdee desde metabolic_last
+    tdee = None
+    reco = None
+    try:
+        ml = weekly_state.get('metabolic_last') if isinstance(weekly_state.get('metabolic_last'), dict) else {}
+        tdee = float(ml.get('tdee_effective_kcal_day')) if ml.get('tdee_effective_kcal_day') is not None else None
+        reco = float(ml.get('kcal_day')) if ml.get('kcal_day') is not None else None
+    except Exception:
+        tdee = None
+        reco = None
+
+    # fallback tdee: aproximación por activity (si no hay metabolic_last)
+    if tdee is None:
+        # rough fallback
+        tdee = float(reco) if reco is not None else None
+
+    profile = {
+        'tdee_kcal_day': tdee,
+        'recommended_kcal_day': (float(getattr(user, 'daily_target_kcal_override', None)) if getattr(user, 'daily_target_kcal_override', None) else reco),
+    }
+    observations = {
+        'weight_current_week_avg_kg': cur_w,
+        'weight_previous_week_avg_kg': prev_w,
+        'kcal_in_avg_day': kcal_in_avg,
+    }
+
+    from .qaf_body_trend.engine import evaluate_body_trend, render_professional_summary, build_quick_actions_for_trend
+
+    res = evaluate_body_trend(profile, observations, horizon_weeks=6)
+    text = render_professional_summary(res.payload)
+    quick_actions = build_quick_actions_for_trend(has_intake=(kcal_in_avg is not None))
+
+    # persistir kcal avg si viene y es válido
+    if kcal_in_avg is not None and kcal_in_avg > 0:
+        try:
+            ws2 = dict(weekly_state)
+            kbw = ws2.get('kcal_avg_by_week') if isinstance(ws2.get('kcal_avg_by_week'), dict) else {}
+            kbw2 = dict(kbw)
+            kbw2[week_id_now] = {
+                'kcal_in_avg_day': float(kcal_in_avg),
+                'updated_at': timezone.now().isoformat(),
+            }
+            ws2['kcal_avg_by_week'] = kbw2
+            ws2['body_trend_last'] = {
+                'result': res.payload,
+                'updated_at': timezone.now().isoformat(),
+            }
+            user.coach_weekly_state = ws2
+            user.coach_weekly_updated_at = timezone.now()
+            user.save(update_fields=['coach_weekly_state', 'coach_weekly_updated_at'])
+        except Exception:
+            pass
+
+    return Response({'success': True, 'result': res.payload, 'text': text, 'quick_actions': quick_actions})
