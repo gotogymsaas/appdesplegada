@@ -285,6 +285,20 @@ def build_portion_candidates(
         key=lambda x: (0 if x[0].lower().startswith("repetir") else 1, x[1]),
     )
 
+    # Regla QAF/UX: si existe porción típica (default_serving_grams), debe estar dentro de las 3 opciones
+    # (salvo cuando estamos en modo centrado explícito/inferido, donde ya retornamos arriba).
+    try:
+        if ci and ci.default_serving_grams:
+            target = float(ci.default_serving_grams)
+            if target > 0 and not any(abs(float(g) - target) < 1e-6 for _l, g, _c in candidates_sorted):
+                candidates_sorted.append(("Porción típica", target, 0.75))
+                candidates_sorted = sorted(
+                    candidates_sorted,
+                    key=lambda x: (0 if x[0].lower().startswith("repetir") else 1, x[1]),
+                )
+    except Exception:
+        pass
+
     # Reducir a 3 manteniendo diversidad
     if len(candidates_sorted) > 3:
         # si hay repetir, lo preservamos
@@ -292,6 +306,17 @@ def build_portion_candidates(
         repeat = [c for c in candidates_sorted if c[0].lower().startswith("repetir")]
         if repeat:
             keep.append(repeat[0])
+
+        # preservar porción típica si existe
+        try:
+            if ci and ci.default_serving_grams:
+                target = float(ci.default_serving_grams)
+                typical = next((c for c in candidates_sorted if abs(float(c[1]) - target) < 1e-6), None)
+                if typical and typical not in keep:
+                    keep.append(typical)
+        except Exception:
+            pass
+
         # completar con medianas por gramos
         rest = [c for c in candidates_sorted if c not in keep]
         rest_by_g = sorted(rest, key=lambda x: x[1])
@@ -462,6 +487,139 @@ def shannon_entropy(probs: list[float]) -> float:
     return -sum(pi * math.log(pi + 1e-12) for pi in p)
 
 
+def _normalize_probs(weights: dict[str, float], *, eps: float = 1e-12) -> dict[str, float]:
+    """Normaliza pesos a distribución p_k (suma 1)."""
+    if not weights:
+        return {}
+    total = 0.0
+    for k, v in weights.items():
+        try:
+            total += float(v)
+        except Exception:
+            continue
+    total = float(total)
+    if total <= 0:
+        n = len(weights)
+        return {k: 1.0 / max(1, n) for k in weights.keys()}
+    denom = total + float(eps)
+    return {k: float(max(0.0, float(v))) / denom for k, v in weights.items()}
+
+
+def _entropy_norm(entropy: float, n_hypotheses: int, *, eps: float = 1e-12) -> float:
+    if n_hypotheses <= 1:
+        return 0.0
+    return max(0.0, min(1.0, float(entropy) / float(math.log(float(n_hypotheses) + eps))))
+
+
+def _clip01(x: float) -> float:
+    return max(0.0, min(1.0, float(x)))
+
+
+def _portion_energy(
+    grams: float,
+    *,
+    center_grams: float | None,
+    typical_grams: float,
+    used_default: bool,
+    candidate_index: int,
+    w_c: float,
+    w_d: float,
+    w_phys: float,
+    w_edge: float,
+) -> float:
+    g = float(grams)
+    typ = float(center_grams) if (center_grams and center_grams > 0) else float(typical_grams)
+    typ = max(1.0, typ)
+    delta = (g - typ) / typ
+    phys = 0.0
+    if g < 10.0 or g > 1500.0:
+        phys = 1.0
+    edge = 1.0 if candidate_index in {0, 2} else 0.0
+    return (w_c * (delta * delta)) + (w_d * (1.0 if used_default else 0.0)) + (w_phys * phys) + (w_edge * edge)
+
+
+def _optimize_portions_mvp(
+    items_out: list[dict[str, Any]],
+    *,
+    calorie_db: dict[str, CalorieItem],
+    per_item_conf: dict[str, dict[str, Any]],
+) -> dict[str, dict[str, Any]]:
+    """Optimización discreta MVP de porciones.
+
+    Retorna item_id -> {grams, label, source="optimized"}.
+    """
+
+    # pesos del funcional (MVP)
+    w_c = 1.0
+    w_d = 0.25
+    w_phys = 0.7
+    w_edge = 0.08
+
+    selected: dict[str, dict[str, Any]] = {}
+    for it in items_out:
+        item_id = str(it.get("item_id") or "").strip()
+        if not item_id:
+            continue
+
+        # No optimizar si ya hay selección del usuario
+        pm = str((per_item_conf.get(item_id) or {}).get("portion_method") or "")
+        if pm in {"explicit_grams", "explicit_units", "explicit_ml"} and it.get("selected_portion"):
+            continue
+
+        cands = it.get("portion_candidates") or []
+        if not isinstance(cands, list) or not cands:
+            continue
+
+        ci = calorie_db.get(item_id)
+        typical = None
+        try:
+            if ci and ci.default_serving_grams:
+                typical = float(ci.default_serving_grams)
+        except Exception:
+            typical = None
+        if not typical:
+            # mediana de candidates
+            grams_sorted = sorted([float(c.get("grams") or 0.0) for c in cands if float(c.get("grams") or 0.0) > 0])
+            typical = grams_sorted[len(grams_sorted) // 2] if grams_sorted else 100.0
+
+        used_default = pm == "default"
+        center = None
+        try:
+            if pm in {"explicit_grams", "explicit_units", "explicit_ml", "cup", "slice", "qualitative"} and it.get("grams"):
+                center = float(it.get("grams"))
+        except Exception:
+            center = None
+
+        best = None
+        best_energy = None
+        for idx, c in enumerate(cands[:3]):
+            try:
+                g = float(c.get("grams") or 0.0)
+            except Exception:
+                continue
+            if g <= 0:
+                continue
+            e = _portion_energy(
+                g,
+                center_grams=center,
+                typical_grams=float(typical),
+                used_default=used_default,
+                candidate_index=idx,
+                w_c=w_c,
+                w_d=w_d,
+                w_phys=w_phys,
+                w_edge=w_edge,
+            )
+            if best_energy is None or e < best_energy:
+                best_energy = float(e)
+                best = {"grams": round(float(g), 2), "label": str(c.get("label") or "").strip()}
+
+        if best and float(best.get("grams") or 0.0) > 0:
+            selected[item_id] = {"grams": float(best["grams"]), "label": best.get("label") or "", "source": "optimized"}
+
+    return selected
+
+
 def qaf_infer_from_vision(
     vision: dict[str, Any],
     calorie_db: dict[str, CalorieItem],
@@ -469,6 +627,7 @@ def qaf_infer_from_vision(
     aliases: dict[str, str] | None = None,
     user_id: str | None = None,
     locale: str = DEFAULT_LOCALE,
+    soft_memory_path: Path | None = None,
 ) -> dict[str, Any]:
     raw_items = vision.get("items")
     if not isinstance(raw_items, list):
@@ -505,9 +664,34 @@ def qaf_infer_from_vision(
 
     portion_text = str(vision.get("portion_estimate") or "").strip() or None
 
-    # Entropía: la dejamos como señal futura; hoy la probabilidad es uniforme.
-    probs = [1.0 for _ in normalized_ids]
+    # confirmed_portions (colapso explícito) desde Vision/UI
+    confirmed_map: dict[str, float] = {}
+    confirmed_portions_raw = vision.get("confirmed_portions")
+    if isinstance(confirmed_portions_raw, list):
+        for cp in confirmed_portions_raw:
+            if not isinstance(cp, dict):
+                continue
+            iid = str(cp.get("item_id") or "").strip()
+            g = _safe_float(cp.get("grams"))
+            if iid and g and g > 0:
+                confirmed_map[iid] = float(g)
+
+    # p_k no uniforme por hipótesis (ítem normalizado)
+    # Priors por método (más peaky para que 2 hipótesis exact-vs-heuristic no den entropía ~1)
+    method_prior = {"exact": 4.0, "fuzzy": 2.0, "heuristic": 0.8}
+    weights: dict[str, float] = {}
+    for n in normalized_items:
+        m = str(n.method or "")
+        prior = float(method_prior.get(m, 1.0))
+        conf = float(max(0.0, min(1.0, float(n.confidence))))
+        w = prior * conf
+        # si el mismo item aparece por varias rutas, acumulamos masa
+        weights[n.item_id] = float(weights.get(n.item_id, 0.0) + w)
+
+    item_probs = _normalize_probs(weights)
+    probs = [float(item_probs.get(iid, 0.0)) for iid in normalized_ids]
     ent = shannon_entropy(probs)
+    ent_norm = _entropy_norm(ent, len([p for p in probs if p > 0]))
 
     items_out = []
     total_kcal = 0.0
@@ -525,7 +709,7 @@ def qaf_infer_from_vision(
     # memoria suave: opcional (sin dependencias). Si no hay archivo, se ignora.
     memory: dict[str, Any] = {}
     try:
-        mp = default_soft_memory_path()
+        mp = soft_memory_path or default_soft_memory_path()
         if mp.exists():
             memory = json.loads(mp.read_text(encoding="utf-8"))
     except Exception:
@@ -563,6 +747,14 @@ def qaf_infer_from_vision(
             calorie_db,
             item_aliases=item_aliases.get(item_id) or [],
         )
+
+        selected_portion = None
+
+        if item_id in confirmed_map:
+            grams = float(confirmed_map[item_id])
+            portion_method = "explicit_grams"
+            portion_match = "confirmed_portions"
+            selected_portion = {"grams": round(float(grams), 2), "source": "user"}
 
         used_default = False
         if grams is None and ci and ci.default_serving_grams:
@@ -636,7 +828,7 @@ def qaf_infer_from_vision(
                 "grams": grams,
                 "calories": round(float(kcal), 2),
                 "portion_candidates": portion_candidates,
-                "selected_portion": None,
+                "selected_portion": selected_portion,
                 "item_confidence": round(conf_item, 4),
                 "portion_confidence": round(conf_portion, 4),
             }
@@ -652,8 +844,11 @@ def qaf_infer_from_vision(
             c = float((per_item_conf.get(str(item_id)) or {}).get("confidence") or 0.0)
             total_conf += w * c
 
-    # uncertainty_score: 0 (seguro) .. 1 (incierto)
-    uncertainty_score = max(0.0, min(1.0, 1.0 - total_conf))
+    # u: combinar (1-C) con entropía real (señal verdadera de ambigüedad)
+    # Mantener C (confianza total) y añadir H_norm.
+    alpha = 0.6
+    uncertainty_score_confidence = _clip01(1.0 - float(total_conf))
+    uncertainty_score = _clip01((alpha * uncertainty_score_confidence) + ((1.0 - alpha) * float(ent_norm)))
 
     # Rango inteligente: si hay candidates, usar min/max por ítem.
     per_item_spread: dict[str, float] = {}
@@ -708,11 +903,55 @@ def qaf_infer_from_vision(
     if per_item_spread:
         range_driver = sorted(per_item_spread.items(), key=lambda kv: kv[1], reverse=True)[0][0]
 
-    # needs_confirmation por impacto (colapso):
+    # needs_confirmation por impacto + colapso por H/u
     range_width = max(0.0, high - low)
     rel_width = (range_width / total_kcal) if total_kcal else 1.0
-    # Umbral MVP: pedir confirmación cuando el rango es lo suficientemente grande para cambiar decisiones.
-    needs_confirmation = bool(missing) or (rel_width >= 0.35)
+
+    H_thr = 0.75
+    u_thr = 0.55
+    needs_confirmation = bool(missing) or (rel_width >= 0.35) or (float(ent_norm) >= H_thr) or (float(uncertainty_score) >= u_thr)
+
+    # Selección automática de porción por minimización de F (solo si NO hay colapso humano)
+    optimized_selected: dict[str, dict[str, Any]] = {}
+    if (not needs_confirmation) and items_out:
+        optimized_selected = _optimize_portions_mvp(items_out, calorie_db=calorie_db, per_item_conf=per_item_conf)
+        # Aplicar selección a items_out y recalcular calorías totales (no rompe: selected_portion nuevo, grams/calories coherentes)
+        if optimized_selected:
+            new_total = 0.0
+            for it in items_out:
+                iid = str(it.get("item_id") or "")
+                if not iid:
+                    continue
+                # No pisar selección del usuario
+                if it.get("selected_portion") and (it.get("selected_portion") or {}).get("source") == "user":
+                    new_total += float(it.get("calories") or 0.0)
+                    continue
+                sel = optimized_selected.get(iid)
+                if not sel:
+                    new_total += float(it.get("calories") or 0.0)
+                    continue
+                grams_sel = float(sel.get("grams") or 0.0)
+                ci = calorie_db.get(iid)
+                if ci and grams_sel > 0:
+                    # recomputar kcal
+                    kcal_sel = None
+                    if ci.kcal_per_100g is not None:
+                        kcal_sel = (grams_sel / 100.0) * float(ci.kcal_per_100g)
+                    elif ci.kcal_per_unit is not None and ci.unit_grams:
+                        kcal_sel = (grams_sel / float(ci.unit_grams)) * float(ci.kcal_per_unit)
+                    elif ci.kcal_per_unit is not None:
+                        kcal_sel = float(ci.kcal_per_unit)
+                    if kcal_sel is not None:
+                        it["grams"] = round(float(grams_sel), 2)
+                        it["calories"] = round(float(kcal_sel), 2)
+                        it["selected_portion"] = {"grams": round(float(grams_sel), 2), "source": "optimized"}
+                        new_total += float(it.get("calories") or 0.0)
+                        continue
+                new_total += float(it.get("calories") or 0.0)
+
+            # actualizar total_kcal (best estimate) usando selección
+            if new_total > 0:
+                total_kcal = float(new_total)
 
     # follow_up_questions: lista lista para UI (máximo 1 pregunta en MVP)
     if needs_confirmation and range_driver:
@@ -753,9 +992,8 @@ def qaf_infer_from_vision(
         decision = "accepted"
         decision_reason = "low_uncertainty"
 
-    # Entropía alta (futura): mantenemos la señal por compatibilidad.
-    if ent >= 1.0 and len(normalized_ids) >= 3:
-        reasons.append("high_entropy_uniform")
+    if float(ent_norm) >= H_thr:
+        reasons.append("high_entropy")
 
     explainability = []
     explainability.append(
@@ -765,6 +1003,21 @@ def qaf_infer_from_vision(
         explainability.append(f"Lo que más mueve el rango: {range_driver}")
     explainability = explainability[:2]
 
+    # Persistencia de memoria suave (solo confirmación explícita)
+    try:
+        mp = soft_memory_path or default_soft_memory_path()
+        if user_id and confirmed_map and mp:
+            import time
+
+            uid = str(user_id)
+            memory.setdefault(uid, {})
+            for iid, g in confirmed_map.items():
+                memory[uid][str(iid)] = {"grams": float(g), "ts": float(time.time())}
+            mp.parent.mkdir(parents=True, exist_ok=True)
+            mp.write_text(json.dumps(memory, ensure_ascii=False, indent=2), encoding="utf-8")
+    except Exception:
+        pass
+
     return {
         "is_food": bool(vision.get("is_food")) if "is_food" in vision else None,
         "items": items_out,
@@ -773,7 +1026,10 @@ def qaf_infer_from_vision(
         "total_calories_range": {"low": round(low, 2), "high": round(high, 2)},
         "uncertainty": {
             "entropy": round(ent, 4),
+            "entropy_norm": round(float(ent_norm), 4),
+            "item_probs": {k: round(float(v), 6) for k, v in item_probs.items()},
             "uncertainty_score": round(float(uncertainty_score), 4),
+            "uncertainty_score_confidence": round(float(uncertainty_score_confidence), 4),
             "portion_text": portion_text,
         },
         "needs_confirmation": bool(needs_confirmation),
