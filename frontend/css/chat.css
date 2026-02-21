@@ -330,9 +330,90 @@ body[data-theme="light"] #chat-widget-container {
   border-top: 1px solid var(--chat-border-subtle);
   display: flex;
   flex-wrap: wrap;
-  align-items: flex-end;
+  align-items: center;
   gap: 10px;
   padding-bottom: calc(10px + env(safe-area-inset-bottom));
+  position: relative;
+}
+
+/* Send (flecha ↑) a la izquierda */
+#chat-send-btn {
+  background: var(--chat-primary);
+  border: none;
+  width: 44px;
+  height: 44px;
+  border-radius: 999px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 4px 12px rgba(15, 191, 160, 0.25);
+  flex-shrink: 0;
+}
+
+#chat-send-btn svg {
+  width: 22px;
+  height: 22px;
+  fill: #000;
+}
+
+/* Botón + a la derecha */
+#chat-plus-btn {
+  background: var(--chat-surface-2);
+  border: 1px solid var(--chat-border);
+  color: var(--chat-text);
+  width: 44px;
+  height: 44px;
+  border-radius: 999px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 22px;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+#chat-plus-btn:hover {
+  background: var(--chat-surface-hover);
+}
+
+/* Menú desplegable del + */
+#chat-tools-menu {
+  position: absolute;
+  right: 10px;
+  bottom: calc(100% + 10px);
+  background: var(--chat-bg);
+  border: 1px solid var(--chat-border);
+  border-radius: 14px;
+  box-shadow: var(--chat-shadow);
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 190px;
+  z-index: 3;
+}
+
+#chat-tools-menu button {
+  width: 100%;
+  text-align: left;
+  background: var(--chat-surface);
+  border: 1px solid var(--chat-border-subtle);
+  color: var(--chat-text);
+  padding: 10px 12px;
+  border-radius: 12px;
+  cursor: pointer;
+  font-size: 14px;
+}
+
+#chat-tools-menu button:hover {
+  background: var(--chat-surface-hover);
+}
+
+#chat-tools-menu button.recording {
+  border-color: rgba(15, 191, 160, 0.6);
+  background: var(--chat-surface-hover);
 }
 
 #chat-attachment-preview {
@@ -379,12 +460,7 @@ body[data-theme="light"] #chat-widget-container {
   font-size: 14px;
 }
 
-.chat-input-tools {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  flex-shrink: 0;
-}
+/* Removido: chat-input-tools (mic/clip fijos) para un footer más limpio */
 
 #chat-input {
   flex: 1;
@@ -407,77 +483,14 @@ body[data-theme="light"] #chat-widget-container {
   box-shadow: 0 0 0 2px rgba(15, 191, 160, 0.15);
 }
 
-#chat-mic-btn {
-  background: var(--chat-surface-2);
-  border: 1px solid var(--chat-border);
-  color: var(--chat-muted);
-  width: 42px;
-  height: 42px;
-  border-radius: 50%;
-  cursor: pointer;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 18px;
-  flex-shrink: 0;
-}
-
-.chat-voice-action {
-  background: var(--chat-surface);
-  border: 1px solid var(--chat-border);
-  color: var(--chat-text);
-  padding: 6px 10px;
-  border-radius: 999px;
-  font-size: 12px;
-  cursor: pointer;
-  white-space: nowrap;
-}
-
-#chat-voice-cancel {
-  border-color: rgba(255, 74, 74, 0.35);
-  color: #ff9a9a;
-}
-
-#chat-voice-retry {
-  border-color: var(--chat-border);
-}
-
-.chat-voice-action:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-
-#chat-mic-btn.recording {
-  background: rgba(255, 74, 74, 0.15);
-  border-color: rgba(255, 74, 74, 0.4);
-  color: #ff9a9a;
-}
+/* Removido: estilos de botones fijos de voz (ahora viven dentro del menú +). */
 
 #chat-input::placeholder {
   font-size: 16px;
   color: var(--chat-muted);
 }
 
-#chat-send-btn {
-  background: var(--chat-primary);
-  border: none;
-  width: 52px;
-  height: 52px;
-  border-radius: 50%;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  box-shadow: 0 4px 12px rgba(15, 191, 160, 0.35);
-  flex-shrink: 0;
-}
-
-#chat-send-btn svg {
-  width: 22px;
-  height: 22px;
-  fill: #000;
-  margin-left: 2px;
-}
+/* (send styles definidos arriba, mantener una sola fuente de verdad) */
 
 /* Scrollbar */
 #chat-messages::-webkit-scrollbar {
@@ -566,10 +579,6 @@ body[data-theme="light"] #chat-widget-container {
     gap: 8px;
     z-index: 100000;
     padding-bottom: calc(12px + env(safe-area-inset-bottom));
-  }
-
-  #chat-input-area label[for="chat-file-input"] {
-    padding: 6px;
   }
 
   #chat-send-btn {

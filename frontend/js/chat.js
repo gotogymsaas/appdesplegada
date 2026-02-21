@@ -16,7 +16,7 @@ return;
 // 1. Inyectar CSS
 const link = document.createElement('link');
 link.rel = "stylesheet";
-const CHAT_CSS_VERSION = '2026-02-20-4';
+const CHAT_CSS_VERSION = '2026-02-21-1';
 link.href = `/css/chat.css?v=${CHAT_CSS_VERSION}`; // Ruta absoluta desde raíz del servidor // frontend
 // Si estás en subcarpetas, esto funciona si el server sirve desde raíz.
 // Si falla, intentaremos ruta relativa automática
@@ -40,33 +40,25 @@ container.innerHTML = `
 </div>
 <div id="chat-messages">
 </div>
-<div id="chat-scroll-controls" hidden>
-  <button id="chat-scroll-up" type="button" aria-label="Subir" title="Subir">↑</button>
-  <button id="chat-scroll-down" type="button" aria-label="Bajar" title="Bajar">↓</button>
-</div>
-<form id="chat-input-area" style="display: flex; align-items:
-center;">
-<div class="chat-input-tools">
-<label for="chat-file-input" style="cursor: pointer; padding:
-10px; color: var(--text-muted);">
-<svg viewBox="0 0 24 24" width="24" height="24"
-fill="currentColor"><path d="M16.5 6v11.5c0 2.21-1.79 4-4
-4s-4-1.79-4-4V5a2.5 2.5 0 0 1 5 0v10.5c0 .55-.45 1-1
-1s-1-.45-1-1V6H10v9.5a2.5 2.5 0 0 0 5
-0V5c0-2.21-1.79-4-4-4S7 2.79 7 5v12.5c0 3.04 2.46 5.5 5.5
-5.5s5.5-2.46 5.5-5.5V6h-1.5z"/></svg>
-</label>
-<input type="file" id="chat-file-input" style="display: none;" accept="image/*,.pdf">
-<button type="button" id="chat-mic-btn" title="Voz">🎤</button>
-<button type="button" id="chat-voice-cancel" class="chat-voice-action" hidden>Cancelar</button>
-<button type="button" id="chat-voice-retry" class="chat-voice-action" hidden>Reintentar</button>
-</div>
-<div id="chat-attachment-preview" hidden></div>
-<textarea id="chat-input" rows="1" placeholder="Escribe tu duda..." autocomplete="off"></textarea>
-<button type="submit" id="chat-send-btn">
-<svg viewBox="0 0 24 24"><path d="M2.01 21L23 12 2.01 3 2
-10l15 2-15 2z"/></svg>
-</button>
+<form id="chat-input-area" autocomplete="off">
+  <button type="submit" id="chat-send-btn" aria-label="Enviar" title="Enviar">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4l7 7-1.4 1.4L13 7.8V20h-2V7.8L6.4 12.4 5 11l7-7z"/></svg>
+  </button>
+
+  <div id="chat-attachment-preview" hidden></div>
+
+  <textarea id="chat-input" rows="1" placeholder="Escribe tu duda..." autocomplete="off"></textarea>
+
+  <button type="button" id="chat-plus-btn" aria-label="Más opciones" title="Más">+</button>
+
+  <div id="chat-tools-menu" hidden>
+    <button type="button" id="chat-tool-mic">🎤 Micrófono</button>
+    <button type="button" id="chat-tool-camera">📷 Tomar foto</button>
+    <button type="button" id="chat-tool-attach">📎 Adjuntar</button>
+  </div>
+
+  <input type="file" id="chat-file-input" hidden accept="image/*,.pdf">
+  <input type="file" id="chat-camera-input" hidden accept="image/*" capture="environment">
 </form>
 </div>
 `;
@@ -78,14 +70,15 @@ const chatWindow = document.getElementById('chat-window');
 const form = document.getElementById('chat-input-area');
 const input = document.getElementById('chat-input');
 const fileInput = document.getElementById('chat-file-input');
+const cameraInput = document.getElementById('chat-camera-input');
 const attachmentPreview = document.getElementById('chat-attachment-preview');
-const micBtn = document.getElementById('chat-mic-btn');
-const micCancelBtn = document.getElementById('chat-voice-cancel');
-const micRetryBtn = document.getElementById('chat-voice-retry');
+const plusBtn = document.getElementById('chat-plus-btn');
+const toolsMenu = document.getElementById('chat-tools-menu');
+const toolMicBtn = document.getElementById('chat-tool-mic');
+const toolCameraBtn = document.getElementById('chat-tool-camera');
+const toolAttachBtn = document.getElementById('chat-tool-attach');
+const micBtn = toolMicBtn;
 const messages = document.getElementById('chat-messages');
-const scrollControls = document.getElementById('chat-scroll-controls');
-const scrollUpBtn = document.getElementById('chat-scroll-up');
-const scrollDownBtn = document.getElementById('chat-scroll-down');
 
 // --- Chat persistence (24h + reset diario) ---
 const CHAT_STORAGE_KEY = 'gtg_chat_history';
@@ -303,7 +296,7 @@ function setAttachmentPreview(file, state = 'ready') {
   if (clearBtn) {
     clearBtn.disabled = state === 'uploading';
     clearBtn.addEventListener('click', () => {
-      fileInput.value = '';
+      clearSelectedFiles();
       setAttachmentPreview(null);
     });
   }
@@ -317,24 +310,14 @@ function shouldAutoScroll() {
 }
 
 function updateScrollControls() {
-  if (!messages || !scrollControls || !scrollUpBtn || !scrollDownBtn) return;
-  const canScroll = messages.scrollHeight > messages.clientHeight + 2;
-  if (!canScroll) {
-    scrollControls.hidden = true;
-    return;
-  }
-  const atTop = messages.scrollTop <= 10;
-  const atBottom = messages.scrollHeight - messages.scrollTop - messages.clientHeight <= 10;
-  scrollControls.hidden = false;
-  scrollUpBtn.hidden = atTop;
-  scrollDownBtn.hidden = atBottom;
+  // Controles visuales de scroll removidos para una UX más limpia.
+  // Mantenemos la función para no romper llamadas existentes.
+  if (!messages) return;
 }
 
 function scrollMessagesByPages(direction) {
+  // No-op: botones de scroll removidos.
   if (!messages) return;
-  const delta = Math.max(120, Math.floor(messages.clientHeight * 0.85));
-  const top = direction === 'up' ? -delta : delta;
-  messages.scrollBy({ top, behavior: 'smooth' });
 }
 
 function markMessageStatus(messageId, status) {
@@ -409,22 +392,20 @@ function pickTranscript(matches) {
 function setRecordingState(isRecording) {
   if (!micBtn) return;
   micBtn.classList.toggle('recording', !!isRecording);
-  micBtn.textContent = isRecording ? '■' : '🎤';
-  if (micCancelBtn) micCancelBtn.hidden = !isRecording;
-  if (isRecording && micRetryBtn) micRetryBtn.hidden = true;
+  micBtn.textContent = isRecording ? '■ Detener' : '🎤 Micrófono';
 
   scheduleFooterMetricsUpdate();
 }
 
 function setRetryVisible(visible) {
-  if (!micRetryBtn) return;
-  micRetryBtn.hidden = !visible;
+  // UX: ya no mostramos un botón fijo de reintento.
+  // El usuario puede volver a abrir el menú (+) y tocar Micrófono nuevamente.
+  return;
 }
 
 async function startMediaRecorder() {
   if (!navigator.mediaDevices?.getUserMedia || !window.MediaRecorder) {
     appendMessage('Tu navegador no soporta grabación de voz.', 'bot');
-    setRetryVisible(true);
     return;
   }
   try {
@@ -448,11 +429,12 @@ async function startMediaRecorder() {
       }
       if (!audioChunks.length) {
         appendMessage('No se recibió audio. Intenta de nuevo.', 'bot');
-        setRetryVisible(true);
         return;
       }
       const ok = await sendAudioForStt(blob);
-      if (!ok) setRetryVisible(true);
+      if (!ok) {
+        // Mensaje ya mostrado en sendAudioForStt.
+      }
     };
     mediaRecorder.start();
     setRecordingState(true);
@@ -462,7 +444,6 @@ async function startMediaRecorder() {
     }, 12000);
   } catch (e) {
     appendMessage('No se pudo acceder al micrófono.', 'bot');
-    setRetryVisible(true);
   }
 }
 
@@ -546,7 +527,6 @@ async function startNativeSpeech() {
   const permitted = await ensureNativeSpeechPermission(plugin);
   if (!permitted) {
     appendMessage('No se otorgaron permisos para el micrófono.', 'bot');
-    setRetryVisible(true);
     return true;
   }
 
@@ -566,7 +546,6 @@ async function startNativeSpeech() {
       return;
     }
     appendMessage('No pude escuchar nada claro. Intenta de nuevo.', 'bot');
-    setRetryVisible(true);
   };
 
   if (plugin.addListener) {
@@ -591,7 +570,6 @@ async function startNativeSpeech() {
     clearNativeSpeechListener();
     if (!voiceCancelled) {
       appendMessage('No se pudo iniciar el reconocimiento de voz.', 'bot');
-      setRetryVisible(true);
     }
   }
   return true;
@@ -712,6 +690,33 @@ const loadChatHistory = () => {
 };
 
 let chatHistory = loadChatHistory();
+
+function isToolsMenuOpen() {
+  return !!(toolsMenu && !toolsMenu.hidden);
+}
+
+function closeToolsMenu() {
+  if (!toolsMenu) return;
+  toolsMenu.hidden = true;
+  if (plusBtn) plusBtn.classList.remove('open');
+}
+
+function toggleToolsMenu() {
+  if (!toolsMenu) return;
+  const next = toolsMenu.hidden;
+  toolsMenu.hidden = !next;
+  if (plusBtn) plusBtn.classList.toggle('open', next);
+  scheduleFooterMetricsUpdate();
+}
+
+function getSelectedFile() {
+  return (fileInput && fileInput.files && fileInput.files[0]) || (cameraInput && cameraInput.files && cameraInput.files[0]) || null;
+}
+
+function clearSelectedFiles() {
+  if (fileInput) fileInput.value = '';
+  if (cameraInput) cameraInput.value = '';
+}
 // Toggle Function - Expanded Logic
 function toggleChat() {
 const containerWidget =
@@ -801,55 +806,76 @@ if (micBtn) {
   });
 }
 
-if (micCancelBtn) {
-  micCancelBtn.addEventListener('click', () => {
-    voiceCancelled = true;
-    if (activeVoiceMode === 'native') {
-      stopNativeSpeech();
-    } else if (speechRecognition && activeVoiceMode === 'web') {
-      speechRecognition.abort();
-    } else {
-      stopMediaRecorder();
-    }
-    setRecordingState(false);
-    appendMessage('Grabación cancelada.', 'bot');
-  });
-}
-
-if (micRetryBtn) {
-  micRetryBtn.addEventListener('click', async () => {
-    if (micBtn?.classList.contains('recording')) return;
-    await startVoiceCapture();
-  });
-}
-
 if (messages) {
   messages.addEventListener('scroll', () => {
     updateScrollControls();
   });
 }
 
-if (scrollUpBtn) {
-  scrollUpBtn.addEventListener('click', () => scrollMessagesByPages('up'));
+// Tools menu (+)
+if (plusBtn) {
+  plusBtn.addEventListener('click', () => {
+    toggleToolsMenu();
+  });
 }
-if (scrollDownBtn) {
-  scrollDownBtn.addEventListener('click', () => scrollMessagesByPages('down'));
+
+// Cerrar menú si se toca fuera
+document.addEventListener('click', (event) => {
+  if (!toolsMenu || toolsMenu.hidden) return;
+  const target = event.target;
+  if (!(target instanceof Element)) return;
+  if (toolsMenu.contains(target) || plusBtn?.contains(target)) return;
+  closeToolsMenu();
+});
+
+if (toolAttachBtn) {
+  toolAttachBtn.addEventListener('click', () => {
+    closeToolsMenu();
+    fileInput?.click();
+  });
+}
+
+if (toolCameraBtn) {
+  toolCameraBtn.addEventListener('click', () => {
+    closeToolsMenu();
+    cameraInput?.click();
+  });
 }
 // File Selection Feedback
-fileInput.addEventListener('change', () => {
-  if (fileInput.files.length > 0) {
-    setAttachmentPreview(fileInput.files[0], 'ready');
-    input.focus();
-  } else {
-    setAttachmentPreview(null);
-  }
-});
+if (fileInput) {
+  fileInput.addEventListener('change', () => {
+    const file = getSelectedFile();
+    if (file) {
+      setAttachmentPreview(file, 'ready');
+      input.focus();
+    } else {
+      setAttachmentPreview(null);
+    }
+  });
+}
+
+if (cameraInput) {
+  cameraInput.addEventListener('change', () => {
+    const file = getSelectedFile();
+    if (file) {
+      setAttachmentPreview(file, 'ready');
+      input.focus();
+    } else {
+      setAttachmentPreview(null);
+    }
+  });
+}
+
+// Mic desde el menú
+if (toolMicBtn && toolMicBtn !== micBtn) {
+  // no-op (micBtn ya apunta a toolMicBtn)
+}
 // Send Message
 form.addEventListener('submit', async (e) => {
   e.preventDefault();
   const rawText = input.value || '';
   const text = rawText.trim();
-  const file = fileInput.files[0];
+  const file = getSelectedFile();
   if (!text && !file) return;
   const displayText = text || (file ? `Adjunto: ${file.name}` : '');
   const pendingId = displayText
@@ -859,7 +885,7 @@ form.addEventListener('submit', async (e) => {
     : null;
   if (file) setAttachmentPreview(file, 'uploading');
   resetInput();
-  fileInput.value = '';
+  clearSelectedFiles();
   await processMessage(text, file, pendingId);
 });
 
