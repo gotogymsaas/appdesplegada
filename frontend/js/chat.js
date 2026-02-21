@@ -962,11 +962,16 @@ function buildQuickActions(context) {
     });
   }
 
-  // 2) Postura (Exp-006)
-  actions.push({ label: 'Postura', type: 'posture_start' });
+  // 2) Progresión (Exp-009)
+  actions.push({
+    label: 'Progresión',
+    type: 'message',
+    text: 'Progresión',
+    payload: { progression_request: {} },
+  });
 
-  // 3) Análisis profundo
-  actions.push({ label: 'Análisis profundo', type: 'message', text: 'Quiero un análisis profundo QAF.' });
+  // 3) Postura (Exp-006)
+  actions.push({ label: 'Postura', type: 'posture_start' });
 
   return actions.slice(0, 3);
 }

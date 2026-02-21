@@ -4794,10 +4794,23 @@ def chat_n8n(request):
                         except Exception:
                             rpe_page = ''
 
-                        if 'rpe_1_10' in missing:
+                        # UX: si falta modalidad, pedirla primero; si no, pedir RPE y luego % de cumplimiento.
+                        if 'modality' in missing:
+                            progression_quick_actions_out.append({
+                                'label': 'Fuerza',
+                                'type': 'message',
+                                'text': 'Fuerza',
+                                'payload': {'progression_action': {'strength': {'name': 'pendiente', 'sets': 0, 'reps': 0}}},
+                            })
+                            progression_quick_actions_out.append({
+                                'label': 'Cardio',
+                                'type': 'message',
+                                'text': 'Cardio',
+                                'payload': {'progression_action': {'cardio': {'minutes': 20}}},
+                            })
+                        elif 'rpe_1_10' in missing:
                             progression_quick_actions_out.extend(_rpe_page(high=(rpe_page == 'high'))[:6])
-
-                        if 'completion_pct' in missing and len(progression_quick_actions_out) < 6:
+                        elif 'completion_pct' in missing and len(progression_quick_actions_out) < 6:
                             # completion presets
                             opts = [
                                 (1.0, '100%'),
@@ -4814,20 +4827,6 @@ def chat_n8n(request):
                                     'text': f"Cumplí {lab}",
                                     'payload': {'progression_action': {'session': {'completion_pct': v}}},
                                 })
-
-                        if 'modality' in missing and len(progression_quick_actions_out) < 6:
-                            progression_quick_actions_out.append({
-                                'label': 'Fuerza',
-                                'type': 'message',
-                                'text': 'Fuerza',
-                                'payload': {'progression_action': {'strength': {'name': 'pendiente', 'sets': 0, 'reps': 0}}},
-                            })
-                            progression_quick_actions_out.append({
-                                'label': 'Cardio',
-                                'type': 'message',
-                                'text': 'Cardio',
-                                'payload': {'progression_action': {'cardio': {'minutes': 20}}},
-                            })
                     except Exception:
                         pass
 
