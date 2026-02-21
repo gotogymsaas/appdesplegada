@@ -682,7 +682,7 @@ body[data-theme="light"] #chat-widget-container {
 
   #chat-window {
     width: 100% !important;
-    height: max(320px, var(--gtg-vv-height, 100dvh)) !important;
+    height: 100dvh !important;
     position: fixed !important;
     top: 0 !important;
     left: 0 !important;

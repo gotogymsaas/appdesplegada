@@ -16,7 +16,7 @@ return;
 // 1. Inyectar CSS
 const link = document.createElement('link');
 link.rel = "stylesheet";
-const CHAT_CSS_VERSION = '2026-02-21-11';
+const CHAT_CSS_VERSION = '2026-02-21-12';
 link.href = `/css/chat.css?v=${CHAT_CSS_VERSION}`; // Ruta absoluta desde raíz del servidor // frontend
 // Si estás en subcarpetas, esto funciona si el server sirve desde raíz.
 // Si falla, intentaremos ruta relativa automática
@@ -765,11 +765,10 @@ function lockBodyScroll() {
   bodyScrollLockState.locked = true;
 
   document.body.classList.add('gtg-chat-open');
-  document.body.style.position = 'fixed';
-  document.body.style.top = `-${y}px`;
-  document.body.style.left = '0';
-  document.body.style.right = '0';
-  document.body.style.width = '100%';
+  document.documentElement.style.overflow = 'hidden';
+  document.body.style.overflow = 'hidden';
+  document.body.style.overscrollBehavior = 'none';
+  document.body.style.touchAction = 'none';
 }
 
 function unlockBodyScroll() {
@@ -778,11 +777,10 @@ function unlockBodyScroll() {
   bodyScrollLockState.locked = false;
 
   document.body.classList.remove('gtg-chat-open');
-  document.body.style.position = '';
-  document.body.style.top = '';
-  document.body.style.left = '';
-  document.body.style.right = '';
-  document.body.style.width = '';
+  document.documentElement.style.overflow = '';
+  document.body.style.overflow = '';
+  document.body.style.overscrollBehavior = '';
+  document.body.style.touchAction = '';
 
   try {
     window.scrollTo(0, y);
