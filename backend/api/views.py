@@ -6250,6 +6250,61 @@ def chat_n8n(request):
 @api_view(['POST', 'OPTIONS'])
 @authentication_classes([JWTAuthentication])
 @permission_classes([IsAuthenticatedOrOptions])
+def qaf_cognition_evaluate(request):
+    """Motor de cognición QAF (determinista) para orquestación (n8n) y coherencia global.
+
+    Entrada (JSON):
+      {
+        "week_id"?: "YYYY-Www",
+        "message"?: str,
+        "observations"?: object,  # señales opcionales (por ejemplo outputs de experimentos en la interacción)
+        "locale"?: str
+      }
+
+    Requiere usuario autenticado (JWT).
+    """
+
+    if request.method == 'OPTIONS':
+        return Response(status=status.HTTP_200_OK)
+
+    user = _resolve_request_user(request)
+    if not user:
+        return Response({'error': 'Autenticacion requerida'}, status=status.HTTP_401_UNAUTHORIZED)
+
+    payload = request.data if isinstance(request.data, dict) else {}
+    week_id = str(payload.get('week_id') or _week_id())
+    locale = (payload.get('locale') or '').strip() or 'es-CO'
+    message = str(payload.get('message') or payload.get('text') or '').strip()
+
+    observations = payload.get('observations')
+    # Compat: algunos callers envían `qaf_context` como contenedor genérico
+    if observations is None and isinstance(payload.get('qaf_context'), dict):
+        observations = payload.get('qaf_context')
+    observations = observations if isinstance(observations, dict) else {}
+
+    user_profile = {
+        'goal_type': getattr(user, 'goal_type', None),
+        'activity_level': getattr(user, 'activity_level', None),
+    }
+
+    from .qaf_cognition.engine import evaluate_cognition
+
+    result = evaluate_cognition(
+        user_profile=user_profile,
+        coach_state=getattr(user, 'coach_state', {}) or {},
+        coach_weekly_state=getattr(user, 'coach_weekly_state', {}) or {},
+        observations=observations,
+        message=message,
+        week_id=week_id,
+        locale=locale,
+    )
+
+    return Response(result)
+
+
+@api_view(['POST', 'OPTIONS'])
+@authentication_classes([JWTAuthentication])
+@permission_classes([IsAuthenticatedOrOptions])
 def qaf_meal_coherence(request):
     """Evalúa coherencia de una comida vs meta (Exp-002).
 
