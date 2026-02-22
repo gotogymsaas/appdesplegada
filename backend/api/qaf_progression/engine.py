@@ -199,44 +199,96 @@ def _next_step(action: Action, *, modality: str, exercise_name: str | None, read
     mod = (modality or 'unknown').strip().lower()
     ex = (exercise_name or '').strip()
 
+    rpe_v = None
+    try:
+        rpe_v = float(rpe) if rpe is not None else None
+    except Exception:
+        rpe_v = None
+
+    comp_v = None
+    try:
+        comp_v = float(completion_pct) if completion_pct is not None else None
+    except Exception:
+        comp_v = None
+
+    rd = None
+    try:
+        rd = int(readiness)
+    except Exception:
+        rd = None
+
+    def _maybe(prefix: str, clause: str) -> str:
+        clause = str(clause).strip()
+        if not clause:
+            return prefix
+        if prefix.endswith('.'):
+            return prefix + " " + clause
+        return prefix + (" " if prefix else "") + clause
+
     # Fuerza
     if mod == 'strength':
         if action == 'progress':
-            step = (
-                "En tu próximo día de fuerza, busca una mejora pequeña (por ejemplo, una repetición más o un poco más de carga) "
-                "solo si mantienes técnica y control."
-            )
+            base = "En tu próximo día de fuerza, intenta una mejora pequeña solo si mantienes técnica y control."
             if ex:
-                step = f"En tu próximo día de fuerza con {ex}, " + step[len("En tu próximo día de fuerza, "):]
-            wow = "Progreso real es progreso repetible: calidad primero, intensidad después."
+                base = f"En tu próximo día de fuerza con {ex}, intenta una mejora pequeña solo si mantienes técnica y control."
+            tip = "Elige un solo ‘gatillo’ para progresar: o un poco más de repeticiones, o un poco más de carga, o mejor control del movimiento."
+            guard = "Si la forma se rompe, el progreso de hoy es mantener calidad y parar antes del límite."
+            step = _maybe(base, tip)
+            step = _maybe(step, guard)
+            wow = "Cuando progresas sin romper técnica, progresas también en consistencia."
             return step, wow
         if action == 'variation':
-            step = "En tu próximo día de fuerza, cambia a una variante del ejercicio principal (mismo músculo, nuevo estímulo)."
-            wow = "Esto suele destrabar estancamientos sin subir el riesgo."
+            base = "En tu próximo día de fuerza, cambia el estímulo sin subir el riesgo."
+            if ex:
+                base = f"En tu próximo día de fuerza (en lugar de {ex}), cambia el estímulo sin subir el riesgo."
+            tip = "Usa una variante del mismo patrón (agarre, ángulo, rango cómodo o tempo), manteniendo la intención del ejercicio."
+            step = _maybe(base, tip)
+            wow = "Variar a tiempo destraba estancamientos sin necesidad de forzar."
             return step, wow
         if action == 'deload':
-            step = "En tu próximo día de fuerza, baja la exigencia (menos carga o menos volumen) y enfócate en técnica perfecta."
-            wow = "Descargar a tiempo te permite volver más fuerte y constante."
+            base = "En tu próximo día de fuerza, haz una descarga inteligente: baja la exigencia y prioriza técnica perfecta."
+            tip = "Tu objetivo es salir mejor de lo que entraste: controla el ritmo, respira y evita ir al límite."
+            step = _maybe(base, tip)
+            wow = "Descargar a tiempo es una forma de cuidar el progreso."
             return step, wow
         if action == 'swap_exercise':
-            step = "En tu próximo día de fuerza, evita el movimiento que molesta y usa una variante sin dolor (rango corto + control)."
-            wow = "Cuidas el cuerpo y mantienes la cadena de hábitos activa."
+            base = "En tu próximo día de fuerza, evita el movimiento que molesta y elige una variante sin dolor."
+            tip = "Mantén rango cómodo y control; si algo duele, no se negocia: se ajusta."
+            step = _maybe(base, tip)
+            wow = "Cuidar el cuerpo hoy te permite entrenar mañana."
             return step, wow
-        step = "En tu próximo día de fuerza, haz una sesión esencial: menos volumen, técnica limpia y termina con energía en reserva."
-        wow = "Ganas constancia sin pagar el costo de sobre‑exigirte."
+        base = "En tu próximo día de fuerza, haz una sesión esencial: lo suficiente para sumar, sin forzar."
+        if comp_v is not None and comp_v < 0.6:
+            base = "En tu próximo día de fuerza, haz una sesión esencial: el foco es recuperar constancia con algo que puedas cumplir."
+        if (rpe_v is not None and rpe_v >= 8.0) or (rd is not None and rd < 55):
+            tip = "Prioriza técnica limpia y termina con energía en reserva."
+        else:
+            tip = "Mantén técnica limpia y deja margen: mejor ‘quedarte corto’ que pasarte y pagar el costo mañana."
+        step = _maybe(base, tip)
+        wow = "La constancia se construye eligiendo la intensidad correcta, no la máxima."
         return step, wow
 
     # Cardio
     if mod == 'cardio':
         if action == 'progress':
-            step = "En tu próximo cardio, agrega un poquito de tiempo o ritmo, manteniendo respiración controlada."
-            wow = "Progreso suave y constante = progreso sostenible."
+            base = "En tu próximo cardio, agrega un poquito de estímulo sin perder el control."
+            tip = "Puedes hacerlo subiendo un poco el tiempo o el ritmo, pero manteniendo respiración controlada y sensación de control."
+            guard = "Si te cuesta hablar o pierdes control, tu progreso hoy es volver a un ritmo cómodo."
+            step = _maybe(base, tip)
+            step = _maybe(step, guard)
+            wow = "Cardio inteligente es cardio repetible."
             return step, wow
         if action == 'deload':
-            step = "En tu próximo cardio, ve suave (zona cómoda) y termina sintiéndote mejor de lo que empezaste."
-            wow = "Recuperación inteligente hoy = mejor rendimiento mañana."
+            base = "En tu próximo cardio, ve suave y termina sintiéndote mejor de lo que empezaste."
+            tip = "Mantén ritmo cómodo, respiración tranquila y sin perseguir marcas."
+            step = _maybe(base, tip)
+            wow = "Recuperar bien hoy te da rendimiento mañana."
             return step, wow
-        step = "En tu próximo cardio, prioriza constancia: ritmo conversacional y sin ir al límite."
+        base = "En tu próximo cardio, prioriza constancia: ritmo conversacional y sin ir al límite."
+        if comp_v is not None and comp_v < 0.6:
+            base = "En tu próximo cardio, prioriza constancia: el objetivo es volver a cumplir de forma simple y sostenible."
+        tip = "El mejor cardio para progresar es el que puedes repetir sin agotarte."
+        step = _maybe(base, tip)
         wow = "Lo que se repite gana."
         return step, wow
 
