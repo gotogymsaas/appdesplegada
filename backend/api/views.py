@@ -4704,7 +4704,7 @@ def chat_n8n(request):
                     if isinstance(bt_req, dict):
                         scenario = str(bt_req.get('scenario') or '').strip().lower() or None
 
-                    bt_text = render_professional_summary(body_trend_result)
+                    bt_text = render_professional_summary(body_trend_result, preferred_scenario=scenario)
                     if bt_text:
                         body_trend_text_for_output_override = bt_text
                         attachment_text = ((attachment_text or '').strip() + "\n\n" if (attachment_text or '').strip() else "") + f"[PROYECCIÓN CORPORAL (6 SEMANAS)]\n{bt_text}".strip()
@@ -6872,6 +6872,11 @@ def qaf_body_trend(request):
         return Response({'error': 'Autenticacion requerida'}, status=status.HTTP_401_UNAUTHORIZED)
 
     payload = request.data if isinstance(request.data, dict) else {}
+    scenario = None
+    try:
+        scenario = str(payload.get('scenario') or '').strip().lower() or None
+    except Exception:
+        scenario = None
     week_id_now = _week_id()
     weekly_state = getattr(user, 'coach_weekly_state', {}) or {}
 
@@ -6968,7 +6973,7 @@ def qaf_body_trend(request):
     from .qaf_body_trend.engine import evaluate_body_trend, render_professional_summary, build_quick_actions_for_trend
 
     res = evaluate_body_trend(profile, observations, horizon_weeks=6)
-    text = render_professional_summary(res.payload)
+    text = render_professional_summary(res.payload, preferred_scenario=scenario)
     quick_actions = build_quick_actions_for_trend(has_intake=(kcal_in_avg is not None))
 
     # persistir kcal avg si viene y es válido

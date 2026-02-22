@@ -143,7 +143,7 @@ def evaluate_body_trend(
     return TrendResult(payload=payload)
 
 
-def render_professional_summary(result: dict[str, Any]) -> str:
+def render_professional_summary(result: dict[str, Any], *, preferred_scenario: str | None = None) -> str:
     if not isinstance(result, dict):
         return ""
     conf = result.get('confidence') if isinstance(result.get('confidence'), dict) else {}
@@ -172,9 +172,14 @@ def render_professional_summary(result: dict[str, Any]) -> str:
         )
 
     if scenarios:
-        _fmt_last("baseline", scenarios.get('baseline'))
-        _fmt_last("follow_plan", scenarios.get('follow_plan'))
-        _fmt_last("minus_200", scenarios.get('minus_200'))
+        pref = str(preferred_scenario or '').strip().lower() or None
+        order: list[str] = ["baseline", "follow_plan", "minus_200", "plus_200"]
+        if pref in order:
+            order = [pref] + [x for x in order if x != pref]
+            lines.append(f"escenario: {pref}")
+
+        for k in order:
+            _fmt_last(k, scenarios.get(k))
     explain = result.get('explainability')
     if isinstance(explain, list):
         for x in explain[:2]:
