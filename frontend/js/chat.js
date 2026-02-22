@@ -866,10 +866,11 @@ async function handlePostureCapture(file, view) {
   if (view === 'front') {
     postureFlow.step = 'need_side';
     savePostureState();
-    appendMessage('Perfecto. Ahora necesito la foto **lateral** (perfil).', 'bot');
+    appendMessage('Perfecto. Ahora idealmente necesito la foto **lateral** (perfil). Si quieres, también puedo hacer un **análisis parcial** con esta sola foto (no es 100% fiable).', 'bot');
     appendQuickActions([
       { label: 'Tomar foto lateral', type: 'posture_capture', view: 'side', source: 'camera' },
       { label: 'Adjuntar foto lateral', type: 'posture_capture', view: 'side', source: 'attach' },
+      { label: 'Analizar parcial', type: 'posture_analyze_partial' },
       { label: 'Cancelar', type: 'posture_cancel' },
     ]);
     return;
@@ -2508,6 +2509,26 @@ function appendQuickActions(actions) {
       }
       if (action.type === 'pp_analyze') {
         sendPpAnalyze();
+        return;
+      }
+      if (action.type === 'posture_analyze_partial') {
+        const front = postureFlow?.poses?.front || null;
+        const side = postureFlow?.poses?.side || null;
+        if (!front && !side) {
+          appendMessage('Primero necesito al menos 1 foto (frontal o lateral).', 'bot');
+          return;
+        }
+        appendMessage('Haré un **análisis parcial** con 1 foto. Para mayor precisión, agrega también la segunda vista (frontal + lateral).', 'bot');
+        sendQuickMessage('Analizar postura (parcial)', {
+          posture_request: {
+            poses: {
+              front: front,
+              side: side,
+            },
+            user_context: postureFlow.userContext,
+            locale: 'es-CO',
+          },
+        });
         return;
       }
       if (action.type === 'posture_safety') {

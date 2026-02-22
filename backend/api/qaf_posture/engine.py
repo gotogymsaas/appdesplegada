@@ -232,20 +232,29 @@ def evaluate_posture(payload: dict[str, Any]) -> PostureResult:
     scale_s, sc_conf_s = _scale_from_side_pose(kp_s)
 
     missing: list[str] = []
+    front_ok = bool(q_front["ratio"] >= 0.8 and scale_f is not None)
+    side_ok = bool(q_side["ratio"] >= 0.8 and scale_s is not None)
+
     if q_front["ratio"] < 0.8:
         missing.append("front_keypoints")
     if q_side["ratio"] < 0.8:
         missing.append("side_keypoints")
-    if scale_f is None or scale_s is None:
-        missing.append("scale")
+    if not front_ok:
+        missing.append("scale_front")
+    if not side_ok:
+        missing.append("scale_side")
 
-    decision = "accepted"
-    decision_reason = "ok"
+    decision = "accepted" if (front_ok and side_ok) else "needs_confirmation"
+    decision_reason = "ok" if decision == "accepted" else ("partial_views" if (front_ok or side_ok) else "missing_or_low_quality_pose")
     follow_up_questions: list[dict[str, Any]] = []
-    if missing:
-        decision = "needs_confirmation"
-        decision_reason = "missing_or_low_quality_pose"
-        follow_up_questions.append({"type": "retake_photos", "prompt": "Necesito frontal + lateral con cuerpo completo y buena luz.", "options": []})
+    if decision != "accepted":
+        follow_up_questions.append(
+            {
+                "type": "retake_photos",
+                "prompt": "Puedo darte un análisis parcial con 1 foto, pero no es 100% fiable sin la segunda vista (frontal + lateral, cuerpo completo, buena luz, cámara a 2–3m).",
+                "options": [],
+            }
+        )
 
     signals: list[dict[str, Any]] = []
     labels: list[dict[str, Any]] = []
@@ -253,7 +262,8 @@ def evaluate_posture(payload: dict[str, Any]) -> PostureResult:
     def label(key: str, *, severity: str, confidence: float, evidence: list[str]):
         labels.append({"key": key, "severity": severity, "confidence": round(float(_clamp01(confidence)), 4), "evidence": evidence})
 
-    if decision == "accepted" and scale_f is not None:
+    # Señales de frontal (se calculan si hay escala frontal, incluso en modo parcial)
+    if scale_f is not None and q_front.get("score", 0.0) >= 0.55:
         s = float(scale_f)
         sh_l = kp_f.get("left_shoulder")
         sh_r = kp_f.get("right_shoulder")
@@ -296,7 +306,8 @@ def evaluate_posture(payload: dict[str, Any]) -> PostureResult:
                 if float(ang) < 165.0 and conf >= 0.6:
                     label("knee_valgus", severity="mild", confidence=conf, evidence=["front", f"knee_angle_{side_key}"])
 
-    if decision == "accepted" and scale_s is not None:
+    # Señales de lateral (se calculan si hay escala lateral, incluso en modo parcial)
+    if scale_s is not None and q_side.get("score", 0.0) >= 0.55:
         s = float(scale_s)
         ear, _ = _first(kp_s, ("right_ear", "left_ear"))
         sh, _ = _first(kp_s, ("right_shoulder", "left_shoulder"))
@@ -324,8 +335,19 @@ def evaluate_posture(payload: dict[str, Any]) -> PostureResult:
             if pelvis_dx >= 0.26 and conf >= 0.6:
                 label("anterior_pelvic_tilt", severity="mild", confidence=conf, evidence=["side", "pelvis_knee_offset"])
 
-    base_quality = float(_clamp01((float(q_front["score"]) + float(q_side["score"])) / 2.0))
-    conf = base_quality if decision == "accepted" else float(_clamp01(base_quality * 0.65))
+    present_scores: list[float] = []
+    try:
+        if float(q_front.get("score") or 0.0) > 0:
+            present_scores.append(float(q_front.get("score") or 0.0))
+        if float(q_side.get("score") or 0.0) > 0:
+            present_scores.append(float(q_side.get("score") or 0.0))
+    except Exception:
+        present_scores = []
+    base_quality = float(_clamp01(sum(present_scores) / max(1, len(present_scores)) if present_scores else 0.0))
+
+    # Penaliza si no están ambas vistas
+    view_penalty = 1.0 if (front_ok and side_ok) else 0.72
+    conf = float(_clamp01(base_quality * view_penalty))
     uncertainty = float(_clamp01(1.0 - conf))
 
     catalog = _filter_exercises(_exercise_catalog(), user_ctx)
@@ -372,6 +394,26 @@ def render_professional_summary(result: dict[str, Any]) -> str:
             lines.append(f"confidence: {round(float(conf.get('score')), 3)}")
         except Exception:
             pass
+    # Aviso profesional: parcialidad
+    try:
+        if str(result.get('decision') or '') != 'accepted':
+            conf_block = result.get('confidence') if isinstance(result.get('confidence'), dict) else {}
+            pq = conf_block.get('pose_quality') if isinstance(conf_block.get('pose_quality'), dict) else {}
+            f_ok = False
+            s_ok = False
+            try:
+                f_ok = float((pq.get('front') or {}).get('score') or 0.0) >= 0.55
+            except Exception:
+                f_ok = False
+            try:
+                s_ok = float((pq.get('side') or {}).get('score') or 0.0) >= 0.55
+            except Exception:
+                s_ok = False
+            if f_ok or s_ok:
+                lines.append('nota: resultado parcial; no es 100% fiable sin la segunda vista (frontal + lateral).')
+    except Exception:
+        pass
+
     if labels:
         keys = [str(x.get("key")) for x in labels if isinstance(x, dict) and x.get("key")]
         if keys:

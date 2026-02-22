@@ -4762,13 +4762,17 @@ def chat_n8n(request):
                     def _posture_payload_ok(p: dict) -> bool:
                         if not isinstance(p, dict):
                             return False
+                        has_any = False
                         for v in ('front', 'side'):
                             pose = p.get(v)
+                            if pose is None:
+                                continue
                             if not isinstance(pose, dict):
-                                return False
+                                continue
                             kps = pose.get('keypoints')
                             if not isinstance(kps, list) or not kps:
-                                return False
+                                continue
+                            has_any = True
                             if len(kps) > 80:
                                 return False
                             for kp in kps[:40]:
@@ -4778,6 +4782,8 @@ def chat_n8n(request):
                                     return False
                                 if kp.get('x') is None or kp.get('y') is None:
                                     return False
+                        if not has_any:
+                            return False
                         return True
 
                     if isinstance(poses, dict) and _posture_payload_ok(poses):
@@ -4815,8 +4821,9 @@ def chat_n8n(request):
                         ])
                         attachment_text = ((attachment_text or '').strip() + "\n\n" if (attachment_text or '').strip() else "") + (
                             "[POSTURA / CAPTURA]\n"
-                            "Necesito 2 fotos: frontal y lateral (cuerpo completo, buena luz, cámara a la altura del pecho, 2–3m).\n"
-                            "Cuando tengas los keypoints (pose estimation), podré calcular señales y darte una rutina específica."
+                            "Ideal: 2 fotos (frontal + lateral) para mejor precisión.\n"
+                            "También puedo darte un análisis parcial con 1 foto, pero no es 100% fiable sin la segunda vista.\n"
+                            "Cuerpo completo, buena luz, cámara a la altura del pecho, 2–3m."
                         )
         except Exception as ex:
             print(f"QAF posture warning: {ex}")
