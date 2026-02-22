@@ -260,9 +260,9 @@ async function getMusclePoseEstimator() {
 
 function startMuscleFlow() {
   // Un solo flujo activo a la vez
-  try { cancelPostureFlow(); } catch (e) { /* ignore */ }
-  try { cancelShapeFlow(); } catch (e) { /* ignore */ }
-  try { cancelPpFlow(); } catch (e) { /* ignore */ }
+  try { cancelPostureFlow({ silent: true }); } catch (e) { /* ignore */ }
+  try { cancelShapeFlow({ silent: true }); } catch (e) { /* ignore */ }
+  try { cancelPpFlow({ silent: true }); } catch (e) { /* ignore */ }
 
   muscleFlow = {
     active: true,
@@ -297,9 +297,9 @@ function startMuscleFlow() {
 
 function startShapeFlow() {
   // Un solo flujo activo a la vez
-  try { cancelPostureFlow(); } catch (e) { /* ignore */ }
-  try { cancelMuscleFlow(); } catch (e) { /* ignore */ }
-  try { cancelPpFlow(); } catch (e) { /* ignore */ }
+  try { cancelPostureFlow({ silent: true }); } catch (e) { /* ignore */ }
+  try { cancelMuscleFlow({ silent: true }); } catch (e) { /* ignore */ }
+  try { cancelPpFlow({ silent: true }); } catch (e) { /* ignore */ }
 
   shapeFlow = {
     active: true,
@@ -328,9 +328,9 @@ function startShapeFlow() {
 
 function startPpFlow() {
   // Un solo flujo activo a la vez
-  try { cancelPostureFlow(); } catch (e) { /* ignore */ }
-  try { cancelMuscleFlow(); } catch (e) { /* ignore */ }
-  try { cancelShapeFlow(); } catch (e) { /* ignore */ }
+  try { cancelPostureFlow({ silent: true }); } catch (e) { /* ignore */ }
+  try { cancelMuscleFlow({ silent: true }); } catch (e) { /* ignore */ }
+  try { cancelShapeFlow({ silent: true }); } catch (e) { /* ignore */ }
 
   ppFlow = {
     active: true,
@@ -360,14 +360,17 @@ function startPpFlow() {
   ]);
 }
 
-function cancelPpFlow() {
+function cancelPpFlow(opts = {}) {
+  const wasActive = !!ppFlow.active;
   ppFlow = { ...ppFlow, active: false, step: 'idle', captureTarget: null };
   try {
     localStorage.removeItem(PP_STATE_KEY);
   } catch (e) {
     // ignore
   }
-  appendMessage('Listo. Si quieres retomarlo, escribe: "Postura & Proporción".', 'bot');
+  if (!opts.silent && wasActive) {
+    appendMessage('Listo. Si quieres retomarlo, escribe: "Postura & Proporción".', 'bot');
+  }
 }
 
 function _humanPpViewLabel(view) {
@@ -383,14 +386,17 @@ function _nextPpOffer(view) {
   return null;
 }
 
-function cancelShapeFlow() {
+function cancelShapeFlow(opts = {}) {
+  const wasActive = !!shapeFlow.active;
   shapeFlow = { ...shapeFlow, active: false, step: 'idle', captureTarget: null };
   try {
     localStorage.removeItem(SHAPE_STATE_KEY);
   } catch (e) {
     // ignore
   }
-  appendMessage('Listo. Si quieres retomarlo, escribe: "Shape & Presence".', 'bot');
+  if (!opts.silent && wasActive) {
+    appendMessage('Listo. Si quieres retomarlo, escribe: "Shape & Presence".', 'bot');
+  }
 }
 
 function _humanShapeViewLabel(view) {
@@ -404,14 +410,17 @@ function _nextShapeOffer(view) {
   return null;
 }
 
-function cancelMuscleFlow() {
+function cancelMuscleFlow(opts = {}) {
+  const wasActive = !!muscleFlow.active;
   muscleFlow = { ...muscleFlow, active: false, step: 'idle', captureTarget: null };
   try {
     localStorage.removeItem(MUSCLE_STATE_KEY);
   } catch (e) {
     // ignore
   }
-  appendMessage('Listo. Si quieres retomarlo, escribe: "Comparar músculo".', 'bot');
+  if (!opts.silent && wasActive) {
+    appendMessage('Listo. Si quieres retomarlo, escribe: "Comparar músculo".', 'bot');
+  }
 }
 
 function _humanMuscleViewLabel(view) {
@@ -661,9 +670,9 @@ function sendMuscleAnalyze() {
 
 function startPostureFlow() {
   // Un solo flujo activo a la vez
-  try { cancelMuscleFlow(); } catch (e) { /* ignore */ }
-  try { cancelShapeFlow(); } catch (e) { /* ignore */ }
-  try { cancelPpFlow(); } catch (e) { /* ignore */ }
+  try { cancelMuscleFlow({ silent: true }); } catch (e) { /* ignore */ }
+  try { cancelShapeFlow({ silent: true }); } catch (e) { /* ignore */ }
+  try { cancelPpFlow({ silent: true }); } catch (e) { /* ignore */ }
 
   postureFlow = {
     active: true,
@@ -675,12 +684,15 @@ function startPostureFlow() {
   savePostureState();
 
   appendMessage(
-    'Para analizar tu postura necesito 2 fotos: **frontal** y **lateral** (perfil).\n\n' +
-      '- Cámara a la altura del pecho, a 2–3m\n' +
+    'Vamos con **Corrección de postura**. En menos de 1 minuto te digo qué está pasando y te dejo una rutina simple para mejorar.\n\n' +
+      '**Foto 1 (frontal)** y **Foto 2 (lateral/perfil)**.\n\n' +
+      'Tips rápidos para que salga perfecto (con ayuda o con espejo):\n' +
+      '- Celular a la altura del pecho, a 2–3m\n' +
       '- Cuerpo completo (pies a cabeza)\n' +
       '- Buena luz y fondo limpio\n' +
-      '- Brazos relajados\n\n' +
-      'Empecemos con la foto frontal.',
+      '- Brazos relajados\n' +
+      '- Si estás solo: apoya el celular y usa temporizador; o toma la foto frente al espejo (sin tapar el cuerpo).\n\n' +
+      'Empecemos con la foto **frontal**.',
     'bot'
   );
   appendQuickActions([
@@ -690,14 +702,73 @@ function startPostureFlow() {
   ]);
 }
 
-function cancelPostureFlow() {
+function cancelPostureFlow(opts = {}) {
+  const wasActive = !!postureFlow.active;
   postureFlow = { ...postureFlow, active: false, step: 'idle', captureTarget: null };
   try {
     localStorage.removeItem(POSTURE_STATE_KEY);
   } catch (e) {
     // ignore
   }
-  appendMessage('Listo. Si quieres retomarlo, toca "Postura" o escribe: "analizar postura".', 'bot');
+  if (!opts.silent && wasActive) {
+    appendMessage('Listo. Si quieres retomarlo, toca "Corrección de postura" o escribe: "corrección de postura".', 'bot');
+  }
+}
+
+function _postureQualityFront(pose) {
+  const kps = (pose && pose.keypoints) || [];
+  const needed = ['nose', 'left_shoulder', 'right_shoulder', 'left_hip', 'right_hip', 'left_knee', 'right_knee', 'left_ankle', 'right_ankle'];
+  const map = {};
+  kps.forEach((kp) => {
+    if (!kp || !kp.name) return;
+    map[String(kp.name)] = kp;
+  });
+  let present = 0;
+  let sum = 0;
+  const missing = [];
+  needed.forEach((n) => {
+    const kp = map[n];
+    if (kp && Number.isFinite(Number(kp.score))) {
+      present += 1;
+      sum += Number(kp.score);
+    } else {
+      missing.push(n);
+    }
+  });
+  const ratio = present / Math.max(1, needed.length);
+  const avg = present ? sum / present : 0;
+  return { ratio, avg, ok: ratio >= 0.8 && avg >= 0.5, missing };
+}
+
+function _postureQualitySide(pose) {
+  const kps = (pose && pose.keypoints) || [];
+  const map = {};
+  kps.forEach((kp) => {
+    if (!kp || !kp.name) return;
+    map[String(kp.name)] = kp;
+  });
+  const groups = [
+    ['right_ear', 'left_ear'],
+    ['right_shoulder', 'left_shoulder'],
+    ['right_hip', 'left_hip'],
+    ['right_knee', 'left_knee'],
+    ['right_ankle', 'left_ankle'],
+  ];
+  let present = 0;
+  let sum = 0;
+  const missing = [];
+  groups.forEach((g) => {
+    const kp = map[g[0]] || map[g[1]];
+    if (kp && Number.isFinite(Number(kp.score))) {
+      present += 1;
+      sum += Number(kp.score);
+    } else {
+      missing.push(g.join('|'));
+    }
+  });
+  const ratio = present / Math.max(1, groups.length);
+  const avg = present ? sum / present : 0;
+  return { ratio, avg, ok: ratio >= 0.8 && avg >= 0.5, missing };
 }
 
 function _isImageFile(file) {
@@ -859,6 +930,32 @@ async function handlePostureCapture(file, view) {
     return;
   }
 
+  // Feedback inmediato: si la calidad es baja, pedimos retomar sin avanzar (mejor UX).
+  try {
+    const q = view === 'front' ? _postureQualityFront(pose) : _postureQualitySide(pose);
+    if (!q.ok) {
+      const pct = Math.round((q.ratio || 0) * 100);
+      appendMessage(
+        `No logré verte con suficiente claridad (calidad aprox: ${pct}%).\n\n` +
+          'Tips para que funcione:\n' +
+          '- Aléjate un poco para que salgan pies a cabeza\n' +
+          '- Más luz (frontal) y fondo limpio\n' +
+          '- Celular estable (apoyado/temporizador)\n' +
+          '- Evita recortes del cuerpo\n\n' +
+          '¿La repetimos?',
+        'bot'
+      );
+      appendQuickActions([
+        { label: view === 'front' ? 'Tomar foto frontal' : 'Tomar foto lateral', type: 'posture_capture', view, source: 'camera' },
+        { label: view === 'front' ? 'Adjuntar foto frontal' : 'Adjuntar foto lateral', type: 'posture_capture', view, source: 'attach' },
+        { label: 'Cancelar', type: 'posture_cancel' },
+      ]);
+      return;
+    }
+  } catch (e) {
+    // si falla el check, seguimos normal
+  }
+
   postureFlow.poses[view] = pose;
   postureFlow.captureTarget = null;
   savePostureState();
@@ -866,7 +963,13 @@ async function handlePostureCapture(file, view) {
   if (view === 'front') {
     postureFlow.step = 'need_side';
     savePostureState();
-    appendMessage('Perfecto. Ahora idealmente necesito la foto **lateral** (perfil). Si quieres, también puedo hacer un **análisis parcial** con esta sola foto (no es 100% fiable).', 'bot');
+    appendMessage(
+      '✅ Foto frontal lista.\n\n' +
+        'Ahora vamos por la foto **lateral** (perfil).\n\n' +
+        'Tip si estás solo: apoya el celular de lado y usa temporizador, o toma la foto frente a un espejo (perfil), sin taparte con el teléfono.\n\n' +
+        'Si prefieres, también puedo hacer un **análisis parcial** solo con esta foto (menos preciso).',
+      'bot'
+    );
     appendQuickActions([
       { label: 'Tomar foto lateral', type: 'posture_capture', view: 'side', source: 'camera' },
       { label: 'Adjuntar foto lateral', type: 'posture_capture', view: 'side', source: 'attach' },
@@ -878,7 +981,12 @@ async function handlePostureCapture(file, view) {
 
   postureFlow.step = 'need_safety';
   savePostureState();
-  appendMessage('Antes de recomendar ejercicios: ¿tienes dolor agudo, hormigueo o lesión reciente?', 'bot');
+  appendMessage(
+    '✅ Listo. Ya tengo frontal + lateral.\n\n' +
+      'Antes de recomendar ejercicios, cuido tu seguridad (para evitar movimientos que te puedan irritar):\n' +
+      '¿tienes dolor agudo, hormigueo, adormecimiento o lesión reciente?',
+    'bot'
+  );
   appendQuickActions([
     { label: 'No', type: 'posture_safety', value: 'no' },
     { label: 'Sí', type: 'posture_safety', value: 'yes' },
@@ -1521,7 +1629,7 @@ function buildQuickActions(context) {
   });
 
   // 3) Postura (Exp-006)
-  actions.push({ label: 'Postura', type: 'posture_start' });
+  actions.push({ label: 'Corrección de postura', type: 'posture_start' });
 
   return actions.slice(0, 3);
 }

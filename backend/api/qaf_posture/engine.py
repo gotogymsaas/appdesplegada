@@ -384,19 +384,23 @@ def render_professional_summary(result: dict[str, Any]) -> str:
         return ""
     conf = result.get("confidence") if isinstance(result.get("confidence"), dict) else {}
     labels = result.get("labels") if isinstance(result.get("labels"), list) else []
+    signals = result.get("signals") if isinstance(result.get("signals"), list) else []
     rec = result.get("recommendations") if isinstance(result.get("recommendations"), dict) else {}
     routine = rec.get("routine") if isinstance(rec.get("routine"), list) else []
 
     lines: list[str] = []
-    lines.append(f"decision: {result.get('decision')}")
+    decision = str(result.get('decision') or '').strip() or 'unknown'
+    lines.append("Corrección de postura — resumen")
+    lines.append(f"estado: {decision}")
     if conf.get("score") is not None:
         try:
-            lines.append(f"confidence: {round(float(conf.get('score')), 3)}")
+            pct = round(float(conf.get('score')) * 100.0, 0)
+            lines.append(f"confianza del análisis: {pct:.0f}%")
         except Exception:
             pass
     # Aviso profesional: parcialidad
     try:
-        if str(result.get('decision') or '') != 'accepted':
+        if decision != 'accepted':
             conf_block = result.get('confidence') if isinstance(result.get('confidence'), dict) else {}
             pq = conf_block.get('pose_quality') if isinstance(conf_block.get('pose_quality'), dict) else {}
             f_ok = False
@@ -414,12 +418,92 @@ def render_professional_summary(result: dict[str, Any]) -> str:
     except Exception:
         pass
 
+    # Métricas interesantes (sin prometer cm reales; son proporciones normalizadas por escala corporal)
+    try:
+        def _sig(name: str):
+            for s in signals:
+                if isinstance(s, dict) and str(s.get('name') or '').strip() == name:
+                    return s
+            return None
+
+        def _pct(v: Any) -> float | None:
+            try:
+                return float(v) * 100.0
+            except Exception:
+                return None
+
+        metrics: list[str] = []
+
+        sh = _sig('shoulder_asymmetry')
+        if sh and sh.get('value') is not None:
+            v = _pct(sh.get('value'))
+            t = _pct(sh.get('threshold'))
+            if v is not None:
+                metrics.append(f"Hombros (asimetría): {v:.1f}%" + (f" (umbral {t:.1f}%)" if t is not None else ""))
+
+        hip = _sig('hip_asymmetry')
+        if hip and hip.get('value') is not None:
+            v = _pct(hip.get('value'))
+            t = _pct(hip.get('threshold'))
+            if v is not None:
+                metrics.append(f"Cadera (asimetría): {v:.1f}%" + (f" (umbral {t:.1f}%)" if t is not None else ""))
+
+        fh = _sig('forward_head')
+        if fh and fh.get('value') is not None:
+            v = _pct(fh.get('value'))
+            t = _pct(fh.get('threshold'))
+            if v is not None:
+                metrics.append(f"Cabeza adelantada (proxy): {v:.1f}%" + (f" (umbral {t:.1f}%)" if t is not None else ""))
+
+        rs = _sig('rounded_shoulders')
+        if rs and rs.get('value') is not None:
+            v = _pct(rs.get('value'))
+            t = _pct(rs.get('threshold'))
+            if v is not None:
+                metrics.append(f"Hombros redondeados (proxy): {v:.1f}%" + (f" (umbral {t:.1f}%)" if t is not None else ""))
+
+        if metrics:
+            lines.append("métricas (aprox):")
+            for m in metrics[:4]:
+                lines.append(f"- {m}")
+    except Exception:
+        pass
+
     if labels:
         keys = [str(x.get("key")) for x in labels if isinstance(x, dict) and x.get("key")]
         if keys:
-            lines.append("señales: " + ", ".join(keys[:6]))
+            lines.append("hallazgos: " + ", ".join(keys[:6]))
     if routine:
-        names = [str(x.get("name")) for x in routine if isinstance(x, dict) and x.get("name")]
-        if names:
-            lines.append("rutina: " + "; ".join(names[:5]))
+        # Mostrar rutina en formato más accionable
+        pretty = []
+        for ex in routine[:5]:
+            if not isinstance(ex, dict):
+                continue
+            nm = str(ex.get('name') or '').strip()
+            sets = ex.get('sets')
+            reps = ex.get('reps')
+            dur = ex.get('duration_sec')
+            if not nm:
+                continue
+            tail = []
+            try:
+                if sets:
+                    tail.append(f"{int(sets)} series")
+            except Exception:
+                pass
+            try:
+                if reps:
+                    tail.append(f"{int(reps)} reps")
+            except Exception:
+                pass
+            try:
+                if dur:
+                    tail.append(f"{int(dur)}s")
+            except Exception:
+                pass
+            pretty.append(nm + (f" ({', '.join(tail)})" if tail else ""))
+        if pretty:
+            lines.append("rutina sugerida:")
+            for x in pretty:
+                lines.append(f"- {x}")
     return "\n".join(lines).strip()
