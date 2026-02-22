@@ -5188,8 +5188,13 @@ def chat_n8n(request):
                     want_prog = True
                 else:
                     msg_low = str(message or '').lower()
-                    if re.search(r"\b(progres|estanc|plateau|subir\s+peso|subir\s+carga|mas\s+reps|cardio|correr|bici|eliptica)\b", msg_low):
+                    # Compat UX: si el usuario escribe (o el botón manda) el texto nuevo,
+                    # también debe activar el flujo de Exp-009.
+                    if re.search(r"\b(progres|evoluci|entrenamiento|estanc|plateau|subir\s+peso|subir\s+carga|mas\s+reps|cardio|correr|bici|eliptica)\b", msg_low):
                         want_prog = True
+
+                msg_low = str(message or '').strip().lower()
+                from_prog_button_text = msg_low in ("evolución de entrenamiento", "evolucion de entrenamiento")
 
                 if want_prog:
                     from .qaf_progression.engine import evaluate_progression, render_professional_summary, parse_strength_line
@@ -5363,7 +5368,7 @@ def chat_n8n(request):
 
                     # Responder directo si viene de botones/payloads
                     try:
-                        if (isinstance(pr, dict) or isinstance(pa, dict)) and progression_text_for_output_override:
+                        if (isinstance(pr, dict) or isinstance(pa, dict) or from_prog_button_text) and progression_text_for_output_override:
                             existing = quick_actions_out if isinstance(quick_actions_out, list) else []
                             existing2 = [x for x in existing if isinstance(x, dict)]
                             out_actions = (existing2 + progression_quick_actions_out)[:6] if progression_quick_actions_out else existing2[:6]
