@@ -5311,9 +5311,9 @@ def chat_n8n(request):
                             out = []
                             for i in (2, 4, 6, 8, 10):
                                 out.append({
-                                    'label': f"RPE {i}",
+                                    'label': f"{i}",
                                     'type': 'message',
-                                    'text': f"RPE {i}",
+                                    'text': f"{i}",
                                     'payload': {'progression_action': {'session': {'rpe_1_10': i}}},
                                 })
                             return out
