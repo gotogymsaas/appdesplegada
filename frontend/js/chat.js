@@ -124,6 +124,209 @@ function loadPostureState() {
 
 loadPostureState();
 
+// --- Exp-010 Medición muscular (pose-estimation en cliente; 1..4 vistas) ---
+let muscleFlow = {
+  active: false,
+  step: 'idle',
+  captureTarget: null, // view_id
+  poses: {
+    front_relaxed: null,
+    side_right_relaxed: null,
+    back_relaxed: null,
+    front_flex: null,
+  },
+};
+
+let musclePoseEstimator = null;
+let musclePoseEstimatorLoading = null;
+
+const MUSCLE_STATE_KEY = 'gtg_muscle_flow_state_v0';
+
+function saveMuscleState() {
+  try {
+    localStorage.setItem(MUSCLE_STATE_KEY, JSON.stringify(muscleFlow));
+  } catch (e) {
+    // ignore
+  }
+}
+
+function loadMuscleState() {
+  try {
+    const raw = localStorage.getItem(MUSCLE_STATE_KEY);
+    if (!raw) return;
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== 'object') return;
+    if (!parsed.active) return;
+    muscleFlow = {
+      ...muscleFlow,
+      ...parsed,
+      poses: parsed.poses || muscleFlow.poses,
+    };
+  } catch (e) {
+    // ignore
+  }
+}
+
+loadMuscleState();
+
+async function getMusclePoseEstimator() {
+  // Reutilizamos el mismo estimador de postura para no descargar dos veces.
+  if (posturePoseEstimator) return posturePoseEstimator;
+  if (posturePoseEstimatorLoading) return posturePoseEstimatorLoading;
+  // fallback: usa el getter existente.
+  return await getPosturePoseEstimator();
+}
+
+function startMuscleFlow() {
+  muscleFlow = {
+    active: true,
+    step: 'need_front',
+    captureTarget: null,
+    poses: {
+      front_relaxed: null,
+      side_right_relaxed: null,
+      back_relaxed: null,
+      front_flex: null,
+    },
+  };
+  saveMuscleState();
+
+  appendMessage(
+    'Vamos a hacer una **medición muscular** con fotos (comparación relativa, sin prometer cm exactos).\n\n' +
+      'Puedes enviar **mínimo 1** y **máximo 4** fotos:\n' +
+      '- Frente relajado (recomendado)\n' +
+      '- Perfil derecho (opcional)\n' +
+      '- Espalda (opcional)\n' +
+      '- Frente flex suave (opcional)\n\n' +
+      'Empecemos con **frente relajado** (cuerpo completo, buena luz, cámara a 2–3m).',
+    'bot'
+  );
+  appendQuickActions([
+    { label: 'Tomar foto frente', type: 'muscle_capture', view: 'front_relaxed', source: 'camera' },
+    { label: 'Adjuntar foto frente', type: 'muscle_capture', view: 'front_relaxed', source: 'attach' },
+    { label: 'Cancelar', type: 'muscle_cancel' },
+  ]);
+}
+
+function cancelMuscleFlow() {
+  muscleFlow = { ...muscleFlow, active: false, step: 'idle', captureTarget: null };
+  try {
+    localStorage.removeItem(MUSCLE_STATE_KEY);
+  } catch (e) {
+    // ignore
+  }
+  appendMessage('Listo. Si quieres retomarlo, escribe: "Comparar músculo".', 'bot');
+}
+
+function _humanMuscleViewLabel(view) {
+  if (view === 'front_relaxed') return 'Frente relajado';
+  if (view === 'side_right_relaxed') return 'Perfil derecho';
+  if (view === 'back_relaxed') return 'Espalda';
+  if (view === 'front_flex') return 'Frente flex suave';
+  return 'Foto';
+}
+
+function _nextMuscleOffer(view) {
+  if (view === 'front_relaxed') return 'side_right_relaxed';
+  if (view === 'side_right_relaxed') return 'back_relaxed';
+  if (view === 'back_relaxed') return 'front_flex';
+  return null;
+}
+
+async function estimateMusclePoseFromImageFile(file) {
+  // Igual que posture, pero dejamos la función separada por claridad.
+  const url = URL.createObjectURL(file);
+  try {
+    const img = new Image();
+    img.decoding = 'async';
+    img.loading = 'eager';
+    img.src = url;
+    await new Promise((resolve, reject) => {
+      img.onload = () => resolve();
+      img.onerror = () => reject(new Error('image_load_failed'));
+    });
+
+    const estimator = await getMusclePoseEstimator();
+    const res = await new Promise((resolve) => {
+      estimator.onResults((results) => resolve(results || {}));
+      estimator.send({ image: img });
+    });
+    const kps = mediapipeLandmarksToKeypoints(res.poseLandmarks);
+    return {
+      keypoints: kps,
+      image: { width: img.naturalWidth || img.width || 0, height: img.naturalHeight || img.height || 0 },
+    };
+  } finally {
+    try {
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      // ignore
+    }
+  }
+}
+
+async function handleMuscleCapture(file, view) {
+  if (!_isImageFile(file)) {
+    appendMessage('Para medición muscular necesito una imagen.', 'bot');
+    return;
+  }
+
+  const objectUrl = URL.createObjectURL(file);
+  appendMessage(_humanMuscleViewLabel(view), 'user', {
+    meta: { text: _humanMuscleViewLabel(view), hasFile: true },
+    attachment: { file, objectUrl },
+  });
+
+  appendMessage('Analizando (pose estimation local)...', 'bot');
+
+  let pose;
+  try {
+    pose = await estimateMusclePoseFromImageFile(file);
+  } catch (e) {
+    console.warn('Muscle pose estimation failed:', e);
+    appendMessage('No pude detectar bien tu cuerpo. Repite con mejor luz y cuerpo completo.', 'bot');
+    return;
+  }
+
+  muscleFlow.active = true;
+  muscleFlow.poses[view] = pose;
+  muscleFlow.captureTarget = null;
+  saveMuscleState();
+
+  const nextView = _nextMuscleOffer(view);
+  if (nextView) {
+    const label = _humanMuscleViewLabel(nextView).toLowerCase();
+    appendMessage(`¿Quieres agregar **${label}** para mejorar la medición o analizar ya?`, 'bot');
+    appendQuickActions([
+      { label: `Tomar ${label}`, type: 'muscle_capture', view: nextView, source: 'camera' },
+      { label: `Adjuntar ${label}`, type: 'muscle_capture', view: nextView, source: 'attach' },
+      { label: 'Analizar ahora', type: 'muscle_analyze' },
+      { label: 'Cancelar', type: 'muscle_cancel' },
+    ]);
+    return;
+  }
+
+  appendQuickActions([
+    { label: 'Analizar ahora', type: 'muscle_analyze' },
+    { label: 'Cancelar', type: 'muscle_cancel' },
+  ]);
+}
+
+function sendMuscleAnalyze() {
+  const poses = muscleFlow.poses || {};
+  const hasAny = Object.values(poses).some((p) => p && typeof p === 'object' && Array.isArray(p.keypoints) && p.keypoints.length);
+  if (!hasAny) {
+    appendMessage('Primero necesito al menos 1 foto (frente relajado).', 'bot');
+    return;
+  }
+  sendQuickMessage('Analizar músculo', {
+    muscle_measure_request: {
+      poses: poses,
+      locale: 'es-CO',
+    },
+  });
+}
+
 function startPostureFlow() {
   postureFlow = {
     active: true,
@@ -1286,6 +1489,13 @@ if (toolCameraBtn) {
 if (fileInput) {
   fileInput.addEventListener('change', () => {
     const file = getSelectedFile();
+    if (file && muscleFlow.active && muscleFlow.captureTarget) {
+      const view = muscleFlow.captureTarget;
+      setAttachmentPreview(null);
+      clearSelectedFiles();
+      handleMuscleCapture(file, view);
+      return;
+    }
     if (file && postureFlow.active && postureFlow.captureTarget) {
       const view = postureFlow.captureTarget;
       setAttachmentPreview(null);
@@ -1305,6 +1515,13 @@ if (fileInput) {
 if (cameraInput) {
   cameraInput.addEventListener('change', () => {
     const file = getSelectedFile();
+    if (file && muscleFlow.active && muscleFlow.captureTarget) {
+      const view = muscleFlow.captureTarget;
+      setAttachmentPreview(null);
+      clearSelectedFiles();
+      handleMuscleCapture(file, view);
+      return;
+    }
     if (file && postureFlow.active && postureFlow.captureTarget) {
       const view = postureFlow.captureTarget;
       setAttachmentPreview(null);
@@ -1787,8 +2004,16 @@ function appendQuickActions(actions) {
         startPostureFlow();
         return;
       }
+      if (action.type === 'muscle_start') {
+        startMuscleFlow();
+        return;
+      }
       if (action.type === 'posture_cancel') {
         cancelPostureFlow();
+        return;
+      }
+      if (action.type === 'muscle_cancel') {
+        cancelMuscleFlow();
         return;
       }
       if (action.type === 'posture_capture' && action.view) {
@@ -1803,6 +2028,24 @@ function appendQuickActions(actions) {
           closeToolsMenu();
           cameraInput?.click();
         }
+        return;
+      }
+      if (action.type === 'muscle_capture' && action.view) {
+        muscleFlow.active = true;
+        muscleFlow.captureTarget = action.view;
+        muscleFlow.step = String(action.view || 'need_front');
+        saveMuscleState();
+        if (action.source === 'attach') {
+          closeToolsMenu();
+          fileInput?.click();
+        } else {
+          closeToolsMenu();
+          cameraInput?.click();
+        }
+        return;
+      }
+      if (action.type === 'muscle_analyze') {
+        sendMuscleAnalyze();
         return;
       }
       if (action.type === 'posture_safety') {

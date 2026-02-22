@@ -3898,7 +3898,12 @@ def chat_n8n(request):
         try:
             pr0 = request.data.get('posture_request') if isinstance(request.data, dict) else None
             msg_low0 = str(message or '').lower()
-            suppress_weekly_checkins = bool(isinstance(pr0, dict) or re.search(r"\b(postura|posture)\b", msg_low0))
+            mr0 = request.data.get('muscle_measure_request') if isinstance(request.data, dict) else None
+            suppress_weekly_checkins = bool(
+                isinstance(pr0, dict)
+                or isinstance(mr0, dict)
+                or re.search(r"\b(postura|posture|m[uú]sculo|musculo|muscle)\b", msg_low0)
+            )
         except Exception:
             suppress_weekly_checkins = False
 
@@ -3970,6 +3975,89 @@ def chat_n8n(request):
                 user.save(update_fields=['coach_state', 'coach_state_updated_at'])
         except Exception:
             pass
+
+        # 0.2.b) Exp-010: Medición muscular (solo fotografía; 1..4 vistas opcionales)
+        try:
+            if user and isinstance(request.data, dict):
+                mm_req = request.data.get('muscle_measure_request')
+
+                # Iniciar flujo desde quick-action de Salud: "Comparar músculo"
+                msg_low = str(message or '').strip().lower()
+                if (not isinstance(mm_req, dict)) and re.fullmatch(r"comparar\s+m[uú]sculo|comparar\s+musculo|muscle\s+measure", msg_low or ""):
+                    out = (
+                        "[MEDICIÓN MUSCULAR]\n"
+                        "Podemos medir tu progreso con fotos (sin prometer cm exactos).\n\n"
+                        "- Mínimo: 1 foto (frente relajado)\n"
+                        "- Mejor: agrega perfil, espalda y flex suave\n\n"
+                        "Empecemos con **frente relajado** (cuerpo completo, buena luz, cámara a 2–3m)."
+                    )
+                    return Response(
+                        {
+                            'output': out,
+                            'quick_actions': [
+                                {'label': 'Tomar foto frente', 'type': 'muscle_capture', 'view': 'front_relaxed', 'source': 'camera'},
+                                {'label': 'Adjuntar foto frente', 'type': 'muscle_capture', 'view': 'front_relaxed', 'source': 'attach'},
+                                {'label': 'Cancelar', 'type': 'muscle_cancel'},
+                            ],
+                        }
+                    )
+
+                if isinstance(mm_req, dict):
+                    from .qaf_muscle_measure.engine import evaluate_muscle_measure, render_professional_summary
+
+                    week_id_now = _week_id()
+                    weekly_state = getattr(user, 'coach_weekly_state', {}) or {}
+
+                    baseline = None
+                    try:
+                        mm = weekly_state.get('muscle_measure') if isinstance(weekly_state.get('muscle_measure'), dict) else {}
+                        prev_keys = [k for k in mm.keys() if isinstance(k, str) and k != week_id_now]
+                        if prev_keys:
+                            prev_key = sorted(prev_keys)[-1]
+                            prev_row = mm.get(prev_key)
+                            if isinstance(prev_row, dict) and isinstance(prev_row.get('result'), dict):
+                                baseline = prev_row.get('result')
+                    except Exception:
+                        baseline = None
+
+                    poses = mm_req.get('poses') if isinstance(mm_req.get('poses'), dict) else {}
+                    res = evaluate_muscle_measure({'poses': poses, 'baseline': baseline}).payload
+                    text = render_professional_summary(res)
+
+                    # Persistir por semana
+                    try:
+                        ws2 = dict(weekly_state)
+                        mm = ws2.get('muscle_measure') if isinstance(ws2.get('muscle_measure'), dict) else {}
+                        mm2 = dict(mm)
+                        mm2[week_id_now] = {'result': res, 'updated_at': timezone.now().isoformat(), 'week_id': week_id_now}
+                        ws2['muscle_measure'] = mm2
+                        user.coach_weekly_state = ws2
+                        user.coach_weekly_updated_at = timezone.now()
+                        user.save(update_fields=['coach_weekly_state', 'coach_weekly_updated_at'])
+                    except Exception:
+                        pass
+
+                    # Si el motor pide repetir, ofrecer retomar captura
+                    qas = []
+                    try:
+                        if isinstance(res, dict) and res.get('decision') != 'accepted':
+                            qas = [
+                                {'label': 'Repetir frente', 'type': 'muscle_capture', 'view': 'front_relaxed', 'source': 'camera'},
+                                {'label': 'Adjuntar frente', 'type': 'muscle_capture', 'view': 'front_relaxed', 'source': 'attach'},
+                                {'label': 'Cancelar', 'type': 'muscle_cancel'},
+                            ]
+                    except Exception:
+                        qas = []
+
+                    return Response(
+                        {
+                            'output': text or 'Medición lista.',
+                            'qaf_muscle_measure': res,
+                            'quick_actions': qas,
+                        }
+                    )
+        except Exception as ex:
+            print(f"QAF muscle measure warning: {ex}")
 
         # 0.3) Exp-004: generar menú por payload o por intención en el mensaje
         try:
@@ -6625,6 +6713,73 @@ def qaf_progression(request):
         user.coach_state = cs2
         user.coach_state_updated_at = timezone.now()
         user.save(update_fields=['coach_state', 'coach_state_updated_at'])
+    except Exception:
+        pass
+
+    return Response({'success': True, 'result': res, 'text': text})
+
+
+@api_view(['POST', 'OPTIONS'])
+@authentication_classes([JWTAuthentication])
+@permission_classes([IsAuthenticatedOrOptions])
+def qaf_muscle_measure(request):
+    """Exp-010: medición muscular (solo fotografía) usando keypoints 2D.
+
+    Importante:
+    - Este endpoint NO hace pose estimation.
+    - Recibe `poses[view_id].keypoints` ya calculados en cliente.
+    - Acepta 1..4 vistas (opcionales).
+    """
+
+    if request.method == 'OPTIONS':
+        return Response(status=status.HTTP_200_OK)
+
+    user = _resolve_request_user(request)
+    if not user:
+        return Response({'error': 'Autenticacion requerida'}, status=status.HTTP_401_UNAUTHORIZED)
+
+    payload = request.data if isinstance(request.data, dict) else {}
+    locale = (payload.get('locale') or '').strip() or 'es-CO'
+
+    week_id_now = _week_id()
+    weekly_state = getattr(user, 'coach_weekly_state', {}) or {}
+
+    baseline = None
+    try:
+        mm = weekly_state.get('muscle_measure') if isinstance(weekly_state.get('muscle_measure'), dict) else {}
+        prev_keys = [k for k in mm.keys() if isinstance(k, str) and k != week_id_now]
+        if prev_keys:
+            prev_key = sorted(prev_keys)[-1]
+            prev_row = mm.get(prev_key)
+            if isinstance(prev_row, dict) and isinstance(prev_row.get('result'), dict):
+                baseline = prev_row.get('result')
+    except Exception:
+        baseline = None
+
+    from .qaf_muscle_measure.engine import evaluate_muscle_measure, render_professional_summary
+
+    res = evaluate_muscle_measure({
+        'poses': payload.get('poses') if isinstance(payload.get('poses'), dict) else {},
+        'baseline': baseline if isinstance(baseline, dict) else None,
+        'locale': locale,
+    }).payload
+
+    text = render_professional_summary(res)
+
+    # Persistir (por semana)
+    try:
+        ws2 = dict(weekly_state)
+        mm = ws2.get('muscle_measure') if isinstance(ws2.get('muscle_measure'), dict) else {}
+        mm2 = dict(mm)
+        mm2[week_id_now] = {
+            'result': res,
+            'updated_at': timezone.now().isoformat(),
+            'week_id': week_id_now,
+        }
+        ws2['muscle_measure'] = mm2
+        user.coach_weekly_state = ws2
+        user.coach_weekly_updated_at = timezone.now()
+        user.save(update_fields=['coach_weekly_state', 'coach_weekly_updated_at'])
     except Exception:
         pass
 
