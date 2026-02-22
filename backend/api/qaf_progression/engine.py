@@ -263,32 +263,56 @@ def render_professional_summary(result: dict[str, Any]) -> str:
         score = None
 
     display_name = str(result.get('user_display_name') or '').strip() or None
-    if score is not None:
-        # Banda humana (no técnica)
-        if score >= 70:
-            energy_band = 'alta'
-            mode = 'listo para empujar'
-        elif score >= 50:
-            energy_band = 'media'
-            mode = 'avance con control'
-        else:
-            energy_band = 'baja'
-            mode = 'recuperación inteligente'
 
-        # Porcentaje aproximado + “de cada 10” (aprox)
+    def _bucket_copy(readiness_0_100: int) -> tuple[str, str, str]:
+        """Devuelve (mode, headline, why) por tramos de 20%."""
+        r = max(0, min(100, int(readiness_0_100)))
+
+        # Tramos de 20%: 0–20, 21–40, 41–60, 61–80, 81–100
+        if r <= 20:
+            mode = 'recuperación inteligente'
+            headline = (
+                "hoy lo más valioso es recuperar: baja intensidad, cuida técnica y sal con más energía de la que entraste."
+            )
+            why = "Las señales de hoy apuntan a energía baja: apretar aquí suele costar más de lo que suma."
+            return mode, headline, why
+        if r <= 40:
+            mode = 'mínimo viable'
+            headline = (
+                "sí puedes entrenar, pero con objetivo ‘mínimo viable’: cumplir lo esencial sin forzar, para no romper la constancia."
+            )
+            why = "Las señales de hoy están bajas‑medias: hoy gana la consistencia, no el heroísmo."
+            return mode, headline, why
+        if r <= 60:
+            mode = 'avance con control'
+            headline = (
+                "sí puedes entrenar, pero el mejor resultado hoy viene de proteger la constancia, no de exprimirte."
+            )
+            why = "Las señales de hoy apuntan a energía media: suficiente para cumplir, pero no ideal para subir intensidad."
+            return mode, headline, why
+        if r <= 80:
+            mode = 'progreso sostenible'
+            headline = (
+                "es un buen día para progresar con calma: una mejora pequeña (pero real) sin perder técnica ni control."
+            )
+            why = "Las señales de hoy apuntan a energía buena: puedes empujar un poco si mantienes forma y respiración controlada."
+            return mode, headline, why
+        mode = 'día para empujar'
+        headline = (
+            "es un gran día para avanzar: si el plan está claro, puedes subir un poco el estímulo manteniendo calidad."
+        )
+        why = "Las señales de hoy apuntan a energía alta: aprovecha, pero sin perder técnica ni excederte."
+        return mode, headline, why
+
+    if score is not None:
         pct_approx = int(round(float(score)))
-        de10 = int(max(1, min(10, round(float(score) / 10.0))))
+        de10 = int(max(0, min(10, round(float(score) / 10.0))))
+        mode, headline, why = _bucket_copy(pct_approx)
 
         prefix = f"{display_name}, " if display_name else ""
         lines.append(f"{prefix}hoy tu cuerpo está en modo ‘{mode}’.".strip())
-        lines.append(
-            f"Tu nivel de preparación para entrenar está alrededor de {pct_approx}% (≈ {de10} de cada 10): "
-            "sí puedes entrenar, pero el mejor resultado hoy viene de proteger la constancia, no de exprimirte."
-        )
-        lines.append(
-            f"¿Por qué te lo recomiendo así? Porque las señales de hoy apuntan a energía {energy_band}: "
-            "suficiente para cumplir, pero no ideal para subir intensidad."
-        )
+        lines.append(f"Tu nivel de preparación para entrenar está alrededor de {pct_approx}% (≈ {de10} de cada 10): {headline}")
+        lines.append(f"¿Por qué te lo recomiendo así? {why}")
 
     # 2) Señal de plateau, si aplica
     if p.get('detected') is True:

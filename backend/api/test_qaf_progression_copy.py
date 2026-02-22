@@ -33,3 +33,17 @@ class QAFProgressionCopyTests(SimpleTestCase):
         # Secuencial: en este paso (falta modalidad) no debería pedir aún RPE ni %
         self.assertNotIn("RPE", text)
         self.assertNotIn("100%", text)
+
+    def test_summary_bucket_0_20_is_recovery_intelligent(self):
+        result = {
+            "decision": "needs_confirmation",
+            "readiness": {"score": 20},
+            "decision_engine": {"action": "minimum_viable", "reason": "default_safe"},
+            "micro_goal": "Hoy: cumplir el mínimo viable y proteger la constancia.",
+            "confidence": {"score": 0.5, "missing": ["modality"]},
+        }
+
+        text = render_professional_summary(result)
+        self.assertIn("recuperación inteligente", text.lower())
+        self.assertIn("20%", text)
+        self.assertIn("¿hoy fue fuerza o cardio?".lower(), text.lower())
