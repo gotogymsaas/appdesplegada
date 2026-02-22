@@ -4726,7 +4726,43 @@ def chat_n8n(request):
 
                     # Quick-actions
                     try:
-                        quick_actions_out.extend(build_quick_actions_for_trend(has_intake=(kcal_in_avg is not None)))
+                        has_intake = (kcal_in_avg is not None)
+
+                        # UX: apagar botones de simulación en la segunda simulación (para no eternizar el flujo).
+                        show_sim_actions = True
+                        if has_intake and isinstance(bt_req, dict):
+                            scen = str(bt_req.get('scenario') or '').strip().lower()
+                            if scen in ('follow_plan', 'minus_200', 'plus_200'):
+                                try:
+                                    cs0 = getattr(user, 'coach_state', {}) or {}
+                                    cs1 = dict(cs0)
+                                    by_sess = cs1.get('body_trend_sim_count')
+                                    by_sess = by_sess if isinstance(by_sess, dict) else {}
+                                    by_sess2 = dict(by_sess)
+
+                                    sess_key = str(session_id or '').strip() or 'default'
+                                    row = by_sess2.get(sess_key)
+                                    row = row if isinstance(row, dict) else {}
+                                    row_week = str(row.get('week_id') or '')
+                                    row_count = int(row.get('count') or 0)
+                                    if row_week != str(week_id_now):
+                                        row_count = 0
+                                    row_count += 1
+                                    by_sess2[sess_key] = {'week_id': str(week_id_now), 'count': int(row_count)}
+
+                                    cs1['body_trend_sim_count'] = by_sess2
+                                    user.coach_state = cs1
+                                    user.coach_state_updated_at = timezone.now()
+                                    user.save(update_fields=['coach_state', 'coach_state_updated_at'])
+
+                                    # En la segunda simulación, apagamos los botones.
+                                    if row_count >= 2:
+                                        show_sim_actions = False
+                                except Exception:
+                                    pass
+
+                        if (not has_intake) or show_sim_actions:
+                            quick_actions_out.extend(build_quick_actions_for_trend(has_intake=bool(has_intake)))
                     except Exception:
                         pass
         except Exception as ex:
@@ -6974,7 +7010,32 @@ def qaf_body_trend(request):
 
     res = evaluate_body_trend(profile, observations, horizon_weeks=6)
     text = render_professional_summary(res.payload, preferred_scenario=scenario)
-    quick_actions = build_quick_actions_for_trend(has_intake=(kcal_in_avg is not None))
+
+    has_intake = (kcal_in_avg is not None)
+    show_sim_actions = True
+    if has_intake and scenario in ('follow_plan', 'minus_200', 'plus_200'):
+        try:
+            ws0 = getattr(user, 'coach_weekly_state', {}) or {}
+            ws1 = dict(ws0)
+            bt_sim = ws1.get('body_trend_sim_count')
+            bt_sim = bt_sim if isinstance(bt_sim, dict) else {}
+            bt_sim2 = dict(bt_sim)
+            row = bt_sim2.get(week_id_now)
+            row = row if isinstance(row, dict) else {}
+            cnt = int(row.get('count') or 0) + 1
+            bt_sim2[week_id_now] = {'count': int(cnt), 'updated_at': timezone.now().isoformat()}
+            ws1['body_trend_sim_count'] = bt_sim2
+            user.coach_weekly_state = ws1
+            user.coach_weekly_updated_at = timezone.now()
+            user.save(update_fields=['coach_weekly_state', 'coach_weekly_updated_at'])
+            if cnt >= 2:
+                show_sim_actions = False
+        except Exception:
+            pass
+
+    quick_actions = []
+    if (not has_intake) or show_sim_actions:
+        quick_actions = build_quick_actions_for_trend(has_intake=bool(has_intake))
 
     # persistir kcal avg si viene y es válido
     if kcal_in_avg is not None and kcal_in_avg > 0:
