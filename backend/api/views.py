@@ -5202,14 +5202,24 @@ def chat_n8n(request):
                     cs = getattr(user, 'coach_state', {}) or {}
                     mem = cs.get('progression_history') if isinstance(cs.get('progression_history'), dict) else {}
 
+                    # Draft por sesión: mantiene selección parcial (modalidad/RPE/%/ui) mientras falten inputs.
+                    draft_by_session = cs.get('progression_draft') if isinstance(cs.get('progression_draft'), dict) else {}
+                    sess_key = str(session_id or '').strip() or 'default'
+                    draft = draft_by_session.get(sess_key) if isinstance(draft_by_session.get(sess_key), dict) else {}
+                    had_draft = bool(draft)
+
                     # Base session payload
-                    session = {}
-                    strength = None
-                    cardio = None
+                    session = draft.get('session') if isinstance(draft.get('session'), dict) else {}
+                    strength = draft.get('strength') if isinstance(draft.get('strength'), dict) else None
+                    cardio = draft.get('cardio') if isinstance(draft.get('cardio'), dict) else None
                     if isinstance(pr, dict):
-                        session = pr.get('session') if isinstance(pr.get('session'), dict) else {}
-                        strength = pr.get('strength') if isinstance(pr.get('strength'), dict) else None
-                        cardio = pr.get('cardio') if isinstance(pr.get('cardio'), dict) else None
+                        # override/merge con lo que venga explícito
+                        if isinstance(pr.get('session'), dict):
+                            session = {**session, **pr.get('session')}
+                        if isinstance(pr.get('strength'), dict):
+                            strength = pr.get('strength')
+                        if isinstance(pr.get('cardio'), dict):
+                            cardio = pr.get('cardio')
 
                     # Parse desde texto si no vino fuerza
                     if not strength and message:
@@ -5250,6 +5260,11 @@ def chat_n8n(request):
                         if isinstance(pa.get('strength'), dict):
                             strength = {**(strength or {}), **pa.get('strength')}
 
+                        # merge ui state
+                        if isinstance(pa.get('ui'), dict):
+                            ui0 = draft.get('ui') if isinstance(draft.get('ui'), dict) else {}
+                            draft['ui'] = {**ui0, **pa.get('ui')}
+
                     progression_result = evaluate_progression({
                         'session': session,
                         'strength': strength,
@@ -5257,6 +5272,14 @@ def chat_n8n(request):
                         'history': mem,
                         'signals': signals,
                     }).payload
+
+                    # UX: en pasos con botones (pa) o si ya había draft, no repetir el bloque largo.
+                    try:
+                        if isinstance(progression_result, dict):
+                            ui_out = progression_result.get('ui') if isinstance(progression_result.get('ui'), dict) else {}
+                            progression_result = {**progression_result, 'ui': {**ui_out, 'show_intro': (not (isinstance(pa, dict) or had_draft))}}
+                    except Exception:
+                        pass
 
                     # UX: pasar un nombre amigable al renderer (sin depender de n8n).
                     try:
@@ -5368,6 +5391,37 @@ def chat_n8n(request):
                             cs2 = dict(cs)
                             cs2['progression_history'] = mem2
                             cs2['progression_last'] = {'result': progression_result, 'updated_at': timezone.now().isoformat()}
+                            user.coach_state = cs2
+                            user.coach_state_updated_at = timezone.now()
+                            user.save(update_fields=['coach_state', 'coach_state_updated_at'])
+                    except Exception:
+                        pass
+
+                    # Persistir draft mientras falten inputs; limpiar cuando accepted.
+                    try:
+                        if isinstance(progression_result, dict):
+                            missing_now = ((progression_result.get('confidence') or {}).get('missing') or [])
+                            missing_now = [str(x) for x in missing_now]
+                            cs2 = dict(cs)
+                            dbs2 = dict(draft_by_session)
+                            if progression_result.get('decision') == 'accepted':
+                                dbs2.pop(sess_key, None)
+                            else:
+                                # Guardar el estado parcial
+                                dbs2[sess_key] = {
+                                    'session': session,
+                                    'strength': strength,
+                                    'cardio': cardio,
+                                    'ui': draft.get('ui') if isinstance(draft.get('ui'), dict) else {},
+                                    'missing': missing_now,
+                                    'updated_at': timezone.now().isoformat(),
+                                }
+                                # limitar a 5 sesiones para no inflar JSON
+                                if len(dbs2) > 5:
+                                    keys = sorted([k for k in dbs2.keys() if isinstance(k, str)])
+                                    for k in keys[:-5]:
+                                        dbs2.pop(k, None)
+                            cs2['progression_draft'] = dbs2
                             user.coach_state = cs2
                             user.coach_state_updated_at = timezone.now()
                             user.save(update_fields=['coach_state', 'coach_state_updated_at'])

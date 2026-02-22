@@ -304,7 +304,13 @@ def render_professional_summary(result: dict[str, Any]) -> str:
         why = "Las señales de hoy apuntan a energía alta: aprovecha, pero sin perder técnica ni excederte."
         return mode, headline, why
 
-    if score is not None:
+    ui = result.get('ui') if isinstance(result.get('ui'), dict) else {}
+    show_intro = ui.get('show_intro')
+    if show_intro is None:
+        show_intro = True
+    show_intro = bool(show_intro)
+
+    if score is not None and show_intro:
         pct_approx = int(round(float(score)))
         de10 = int(max(0, min(10, round(float(score) / 10.0))))
         mode, headline, why = _bucket_copy(pct_approx)
@@ -320,8 +326,13 @@ def render_professional_summary(result: dict[str, Any]) -> str:
 
     # 3) Micro-objetivo (sin exponer acciones internas)
     micro = str(result.get('micro_goal') or '').strip()
+    # Evitar "Micro‑objetivo de hoy: Hoy: ..."
+    if micro.lower().startswith('hoy:'):
+        micro = micro[4:].strip()
     if micro:
-        lines.append(f"Micro‑objetivo de hoy: {micro}")
+        # En pasos intermedios, no repetir el label completo.
+        prefix = "Micro‑objetivo de hoy" if show_intro else "Objetivo"
+        lines.append(f"{prefix}: {micro}")
 
     # 4) Si faltan datos, pedirlos claro (máximo 3)
     missing = conf.get('missing') if isinstance(conf.get('missing'), list) else []
@@ -332,10 +343,12 @@ def render_professional_summary(result: dict[str, Any]) -> str:
         if 'modality' in missing:
             lines.append("Ahora dime solo esto para ajustarlo perfecto: ¿hoy fue Fuerza o Cardio?")
         elif 'rpe_1_10' in missing:
-            lines.append("Perfecto. Ahora una cosa más:")
+            if show_intro:
+                lines.append("Perfecto. Ahora una cosa más:")
             lines.append("¿Qué tan duro se sintió? (RPE 1=suave, 10=al límite)")
         elif 'completion_pct' in missing:
-            lines.append("Último dato y te lo dejo ajustado:")
+            if show_intro:
+                lines.append("Último dato y te lo dejo ajustado:")
             lines.append("¿Cuánto del plan lograste hoy? (100%, 80%, 60% o 40%)")
 
     return "\n".join([x for x in lines if str(x).strip()]).strip()
