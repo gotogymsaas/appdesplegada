@@ -59,7 +59,7 @@ container.innerHTML = `
     <button type="button" id="chat-tool-attach">📎 Adjuntar</button>
   </div>
 
-  <input type="file" id="chat-file-input" hidden accept="image/*,.pdf">
+  <input type="file" id="chat-file-input" hidden accept="image/*,.pdf" multiple>
   <input type="file" id="chat-camera-input" hidden accept="image/*" capture="environment">
 </form>
 </div>
@@ -259,6 +259,11 @@ async function getMusclePoseEstimator() {
 }
 
 function startMuscleFlow() {
+  // Un solo flujo activo a la vez
+  try { cancelPostureFlow(); } catch (e) { /* ignore */ }
+  try { cancelShapeFlow(); } catch (e) { /* ignore */ }
+  try { cancelPpFlow(); } catch (e) { /* ignore */ }
+
   muscleFlow = {
     active: true,
     step: 'need_front',
@@ -291,6 +296,11 @@ function startMuscleFlow() {
 }
 
 function startShapeFlow() {
+  // Un solo flujo activo a la vez
+  try { cancelPostureFlow(); } catch (e) { /* ignore */ }
+  try { cancelMuscleFlow(); } catch (e) { /* ignore */ }
+  try { cancelPpFlow(); } catch (e) { /* ignore */ }
+
   shapeFlow = {
     active: true,
     step: 'need_front',
@@ -317,6 +327,11 @@ function startShapeFlow() {
 }
 
 function startPpFlow() {
+  // Un solo flujo activo a la vez
+  try { cancelPostureFlow(); } catch (e) { /* ignore */ }
+  try { cancelMuscleFlow(); } catch (e) { /* ignore */ }
+  try { cancelShapeFlow(); } catch (e) { /* ignore */ }
+
   ppFlow = {
     active: true,
     step: 'need_front',
@@ -598,9 +613,13 @@ function sendPpAnalyze() {
   const poses = ppFlow.poses || {};
   const hasFront = poses.front_relaxed && Array.isArray(poses.front_relaxed.keypoints) && poses.front_relaxed.keypoints.length;
   const hasSide = poses.side_right_relaxed && Array.isArray(poses.side_right_relaxed.keypoints) && poses.side_right_relaxed.keypoints.length;
-  if (!hasFront || !hasSide) {
-    appendMessage('Necesito al menos 2 fotos: **frente** y **perfil** (cuerpo completo).', 'bot');
+  const hasAny = !!(hasFront || hasSide);
+  if (!hasAny) {
+    appendMessage('Primero necesito al menos 1 foto (frente o perfil).', 'bot');
     return;
+  }
+  if (!(hasFront && hasSide)) {
+    appendMessage('Haré un **cálculo parcial** con 1 foto. Para que sea más fiable, agrega también la otra vista (frente + perfil).', 'bot');
   }
   sendQuickMessage('Postura & Proporción', {
     posture_proportion_request: {
@@ -641,6 +660,11 @@ function sendMuscleAnalyze() {
 }
 
 function startPostureFlow() {
+  // Un solo flujo activo a la vez
+  try { cancelMuscleFlow(); } catch (e) { /* ignore */ }
+  try { cancelShapeFlow(); } catch (e) { /* ignore */ }
+  try { cancelPpFlow(); } catch (e) { /* ignore */ }
+
   postureFlow = {
     active: true,
     step: 'need_front',
@@ -1069,15 +1093,19 @@ function revokeAttachmentPreviewUrl() {
   attachmentPreviewObjectUrl = '';
 }
 
-function setAttachmentPreview(file, state = 'ready') {
+function setAttachmentPreview(fileOrFiles, state = 'ready') {
   if (!attachmentPreview) return;
-  if (!file) {
+  const files = Array.isArray(fileOrFiles) ? fileOrFiles.filter(Boolean) : (fileOrFiles ? [fileOrFiles] : []);
+  if (!files.length) {
     revokeAttachmentPreviewUrl();
     attachmentPreview.hidden = true;
     attachmentPreview.innerHTML = '';
     scheduleFooterMetricsUpdate();
     return;
   }
+
+  const file = files[0];
+  const extraCount = Math.max(0, files.length - 1);
 
   revokeAttachmentPreviewUrl();
   attachmentPreviewObjectUrl = URL.createObjectURL(file);
@@ -1108,9 +1136,12 @@ function setAttachmentPreview(file, state = 'ready') {
   attachmentPreview.hidden = false;
   attachmentPreview.dataset.state = state;
   attachmentPreview.innerHTML = `
-    ${previewHtml}
+    <div class="attachment-preview-thumbwrap">
+      ${previewHtml}
+      ${extraCount > 0 ? `<span class="attachment-multi-badge">+${extraCount}</span>` : ''}
+    </div>
     <div class="attachment-meta">
-      <span class="attachment-name">${fileName}</span>
+      <span class="attachment-name">${escapeHtml(files.length > 1 ? `${files.length} imágenes seleccionadas` : (file.name || 'adjunto'))}</span>
       <span class="attachment-size">${size}</span>
     </div>
     <div class="attachment-actions">
@@ -1634,6 +1665,13 @@ function getSelectedFile() {
   return (fileInput && fileInput.files && fileInput.files[0]) || (cameraInput && cameraInput.files && cameraInput.files[0]) || null;
 }
 
+function getSelectedFiles() {
+  const fromFile = fileInput && fileInput.files ? Array.from(fileInput.files) : [];
+  const fromCam = cameraInput && cameraInput.files ? Array.from(cameraInput.files) : [];
+  const files = (fromFile.length ? fromFile : fromCam) || [];
+  return files.filter(Boolean);
+}
+
 function clearSelectedFiles() {
   if (fileInput) fileInput.value = '';
   if (cameraInput) cameraInput.value = '';
@@ -1801,7 +1839,8 @@ if (toolCameraBtn) {
 // File Selection Feedback
 if (fileInput) {
   fileInput.addEventListener('change', () => {
-    const file = getSelectedFile();
+    const files = getSelectedFiles();
+    const file = files[0] || null;
     if (file && ppFlow.active && ppFlow.captureTarget) {
       const view = ppFlow.captureTarget;
       setAttachmentPreview(null);
@@ -1830,7 +1869,10 @@ if (fileInput) {
       handlePostureCapture(file, view);
       return;
     }
-    if (file) {
+    if (files.length > 1) {
+      setAttachmentPreview(files.slice(0, 4), 'ready');
+      input.focus();
+    } else if (file) {
       setAttachmentPreview(file, 'ready');
       input.focus();
     } else {
@@ -1841,7 +1883,8 @@ if (fileInput) {
 
 if (cameraInput) {
   cameraInput.addEventListener('change', () => {
-    const file = getSelectedFile();
+    const files = getSelectedFiles();
+    const file = files[0] || null;
     if (file && ppFlow.active && ppFlow.captureTarget) {
       const view = ppFlow.captureTarget;
       setAttachmentPreview(null);
@@ -1870,7 +1913,10 @@ if (cameraInput) {
       handlePostureCapture(file, view);
       return;
     }
-    if (file) {
+    if (files.length > 1) {
+      setAttachmentPreview(files.slice(0, 4), 'ready');
+      input.focus();
+    } else if (file) {
       setAttachmentPreview(file, 'ready');
       input.focus();
     } else {
@@ -1888,24 +1934,39 @@ form.addEventListener('submit', async (e) => {
   e.preventDefault();
   const rawText = input.value || '';
   const text = rawText.trim();
-  const file = getSelectedFile();
-  if (!text && !file) return;
-  let pendingId = null;
-  if (file) {
-    const objectUrl = URL.createObjectURL(file);
-    pendingId = appendMessage(text || '', 'user pending', {
-      meta: { text: text, hasFile: true },
-      attachment: { file, objectUrl },
-    });
-  } else {
-    pendingId = appendMessage(text, 'user pending', {
-      meta: { text: text, hasFile: false }
-    });
+  const filesRaw = getSelectedFiles();
+  const files = (filesRaw || []).filter((f) => _isImageFile(f) || String(f?.name || '').toLowerCase().endsWith('.pdf'));
+  const limited = files.slice(0, 4);
+
+  if (!text && !limited.length) return;
+
+  if (files.length > 4) {
+    appendMessage('Puedo adjuntar **hasta 4** imágenes a la vez. Enviaré las primeras 4.', 'bot');
   }
-  if (file) setAttachmentPreview(file, 'uploading');
+
+  const queue = [];
+  if (limited.length) {
+    limited.forEach((f, idx) => {
+      const objectUrl = URL.createObjectURL(f);
+      const pid = appendMessage(idx === 0 ? (text || '') : '', 'user pending', {
+        meta: { text: idx === 0 ? text : '', hasFile: true },
+        attachment: { file: f, objectUrl },
+      });
+      queue.push({ file: f, pendingId: pid, text: idx === 0 ? text : '' });
+    });
+    setAttachmentPreview(limited, 'uploading');
+  } else {
+    const pid = appendMessage(text, 'user pending', { meta: { text: text, hasFile: false } });
+    queue.push({ file: null, pendingId: pid, text });
+  }
+
   resetInput();
   clearSelectedFiles();
-  await processMessage(text, file, pendingId);
+
+  for (let i = 0; i < queue.length; i++) {
+    const row = queue[i];
+    await processMessage(row.text, row.file, row.pendingId);
+  }
 });
 
 input.addEventListener('input', autoResizeInput);
@@ -2326,10 +2387,18 @@ function appendQuickActions(actions) {
     btn.addEventListener('click', () => {
       // Evitar doble tap (especialmente en mobile)
       if (btn.disabled) return;
-      btn.disabled = true;
+
+      // Anti-loop: deshabilitar TODO el bloque de quick-actions y removerlo.
+      try {
+        wrapper.querySelectorAll('button').forEach((b) => {
+          try { b.disabled = true; } catch (e) { /* ignore */ }
+        });
+      } catch (e) {
+        // ignore
+      }
       setTimeout(() => {
-        try { btn.disabled = false; } catch (e) { /* ignore */ }
-      }, 1200);
+        try { wrapper.remove(); } catch (e) { /* ignore */ }
+      }, 50);
 
       if (action.type === 'open_camera') {
         closeToolsMenu();

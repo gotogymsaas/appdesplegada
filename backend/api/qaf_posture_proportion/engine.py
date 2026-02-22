@@ -156,19 +156,22 @@ def evaluate_posture_proportion(payload: dict[str, Any]) -> PostureProportionRes
 
     n_views = len(views_in)
 
-    # Reglas mínimas: front + side con calidad aceptable
+    # Calidad por vista
     q_front = float(view_metrics.get("front_relaxed", {}).get("pose_quality") or 0.0)
     q_side = float(view_metrics.get("side_right_relaxed", {}).get("pose_quality") or 0.0)
 
+    # Aceptación: front + side con calidad aceptable.
+    # Si llega solo 1 foto con calidad, calculamos parcial pero marcamos needs_confirmation.
+    has_partial = (q_front >= 0.55) or (q_side >= 0.55)
     decision = "accepted" if (q_front >= 0.55 and q_side >= 0.55) else "needs_confirmation"
-    decision_reason = "ok" if decision == "accepted" else "missing_or_low_quality_pose"
+    decision_reason = "ok" if decision == "accepted" else ("partial_views" if has_partial else "missing_or_low_quality_pose")
 
     follow_up_questions: list[dict[str, Any]] = []
     if decision != "accepted":
         follow_up_questions.append(
             {
                 "type": "retake_photos",
-                "prompt": "Necesito 2 fotos con cuerpo completo: frontal y perfil (buena luz, cámara a la altura del pecho, 2–3m).",
+                "prompt": "Puedo darte un estimado parcial con 1 foto, pero para mayor precisión necesito 2: frontal + perfil (cuerpo completo, buena luz, cámara a la altura del pecho, 2–3m).",
                 "options": [],
             }
         )
@@ -410,6 +413,10 @@ def evaluate_posture_proportion(payload: dict[str, Any]) -> PostureProportionRes
             insights.append("En la vista de espalda se sugiere asimetría leve. Unilateral + control suele corregirlo con el tiempo.")
 
     # Resultado
+    # Aviso de fiabilidad si falta una vista clave
+    if decision != "accepted" and has_partial:
+        insights.insert(0, "Resultado parcial: con 1 foto puedo estimar algunas señales, pero no es 100% fiable sin la segunda vista.")
+
     payload_out: dict[str, Any] = {
         "decision": decision,
         "decision_reason": decision_reason,

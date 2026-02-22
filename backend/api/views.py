@@ -3861,6 +3861,13 @@ def chat_n8n(request):
         qaf_result = None
         qaf_text_for_output_override = ""
 
+        # Flags de intención (evitar sesgo por inyecciones no pedidas)
+        try:
+            _msg_low_flags = str(message or '').strip().lower()
+        except Exception:
+            _msg_low_flags = ''
+        user_asked_metabolic = bool(re.search(r"\b(perfil\s+metab|metab[oó]lic|tdee|tmb|kcal|calor[ií]as)\b", _msg_low_flags or ""))
+
         # Exp-003 (perfil metabólico): quick-actions + cálculo semanal
         quick_actions_out = []
         metabolic_result = None
@@ -5680,7 +5687,25 @@ def chat_n8n(request):
                 except Exception:
                     prev_avg = None
 
-                should_prompt = (cur_avg is None) and (prompted_week != week_id_now) and (snoozed_week != week_id_now)
+                # Guardrail UX: no interrumpir flujos/experimentos.
+                # Solo pedimos peso semanal cuando el usuario está idle (mensaje vacío, sin adjunto)
+                # o cuando explícitamente pidió perfil metabólico.
+                should_prompt = (
+                    (cur_avg is None)
+                    and (prompted_week != week_id_now)
+                    and (snoozed_week != week_id_now)
+                    and (
+                        user_asked_metabolic
+                        or (
+                            not (str(message or '').strip())
+                            and not attachment_url
+                            and not isinstance(request.data.get('posture_request') if isinstance(request.data, dict) else None, dict)
+                            and not isinstance(request.data.get('muscle_measure_request') if isinstance(request.data, dict) else None, dict)
+                            and not isinstance(request.data.get('shape_presence_request') if isinstance(request.data, dict) else None, dict)
+                            and not isinstance(request.data.get('posture_proportion_request') if isinstance(request.data, dict) else None, dict)
+                        )
+                    )
+                )
                 if should_prompt:
                     cs2 = dict(coach_state)
                     cs2['weekly_checkin_prompted_week_id'] = week_id_now
@@ -5722,11 +5747,8 @@ def chat_n8n(request):
                         'payload': {'weekly_checkin_snooze': True},
                     })
 
-                    attachment_text = ((attachment_text or '').strip() + "\n\n" if (attachment_text or '').strip() else "") + (
-                        "[PERFIL METABÓLICO / CHECK-IN]\n"
-                        "Necesito tu peso promedio semanal (kg) para recalibrar tu perfil metabólico.\n"
-                        "Si falta sexo biológico, pedirlo con una sola pregunta."
-                    )
+                    # Importante: NO anexar esto a attachment_text.
+                    # Si se añade al prompt de n8n, sesga conversaciones no relacionadas.
 
                 # Si ya tenemos dato semanal, calculamos
                 cur_avg2 = _week_weights_from_state(weekly_state, week_id_now)
@@ -5780,7 +5802,7 @@ def chat_n8n(request):
                     mtext = render_professional_summary(mr.payload)
                     if mtext:
                         metabolic_text_for_output_override = mtext
-                        attachment_text = ((attachment_text or '').strip() + "\n\n" if (attachment_text or '').strip() else "") + f"[PERFIL METABÓLICO DINÁMICO]\n{mtext}".strip()
+                        # Evitar anexar al attachment_text: sesga el prompt hacia n8n.
         except Exception as ex:
             print(f"QAF metabolic profile warning: {ex}")
 
@@ -6077,7 +6099,8 @@ def chat_n8n(request):
                         data.setdefault('qaf_metabolic', metabolic_result)
 
                     out_text = data.get('output')
-                    if isinstance(out_text, str) and metabolic_text_for_output_override:
+                    # Guardrail UX: no preprender salida metabólica si el usuario no la pidió.
+                    if isinstance(out_text, str) and metabolic_text_for_output_override and user_asked_metabolic:
                         low = out_text.lower()
                         has_kcal = ("kcal" in low) or ("calor" in low)
                         if (not out_text.strip()) or ("problema tecnico" in low) or ("problema técnico" in low):
