@@ -4059,6 +4059,127 @@ def chat_n8n(request):
         except Exception as ex:
             print(f"QAF muscle measure warning: {ex}")
 
+        # 0.2.c) Exp-011: Skin Health Intelligence (1 foto; energía visible + salud de piel)
+        try:
+            if user and isinstance(request.data, dict):
+                msg_low = str(message or '').strip().lower()
+                want_skin = bool(re.fullmatch(r"belleza\s*/\s*piel|belleza\s+p\s*iel|piel|skin\s*health", msg_low or ""))
+
+                cs = getattr(user, 'coach_state', {}) or {}
+                health_mode = str(cs.get('health_mode') or '').strip().lower()
+                health_mode_until = str(cs.get('health_mode_until') or '').strip()
+
+                # 1) Si el usuario selecciona el modo, lo guardamos y pedimos foto.
+                if want_skin:
+                    cs2 = dict(cs)
+                    cs2['health_mode'] = 'skin'
+                    cs2['health_mode_until'] = (timezone.now() + timedelta(minutes=15)).isoformat()
+                    user.coach_state = cs2
+                    user.coach_state_updated_at = timezone.now()
+                    user.save(update_fields=['coach_state', 'coach_state_updated_at'])
+
+                    out = (
+                        "[SKIN HEALTH]\n"
+                        "Vamos a medir la energía visible de tu piel (no es diagnóstico médico).\n\n"
+                        "Toma una foto con **luz natural**, sin filtros, sin contraluz y con la cara centrada."
+                    )
+                    return Response(
+                        {
+                            'output': out,
+                            'quick_actions': [
+                                {'label': 'Tomar foto', 'type': 'open_camera'},
+                                {'label': 'Adjuntar foto', 'type': 'open_attach'},
+                            ],
+                        }
+                    )
+
+                # 2) Si hay imagen y el modo salud=skin está activo, ejecutamos análisis.
+                mode_active = False
+                try:
+                    if health_mode == 'skin' and health_mode_until:
+                        until_dt = datetime.fromisoformat(health_mode_until)
+                        if until_dt.tzinfo is None:
+                            until_dt = until_dt.replace(tzinfo=timezone.get_current_timezone())
+                        mode_active = timezone.now() <= until_dt
+                except Exception:
+                    mode_active = (health_mode == 'skin')
+
+                if mode_active and attachment_url:
+                    # Descargar bytes solo si es attachment del usuario.
+                    image_bytes = None
+                    image_content_type = None
+                    try:
+                        container_name, blob_name = _extract_blob_ref_from_url(str(attachment_url))
+                        if container_name == _chat_attachment_container() and blob_name:
+                            safe_username = user.username.replace('/', '_')
+                            if blob_name.startswith(f"{safe_username}/"):
+                                max_bytes = int(os.getenv('CHAT_VISION_MAX_BYTES', str(4 * 1024 * 1024)) or (4 * 1024 * 1024))
+                                resp = requests.get(str(attachment_url), timeout=20)
+                                if resp.status_code == 200 and resp.content and len(resp.content) <= max_bytes:
+                                    image_bytes = resp.content
+                                    image_content_type = (resp.headers.get('Content-Type') or 'image/jpeg')
+                    except Exception:
+                        image_bytes = None
+
+                    if not image_bytes:
+                        return Response({'output': 'No pude descargar la imagen. Intenta adjuntarla de nuevo.', 'quick_actions': [{'label': 'Tomar foto', 'type': 'open_camera'}, {'label': 'Adjuntar foto', 'type': 'open_attach'}]})
+
+                    # Contexto opcional desde lifestyle_last (si existe)
+                    ctx = {}
+                    try:
+                        lifestyle_last = (cs.get('lifestyle_last') or {}).get('result') if isinstance(cs.get('lifestyle_last'), dict) else None
+                        if isinstance(lifestyle_last, dict):
+                            sig = lifestyle_last.get('signals') if isinstance(lifestyle_last.get('signals'), dict) else {}
+                            ctx['sleep_minutes'] = (sig.get('sleep') or {}).get('value')
+                    except Exception:
+                        ctx = {}
+
+                    week_id_now = _week_id()
+                    weekly_state = getattr(user, 'coach_weekly_state', {}) or {}
+                    baseline = None
+                    try:
+                        sh = weekly_state.get('skin_health') if isinstance(weekly_state.get('skin_health'), dict) else {}
+                        prev_keys = [k for k in sh.keys() if isinstance(k, str) and k != week_id_now]
+                        if prev_keys:
+                            prev_key = sorted(prev_keys)[-1]
+                            prev_row = sh.get(prev_key)
+                            if isinstance(prev_row, dict) and isinstance(prev_row.get('result'), dict):
+                                baseline = prev_row.get('result')
+                    except Exception:
+                        baseline = None
+
+                    from .qaf_skin_health.engine import evaluate_skin_health, render_professional_summary
+                    res = evaluate_skin_health(image_bytes=image_bytes, content_type=image_content_type, context=ctx, baseline=baseline).payload
+                    text = render_professional_summary(res)
+
+                    # Persistir
+                    try:
+                        ws2 = dict(weekly_state)
+                        sh = ws2.get('skin_health') if isinstance(ws2.get('skin_health'), dict) else {}
+                        sh2 = dict(sh)
+                        sh2[week_id_now] = {'result': res, 'updated_at': timezone.now().isoformat(), 'week_id': week_id_now}
+                        ws2['skin_health'] = sh2
+                        user.coach_weekly_state = ws2
+                        user.coach_weekly_updated_at = timezone.now()
+                        user.save(update_fields=['coach_weekly_state', 'coach_weekly_updated_at'])
+                    except Exception:
+                        pass
+
+                    # Cerrar modo para no re-analizar cada imagen accidentalmente.
+                    try:
+                        cs2 = dict(cs)
+                        cs2['health_mode'] = ''
+                        cs2['health_mode_until'] = ''
+                        user.coach_state = cs2
+                        user.coach_state_updated_at = timezone.now()
+                        user.save(update_fields=['coach_state', 'coach_state_updated_at'])
+                    except Exception:
+                        pass
+
+                    return Response({'output': text or 'Skin Health listo.', 'qaf_skin_health': res})
+        except Exception as ex:
+            print(f"QAF skin health warning: {ex}")
+
         # 0.3) Exp-004: generar menú por payload o por intención en el mensaje
         try:
             if user:
@@ -6782,6 +6903,114 @@ def qaf_muscle_measure(request):
         user.save(update_fields=['coach_weekly_state', 'coach_weekly_updated_at'])
     except Exception:
         pass
+
+    return Response({'success': True, 'result': res, 'text': text})
+
+
+@api_view(['POST', 'OPTIONS'])
+@authentication_classes([JWTAuthentication])
+@permission_classes([IsAuthenticatedOrOptions])
+def qaf_skin_health(request):
+    """Exp-011: Skin Health Intelligence (energía visible + salud de piel).
+
+    Importante:
+    - No es diagnóstico médico.
+    - Requiere al menos una imagen (attachment ya subida por el usuario).
+
+    Entrada (JSON):
+      {"attachment_url": "...", "context"?: {...}, "persist"?: bool}
+    """
+
+    if request.method == 'OPTIONS':
+        return Response(status=status.HTTP_200_OK)
+
+    user = _resolve_request_user(request)
+    if not user:
+        return Response({'error': 'Autenticacion requerida'}, status=status.HTTP_401_UNAUTHORIZED)
+
+    payload = request.data if isinstance(request.data, dict) else {}
+    attachment_url = str(payload.get('attachment_url') or '').strip()
+    persist = str(payload.get('persist') or '').strip().lower() in ('1', 'true', 'yes', 'on')
+    if payload.get('persist') is None:
+        persist = True
+
+    if not attachment_url:
+        return Response({'success': False, 'error': 'attachment_url requerido'}, status=400)
+
+    # Descargar bytes solo si el blob pertenece al usuario.
+    image_bytes = None
+    image_content_type = None
+    try:
+        container_name, blob_name = _extract_blob_ref_from_url(str(attachment_url))
+        if container_name == _chat_attachment_container() and blob_name:
+            safe_username = user.username.replace('/', '_')
+            if blob_name.startswith(f"{safe_username}/"):
+                max_bytes = int(os.getenv('CHAT_VISION_MAX_BYTES', str(4 * 1024 * 1024)) or (4 * 1024 * 1024))
+                resp = requests.get(str(attachment_url), timeout=20)
+                if resp.status_code == 200 and resp.content and len(resp.content) <= max_bytes:
+                    image_bytes = resp.content
+                    image_content_type = (resp.headers.get('Content-Type') or 'image/jpeg')
+    except Exception:
+        image_bytes = None
+
+    if not image_bytes:
+        return Response({'success': False, 'error': 'No pude descargar la imagen (permiso/tamaño).'}, status=400)
+
+    # Contexto opcional (hábitos). Preferimos payload.context, pero podemos enriquecer desde coach_state.
+    ctx = payload.get('context') if isinstance(payload.get('context'), dict) else {}
+    try:
+        cs = getattr(user, 'coach_state', {}) or {}
+        lifestyle_last = (cs.get('lifestyle_last') or {}).get('result') if isinstance(cs.get('lifestyle_last'), dict) else None
+        if isinstance(lifestyle_last, dict):
+            sig = lifestyle_last.get('signals') if isinstance(lifestyle_last.get('signals'), dict) else {}
+            if ctx.get('sleep_minutes') is None:
+                ctx['sleep_minutes'] = (sig.get('sleep') or {}).get('value')
+            if ctx.get('stress_1_5') is None:
+                ctx['stress_1_5'] = None
+    except Exception:
+        pass
+
+    # baseline semanal
+    week_id_now = _week_id()
+    weekly_state = getattr(user, 'coach_weekly_state', {}) or {}
+    baseline = None
+    try:
+        sh = weekly_state.get('skin_health') if isinstance(weekly_state.get('skin_health'), dict) else {}
+        prev_keys = [k for k in sh.keys() if isinstance(k, str) and k != week_id_now]
+        if prev_keys:
+            prev_key = sorted(prev_keys)[-1]
+            prev_row = sh.get(prev_key)
+            if isinstance(prev_row, dict) and isinstance(prev_row.get('result'), dict):
+                baseline = prev_row.get('result')
+    except Exception:
+        baseline = None
+
+    from .qaf_skin_health.engine import evaluate_skin_health, render_professional_summary
+
+    res = evaluate_skin_health(
+        image_bytes=image_bytes,
+        content_type=image_content_type,
+        context=ctx,
+        baseline=baseline if isinstance(baseline, dict) else None,
+    ).payload
+    text = render_professional_summary(res)
+
+    if persist:
+        try:
+            ws2 = dict(weekly_state)
+            sh = ws2.get('skin_health') if isinstance(ws2.get('skin_health'), dict) else {}
+            sh2 = dict(sh)
+            sh2[week_id_now] = {
+                'result': res,
+                'updated_at': timezone.now().isoformat(),
+                'week_id': week_id_now,
+            }
+            ws2['skin_health'] = sh2
+            user.coach_weekly_state = ws2
+            user.coach_weekly_updated_at = timezone.now()
+            user.save(update_fields=['coach_weekly_state', 'coach_weekly_updated_at'])
+        except Exception:
+            pass
 
     return Response({'success': True, 'result': res, 'text': text})
 
