@@ -283,15 +283,17 @@ def render_professional_summary(result: dict[str, Any]) -> str:
     missing = conf.get('missing') if isinstance(conf.get('missing'), list) else []
     missing = [str(x).strip() for x in missing if str(x).strip()]
     if result.get('decision') == 'needs_confirmation' and missing:
-        lines.append("Para ajustarlo bien y no pasarnos, dime esto (2–3 toques):")
-
+        # UX: pedimos 1 cosa por vez, alineado con los botones que el chat muestra en cada paso.
+        # Orden: modalidad -> RPE -> % cumplimiento.
         if 'modality' in missing:
-            lines.append("1) ¿Hoy fue Fuerza o Cardio?")
-
-        if 'rpe_1_10' in missing:
-            lines.append("2) ¿Qué tan duro se sintió? (RPE 1=suave, 10=al límite)")
-
-        if 'completion_pct' in missing:
-            lines.append("3) ¿Cuánto del plan lograste hoy? (100%, 80%, 60% o 40%)")
+            lines.append("Para ajustarlo bien y no pasarnos, primero dime una cosa:")
+            lines.append("¿Hoy fue Fuerza o Cardio?")
+            lines.append("(Luego te pregunto 2 datos más y quedamos listos.)")
+        elif 'rpe_1_10' in missing:
+            lines.append("Perfecto. Ahora una cosa más:")
+            lines.append("¿Qué tan duro se sintió? (RPE 1=suave, 10=al límite)")
+        elif 'completion_pct' in missing:
+            lines.append("Último dato y te lo dejo ajustado:")
+            lines.append("¿Cuánto del plan lograste hoy? (100%, 80%, 60% o 40%)")
 
     return "\n".join([x for x in lines if str(x).strip()]).strip()

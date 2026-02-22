@@ -29,5 +29,6 @@ class QAFProgressionCopyTests(SimpleTestCase):
 
         # Debe explicar lo que pide
         self.assertIn("¿Hoy fue Fuerza o Cardio?", text)
-        self.assertIn("RPE", text)
-        self.assertIn("100%", text)
+        # Secuencial: en este paso (falta modalidad) no debería pedir aún RPE ni %
+        self.assertNotIn("RPE", text)
+        self.assertNotIn("100%", text)
