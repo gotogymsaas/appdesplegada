@@ -180,7 +180,21 @@ let shapeFlow = {
   },
 };
 
+// --- Exp-013 Postura & Proporción (pose-estimation en cliente; 2 obligatorias + 1 opcional) ---
+let ppFlow = {
+  active: false,
+  step: 'idle',
+  captureTarget: null,
+  poses: {
+    front_relaxed: null,
+    side_right_relaxed: null,
+    back_relaxed: null,
+  },
+};
+
 const SHAPE_STATE_KEY = 'gtg_shape_flow_state_v0';
+
+const PP_STATE_KEY = 'gtg_posture_proportion_flow_state_v0';
 
 function saveShapeState() {
   try {
@@ -208,6 +222,33 @@ function loadShapeState() {
 }
 
 loadShapeState();
+
+function savePpState() {
+  try {
+    localStorage.setItem(PP_STATE_KEY, JSON.stringify(ppFlow));
+  } catch (e) {
+    // ignore
+  }
+}
+
+function loadPpState() {
+  try {
+    const raw = localStorage.getItem(PP_STATE_KEY);
+    if (!raw) return;
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== 'object') return;
+    if (!parsed.active) return;
+    ppFlow = {
+      ...ppFlow,
+      ...parsed,
+      poses: parsed.poses || ppFlow.poses,
+    };
+  } catch (e) {
+    // ignore
+  }
+}
+
+loadPpState();
 
 async function getMusclePoseEstimator() {
   // Reutilizamos el mismo estimador de postura para no descargar dos veces.
@@ -273,6 +314,58 @@ function startShapeFlow() {
     { label: 'Adjuntar foto frente', type: 'shape_capture', view: 'front_relaxed', source: 'attach' },
     { label: 'Cancelar', type: 'shape_cancel' },
   ]);
+}
+
+function startPpFlow() {
+  ppFlow = {
+    active: true,
+    step: 'need_front',
+    captureTarget: null,
+    poses: {
+      front_relaxed: null,
+      side_right_relaxed: null,
+      back_relaxed: null,
+    },
+  };
+  savePpState();
+
+  appendMessage(
+    'Vamos a hacer **Postura & Proporción** (unificado) con fotos (proxy por keypoints, sin prometer cm reales).\n\n' +
+      'Necesito **2** fotos obligatorias y 1 opcional:\n' +
+      '- Frente relajado (obligatoria)\n' +
+      '- Perfil derecho (obligatoria)\n' +
+      '- Espalda (opcional recomendado)\n\n' +
+      'Empecemos con **frente relajado** (cuerpo completo, buena luz, cámara a 2–3m).',
+    'bot'
+  );
+  appendQuickActions([
+    { label: 'Tomar foto frente', type: 'pp_capture', view: 'front_relaxed', source: 'camera' },
+    { label: 'Adjuntar foto frente', type: 'pp_capture', view: 'front_relaxed', source: 'attach' },
+    { label: 'Cancelar', type: 'pp_cancel' },
+  ]);
+}
+
+function cancelPpFlow() {
+  ppFlow = { ...ppFlow, active: false, step: 'idle', captureTarget: null };
+  try {
+    localStorage.removeItem(PP_STATE_KEY);
+  } catch (e) {
+    // ignore
+  }
+  appendMessage('Listo. Si quieres retomarlo, escribe: "Postura & Proporción".', 'bot');
+}
+
+function _humanPpViewLabel(view) {
+  if (view === 'front_relaxed') return 'Frente relajado';
+  if (view === 'side_right_relaxed') return 'Perfil derecho';
+  if (view === 'back_relaxed') return 'Espalda';
+  return 'Foto';
+}
+
+function _nextPpOffer(view) {
+  if (view === 'front_relaxed') return 'side_right_relaxed';
+  if (view === 'side_right_relaxed') return 'back_relaxed';
+  return null;
 }
 
 function cancelShapeFlow() {
@@ -446,6 +539,75 @@ async function handleShapeCapture(file, view) {
     { label: 'Analizar ahora', type: 'shape_analyze' },
     { label: 'Cancelar', type: 'shape_cancel' },
   ]);
+}
+
+async function handlePpCapture(file, view) {
+  if (!_isImageFile(file)) {
+    appendMessage('Para Postura & Proporción necesito una imagen.', 'bot');
+    return;
+  }
+
+  const objectUrl = URL.createObjectURL(file);
+  appendMessage(_humanPpViewLabel(view), 'user', {
+    meta: { text: _humanPpViewLabel(view), hasFile: true },
+    attachment: { file, objectUrl },
+  });
+
+  appendMessage('Analizando (pose estimation local)...', 'bot');
+
+  let pose;
+  try {
+    pose = await estimateMusclePoseFromImageFile(file);
+  } catch (e) {
+    console.warn('PP pose estimation failed:', e);
+    appendMessage('No pude detectar bien tu cuerpo. Repite con mejor luz y cuerpo completo.', 'bot');
+    return;
+  }
+
+  ppFlow.active = true;
+  ppFlow.poses[view] = pose;
+  ppFlow.captureTarget = null;
+  savePpState();
+
+  const nextView = _nextPpOffer(view);
+  if (nextView) {
+    const label = _humanPpViewLabel(nextView).toLowerCase();
+    const isOptional = nextView === 'back_relaxed';
+    appendMessage(
+      isOptional
+        ? `¿Quieres agregar **${label}** (opcional) para mejorar el análisis o analizamos ya?`
+        : `Ahora necesito **${label}** para completar el análisis.`,
+      'bot'
+    );
+    appendQuickActions([
+      { label: `Tomar ${label}`, type: 'pp_capture', view: nextView, source: 'camera' },
+      { label: `Adjuntar ${label}`, type: 'pp_capture', view: nextView, source: 'attach' },
+      { label: 'Analizar ahora', type: 'pp_analyze' },
+      { label: 'Cancelar', type: 'pp_cancel' },
+    ]);
+    return;
+  }
+
+  appendQuickActions([
+    { label: 'Analizar ahora', type: 'pp_analyze' },
+    { label: 'Cancelar', type: 'pp_cancel' },
+  ]);
+}
+
+function sendPpAnalyze() {
+  const poses = ppFlow.poses || {};
+  const hasFront = poses.front_relaxed && Array.isArray(poses.front_relaxed.keypoints) && poses.front_relaxed.keypoints.length;
+  const hasSide = poses.side_right_relaxed && Array.isArray(poses.side_right_relaxed.keypoints) && poses.side_right_relaxed.keypoints.length;
+  if (!hasFront || !hasSide) {
+    appendMessage('Necesito al menos 2 fotos: **frente** y **perfil** (cuerpo completo).', 'bot');
+    return;
+  }
+  sendQuickMessage('Postura & Proporción', {
+    posture_proportion_request: {
+      poses: poses,
+      locale: 'es-CO',
+    },
+  });
 }
 
 function sendShapeAnalyze() {
@@ -1640,6 +1802,13 @@ if (toolCameraBtn) {
 if (fileInput) {
   fileInput.addEventListener('change', () => {
     const file = getSelectedFile();
+    if (file && ppFlow.active && ppFlow.captureTarget) {
+      const view = ppFlow.captureTarget;
+      setAttachmentPreview(null);
+      clearSelectedFiles();
+      handlePpCapture(file, view);
+      return;
+    }
     if (file && shapeFlow.active && shapeFlow.captureTarget) {
       const view = shapeFlow.captureTarget;
       setAttachmentPreview(null);
@@ -1673,6 +1842,13 @@ if (fileInput) {
 if (cameraInput) {
   cameraInput.addEventListener('change', () => {
     const file = getSelectedFile();
+    if (file && ppFlow.active && ppFlow.captureTarget) {
+      const view = ppFlow.captureTarget;
+      setAttachmentPreview(null);
+      clearSelectedFiles();
+      handlePpCapture(file, view);
+      return;
+    }
     if (file && shapeFlow.active && shapeFlow.captureTarget) {
       const view = shapeFlow.captureTarget;
       setAttachmentPreview(null);
@@ -2177,6 +2353,10 @@ function appendQuickActions(actions) {
         startShapeFlow();
         return;
       }
+      if (action.type === 'pp_start') {
+        startPpFlow();
+        return;
+      }
       if (action.type === 'posture_cancel') {
         cancelPostureFlow();
         return;
@@ -2187,6 +2367,10 @@ function appendQuickActions(actions) {
       }
       if (action.type === 'shape_cancel') {
         cancelShapeFlow();
+        return;
+      }
+      if (action.type === 'pp_cancel') {
+        cancelPpFlow();
         return;
       }
       if (action.type === 'posture_capture' && action.view) {
@@ -2231,12 +2415,30 @@ function appendQuickActions(actions) {
         }
         return;
       }
+      if (action.type === 'pp_capture' && action.view) {
+        ppFlow.active = true;
+        ppFlow.captureTarget = action.view;
+        ppFlow.step = String(action.view || 'need_front');
+        savePpState();
+        if (action.source === 'attach') {
+          closeToolsMenu();
+          fileInput?.click();
+        } else {
+          closeToolsMenu();
+          cameraInput?.click();
+        }
+        return;
+      }
       if (action.type === 'muscle_analyze') {
         sendMuscleAnalyze();
         return;
       }
       if (action.type === 'shape_analyze') {
         sendShapeAnalyze();
+        return;
+      }
+      if (action.type === 'pp_analyze') {
+        sendPpAnalyze();
         return;
       }
       if (action.type === 'posture_safety') {

@@ -18,3 +18,4 @@ Sugerido:
 - Exp-009: `exp-009__progresion-inteligente/`
 - Exp-010: `exp-010__medicion-muscular/`
 - Exp-012: `exp-012__shape-presence-intelligence/`
+- Exp-013: `exp-013__posture-proportion-intelligence/`

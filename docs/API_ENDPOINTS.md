@@ -88,6 +88,7 @@ Nota: el handler puede enriquecer la respuesta con resultados QAF (exp-003/004/0
 - `POST /api/qaf/muscle_measure/` (Exp-010)
 - `POST /api/qaf/skin_health/` (Exp-011)
 - `POST /api/qaf/shape_presence/` (Exp-012)
+- `POST /api/qaf/posture_proportion/` (Exp-013)
 
 ## Dispositivos / salud (JWT)
 

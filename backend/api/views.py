@@ -3899,10 +3899,12 @@ def chat_n8n(request):
             pr0 = request.data.get('posture_request') if isinstance(request.data, dict) else None
             msg_low0 = str(message or '').lower()
             mr0 = request.data.get('muscle_measure_request') if isinstance(request.data, dict) else None
+            ppr0 = request.data.get('posture_proportion_request') if isinstance(request.data, dict) else None
             suppress_weekly_checkins = bool(
                 isinstance(pr0, dict)
                 or isinstance(mr0, dict)
-                or re.search(r"\b(postura|posture|m[uú]sculo|musculo|muscle|shape|presence|presencia)\b", msg_low0)
+                or isinstance(ppr0, dict)
+                or re.search(r"\b(postura|posture|proporci[oó]n|proporcion|proportion|m[uú]sculo|musculo|muscle|shape|presence|presencia)\b", msg_low0)
             )
         except Exception:
             suppress_weekly_checkins = False
@@ -4059,6 +4061,102 @@ def chat_n8n(request):
         except Exception as ex:
             print(f"QAF muscle measure warning: {ex}")
 
+        # 0.2.c.1) Exp-013: Postura & Proporción (3 fotos; keypoints 2D)
+        try:
+            if user and isinstance(request.data, dict):
+                pp_req = request.data.get('posture_proportion_request')
+
+                msg_low = str(message or '').strip().lower()
+                want_pp = bool(
+                    re.fullmatch(
+                        r"postura\s*&\s*proporci[oó]n|postura\s+y\s*proporci[oó]n|posture\s*&\s*proportion|posture\s+and\s+proportion",
+                        msg_low or "",
+                    )
+                )
+
+                if (not isinstance(pp_req, dict)) and want_pp:
+                    out = (
+                        "[POSTURA & PROPORCIÓN]\n"
+                        "Vamos a unir alineación (postura) + proporción (ratios proxy) para darte correcciones inmediatas y un ajuste semanal.\n\n"
+                        "Necesito 3 fotos (guiadas):\n"
+                        "- Frente relajado (obligatoria)\n"
+                        "- Perfil derecho (obligatoria)\n"
+                        "- Espalda (opcional recomendado)\n\n"
+                        "Empecemos con **frente relajado** (cuerpo completo, buena luz, cámara a la altura del pecho, 2–3m)."
+                    )
+                    return Response(
+                        {
+                            'output': out,
+                            'quick_actions': [
+                                {'label': 'Tomar foto frente', 'type': 'pp_capture', 'view': 'front_relaxed', 'source': 'camera'},
+                                {'label': 'Adjuntar foto frente', 'type': 'pp_capture', 'view': 'front_relaxed', 'source': 'attach'},
+                                {'label': 'Cancelar', 'type': 'pp_cancel'},
+                            ],
+                        }
+                    )
+
+                if isinstance(pp_req, dict):
+                    from .qaf_posture_proportion.engine import evaluate_posture_proportion, render_professional_summary
+
+                    week_id_now = _week_id()
+                    weekly_state = getattr(user, 'coach_weekly_state', {}) or {}
+
+                    baseline = None
+                    try:
+                        pp = weekly_state.get('posture_proportion') if isinstance(weekly_state.get('posture_proportion'), dict) else {}
+                        prev_keys = [k for k in pp.keys() if isinstance(k, str) and k != week_id_now]
+                        if prev_keys:
+                            prev_key = sorted(prev_keys)[-1]
+                            prev_row = pp.get(prev_key)
+                            if isinstance(prev_row, dict) and isinstance(prev_row.get('result'), dict):
+                                baseline = prev_row.get('result')
+                    except Exception:
+                        baseline = None
+
+                    poses = pp_req.get('poses') if isinstance(pp_req.get('poses'), dict) else {}
+                    res = evaluate_posture_proportion({'poses': poses, 'baseline': baseline}).payload
+                    text = render_professional_summary(res)
+
+                    # Persistir por semana
+                    try:
+                        ws2 = dict(weekly_state)
+                        pp = ws2.get('posture_proportion') if isinstance(ws2.get('posture_proportion'), dict) else {}
+                        pp2 = dict(pp)
+                        pp2[week_id_now] = {'result': res, 'updated_at': timezone.now().isoformat(), 'week_id': week_id_now}
+                        ws2['posture_proportion'] = pp2
+                        user.coach_weekly_state = ws2
+                        user.coach_weekly_updated_at = timezone.now()
+                        user.save(update_fields=['coach_weekly_state', 'coach_weekly_updated_at'])
+                    except Exception:
+                        pass
+
+                    qas = []
+                    try:
+                        if isinstance(res, dict) and res.get('decision') != 'accepted':
+                            qas = [
+                                {'label': 'Repetir frente', 'type': 'pp_capture', 'view': 'front_relaxed', 'source': 'camera'},
+                                {'label': 'Repetir perfil', 'type': 'pp_capture', 'view': 'side_right_relaxed', 'source': 'camera'},
+                                {'label': 'Cancelar', 'type': 'pp_cancel'},
+                            ]
+                        else:
+                            # WOW: permitir retomar 1 foto rápida y re-analizar
+                            qas = [
+                                {'label': 'Repetir frente (WOW)', 'type': 'pp_capture', 'view': 'front_relaxed', 'source': 'camera'},
+                                {'label': 'Repetir perfil (WOW)', 'type': 'pp_capture', 'view': 'side_right_relaxed', 'source': 'camera'},
+                            ]
+                    except Exception:
+                        qas = []
+
+                    return Response(
+                        {
+                            'output': text or 'Postura & Proporción listo.',
+                            'qaf_posture_proportion': res,
+                            'quick_actions': qas,
+                        }
+                    )
+        except Exception as ex:
+            print(f"QAF posture proportion warning: {ex}")
+
         # 0.2.c) Exp-012: Shape & Presence Intelligence (1–2 fotos; keypoints 2D)
         try:
             if user and isinstance(request.data, dict):
@@ -4147,7 +4245,7 @@ def chat_n8n(request):
         except Exception as ex:
             print(f"QAF shape presence warning: {ex}")
 
-        # 0.2.d) Exp-011: Skin Health Intelligence (1 foto; energía visible + salud de piel)
+        # 0.2.e) Exp-011: Skin Health Intelligence (1 foto; energía visible + salud de piel)
         try:
             if user and isinstance(request.data, dict):
                 msg_low = str(message or '').strip().lower()
@@ -5426,6 +5524,7 @@ def chat_n8n(request):
                     qa = quick_actions_out if isinstance(quick_actions_out, list) else []
                     qa.extend([
                         {'label': 'Postura', 'type': 'posture_start'},
+                        {'label': 'Postura & Proporción', 'type': 'pp_start'},
                         {'label': 'Shape & Presence', 'type': 'shape_start'},
                         {'label': 'Tomar foto', 'type': 'open_camera'},
                         {'label': 'Adjuntar foto', 'type': 'open_attach'},
@@ -7055,6 +7154,75 @@ def qaf_shape_presence(request):
             'week_id': week_id_now,
         }
         ws2['shape_presence'] = sp2
+        user.coach_weekly_state = ws2
+        user.coach_weekly_updated_at = timezone.now()
+        user.save(update_fields=['coach_weekly_state', 'coach_weekly_updated_at'])
+    except Exception:
+        pass
+
+    return Response({'success': True, 'result': res, 'text': text})
+
+
+@api_view(['POST', 'OPTIONS'])
+@authentication_classes([JWTAuthentication])
+@permission_classes([IsAuthenticatedOrOptions])
+def qaf_posture_proportion(request):
+    """Exp-013: Postura & Proporción (unificado).
+
+    Importante:
+    - Este endpoint NO hace pose estimation.
+    - Recibe `poses[view_id].keypoints` ya calculados en cliente.
+    - Requiere 2 vistas: front_relaxed y side_right_relaxed.
+    - Acepta back_relaxed como opcional.
+    """
+
+    if request.method == 'OPTIONS':
+        return Response(status=status.HTTP_200_OK)
+
+    user = _resolve_request_user(request)
+    if not user:
+        return Response({'error': 'Autenticacion requerida'}, status=status.HTTP_401_UNAUTHORIZED)
+
+    payload = request.data if isinstance(request.data, dict) else {}
+
+    week_id_now = _week_id()
+    weekly_state = getattr(user, 'coach_weekly_state', {}) or {}
+
+    baseline = None
+    try:
+        pp = weekly_state.get('posture_proportion') if isinstance(weekly_state.get('posture_proportion'), dict) else {}
+        prev_keys = [k for k in pp.keys() if isinstance(k, str) and k != week_id_now]
+        if prev_keys:
+            prev_key = sorted(prev_keys)[-1]
+            prev_row = pp.get(prev_key)
+            if isinstance(prev_row, dict) and isinstance(prev_row.get('result'), dict):
+                baseline = prev_row.get('result')
+    except Exception:
+        baseline = None
+
+    from .qaf_posture_proportion.engine import evaluate_posture_proportion, render_professional_summary
+
+    res = evaluate_posture_proportion(
+        {
+            'poses': payload.get('poses') if isinstance(payload.get('poses'), dict) else {},
+            'baseline': baseline if isinstance(baseline, dict) else None,
+            'locale': (payload.get('locale') or '').strip() or 'es-CO',
+        }
+    ).payload
+
+    text = render_professional_summary(res)
+
+    # Persistir (por semana)
+    try:
+        ws2 = dict(weekly_state)
+        pp = ws2.get('posture_proportion') if isinstance(ws2.get('posture_proportion'), dict) else {}
+        pp2 = dict(pp)
+        pp2[week_id_now] = {
+            'result': res,
+            'updated_at': timezone.now().isoformat(),
+            'week_id': week_id_now,
+        }
+        ws2['posture_proportion'] = pp2
         user.coach_weekly_state = ws2
         user.coach_weekly_updated_at = timezone.now()
         user.save(update_fields=['coach_weekly_state', 'coach_weekly_updated_at'])
