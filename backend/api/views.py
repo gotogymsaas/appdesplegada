@@ -4590,7 +4590,13 @@ def chat_n8n(request):
 
                     # Quick-actions para regeneración (wow: 1 tap)
                     try:
-                        quick_actions_out.extend(build_quick_actions_for_menu(variety_level=variety))
+                        is_applied = False
+                        try:
+                            ws_now = getattr(user, 'coach_weekly_state', {}) or {}
+                            is_applied = str(ws_now.get('meal_plan_active_week_id') or '') == str(week_id_now)
+                        except Exception:
+                            is_applied = False
+                        quick_actions_out.extend(build_quick_actions_for_menu(variety_level=variety, is_applied=bool(is_applied)))
                     except Exception:
                         pass
         except Exception as ex:
@@ -6686,7 +6692,13 @@ def qaf_meal_plan(request):
             locale=locale,
         )
 
-    quick_actions = build_quick_actions_for_menu(variety_level=variety)
+    is_applied = False
+    try:
+        ws = getattr(user, 'coach_weekly_state', {}) or {}
+        is_applied = str(ws.get('meal_plan_active_week_id') or '') == str(week_id)
+    except Exception:
+        is_applied = False
+    quick_actions = build_quick_actions_for_menu(variety_level=variety, is_applied=bool(is_applied))
     text = render_professional_summary(result)
 
     if persist:
@@ -6833,7 +6845,16 @@ def qaf_meal_plan_mutate(request):
         pass
 
     text = render_professional_summary(mutated)
-    quick_actions = build_quick_actions_for_menu(variety_level=str(((mutated.get('inputs') or {}).get('variety')) or 'normal'))
+    is_applied = False
+    try:
+        ws = getattr(user, 'coach_weekly_state', {}) or {}
+        is_applied = str(ws.get('meal_plan_active_week_id') or '') == str(week_id)
+    except Exception:
+        is_applied = False
+    quick_actions = build_quick_actions_for_menu(
+        variety_level=str(((mutated.get('inputs') or {}).get('variety')) or 'normal'),
+        is_applied=bool(is_applied),
+    )
     return Response({'success': True, 'result': mutated, 'text': text, 'quick_actions': quick_actions})
 
 

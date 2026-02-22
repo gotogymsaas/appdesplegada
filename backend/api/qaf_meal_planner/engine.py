@@ -376,15 +376,17 @@ def render_professional_summary(result: dict[str, Any]) -> str:
     return "\n".join(out).strip()
 
 
-def build_quick_actions_for_menu(*, variety_level: VarietyLevel) -> list[dict[str, Any]]:
+def build_quick_actions_for_menu(*, variety_level: VarietyLevel, is_applied: bool = False) -> list[dict[str, Any]]:
     # UX wow: aplicar + lista + mutación local (máx 3 botones como el resto del chat)
+    # Regla: si el menú ya está aplicado para la semana, NO mostrar el botón "Aplicar menú".
     actions: list[dict[str, Any]] = []
-    actions.append({
-        'label': 'Aplicar menú',
-        'type': 'message',
-        'text': 'Aplicar menú',
-        'payload': {'meal_plan_apply': True},
-    })
+    if not bool(is_applied):
+        actions.append({
+            'label': 'Aplicar menú',
+            'type': 'message',
+            'text': 'Aplicar menú',
+            'payload': {'meal_plan_apply': True},
+        })
     actions.append({
         'label': 'Lista de compras',
         'type': 'message',
