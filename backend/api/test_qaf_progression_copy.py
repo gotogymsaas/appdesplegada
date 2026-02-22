@@ -17,7 +17,8 @@ class QAFProgressionCopyTests(SimpleTestCase):
         text = render_professional_summary(result)
 
         # Debe ser humano y sin claves internas
-        self.assertIn("Tu estado para entrenar hoy", text)
+        self.assertIn("avance con control", text.lower())
+        self.assertIn("55%", text)
         self.assertIn("Micro‑objetivo de hoy", text)
         self.assertNotIn("minimum_viable", text)
         self.assertNotIn("rpe_1_10", text)
@@ -28,7 +29,7 @@ class QAFProgressionCopyTests(SimpleTestCase):
         self.assertNotIn("Faltan:", text)
 
         # Debe explicar lo que pide
-        self.assertIn("¿Hoy fue Fuerza o Cardio?", text)
+        self.assertIn("¿hoy fue Fuerza o Cardio?".lower(), text.lower())
         # Secuencial: en este paso (falta modalidad) no debería pedir aún RPE ni %
         self.assertNotIn("RPE", text)
         self.assertNotIn("100%", text)

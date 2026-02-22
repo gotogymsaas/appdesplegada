@@ -5258,6 +5258,14 @@ def chat_n8n(request):
                         'signals': signals,
                     }).payload
 
+                    # UX: pasar un nombre amigable al renderer (sin depender de n8n).
+                    try:
+                        display = (getattr(user, 'full_name', '') or '').strip() or (getattr(user, 'username', '') or '').strip()
+                        if display and isinstance(progression_result, dict):
+                            progression_result = {**progression_result, 'user_display_name': display}
+                    except Exception:
+                        pass
+
                     ptext = render_professional_summary(progression_result)
                     if ptext:
                         progression_text_for_output_override = ptext

@@ -37,6 +37,7 @@ class ChatProgressionTriggerTextTests(TestCase):
         self.assertIn("qaf_progression", data)
 
         out = data.get("output") or ""
-        self.assertIn("Tu estado para entrenar hoy", out)
+        self.assertIn("avance con control", out.lower())
+        self.assertIn("%", out)
         # Debe pedir inputs en lenguaje humano
-        self.assertIn("¿Hoy fue Fuerza o Cardio?", out)
+        self.assertIn("fuerza o cardio", out.lower())

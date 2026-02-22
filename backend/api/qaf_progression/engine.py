@@ -255,20 +255,40 @@ def render_professional_summary(result: dict[str, Any]) -> str:
     conf = result.get('confidence') if isinstance(result.get('confidence'), dict) else {}
     lines: list[str] = []
 
-    # 1) Contexto breve y humano
+    # 1) Contexto (marketing + claro)
     score = None
     try:
         score = int(r.get('score')) if r.get('score') is not None else None
     except Exception:
         score = None
+
+    display_name = str(result.get('user_display_name') or '').strip() or None
     if score is not None:
+        # Banda humana (no técnica)
         if score >= 70:
-            band = 'alto'
+            energy_band = 'alta'
+            mode = 'listo para empujar'
         elif score >= 50:
-            band = 'normal'
+            energy_band = 'media'
+            mode = 'avance con control'
         else:
-            band = 'bajo'
-        lines.append(f"Tu estado para entrenar hoy: {score}/100 ({band}).")
+            energy_band = 'baja'
+            mode = 'recuperación inteligente'
+
+        # Porcentaje aproximado + “de cada 10” (aprox)
+        pct_approx = int(round(float(score)))
+        de10 = int(max(1, min(10, round(float(score) / 10.0))))
+
+        prefix = f"{display_name}, " if display_name else ""
+        lines.append(f"{prefix}hoy tu cuerpo está en modo ‘{mode}’.".strip())
+        lines.append(
+            f"Tu nivel de preparación para entrenar está alrededor de {pct_approx}% (≈ {de10} de cada 10): "
+            "sí puedes entrenar, pero el mejor resultado hoy viene de proteger la constancia, no de exprimirte."
+        )
+        lines.append(
+            f"¿Por qué te lo recomiendo así? Porque las señales de hoy apuntan a energía {energy_band}: "
+            "suficiente para cumplir, pero no ideal para subir intensidad."
+        )
 
     # 2) Señal de plateau, si aplica
     if p.get('detected') is True:
@@ -286,9 +306,7 @@ def render_professional_summary(result: dict[str, Any]) -> str:
         # UX: pedimos 1 cosa por vez, alineado con los botones que el chat muestra en cada paso.
         # Orden: modalidad -> RPE -> % cumplimiento.
         if 'modality' in missing:
-            lines.append("Para ajustarlo bien y no pasarnos, primero dime una cosa:")
-            lines.append("¿Hoy fue Fuerza o Cardio?")
-            lines.append("(Luego te pregunto 2 datos más y quedamos listos.)")
+            lines.append("Ahora dime solo esto para ajustarlo perfecto: ¿hoy fue Fuerza o Cardio?")
         elif 'rpe_1_10' in missing:
             lines.append("Perfecto. Ahora una cosa más:")
             lines.append("¿Qué tan duro se sintió? (RPE 1=suave, 10=al límite)")
