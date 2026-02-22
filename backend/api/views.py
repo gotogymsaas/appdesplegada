@@ -3902,7 +3902,7 @@ def chat_n8n(request):
             suppress_weekly_checkins = bool(
                 isinstance(pr0, dict)
                 or isinstance(mr0, dict)
-                or re.search(r"\b(postura|posture|m[uú]sculo|musculo|muscle)\b", msg_low0)
+                or re.search(r"\b(postura|posture|m[uú]sculo|musculo|muscle|shape|presence|presencia)\b", msg_low0)
             )
         except Exception:
             suppress_weekly_checkins = False
@@ -4059,7 +4059,95 @@ def chat_n8n(request):
         except Exception as ex:
             print(f"QAF muscle measure warning: {ex}")
 
-        # 0.2.c) Exp-011: Skin Health Intelligence (1 foto; energía visible + salud de piel)
+        # 0.2.c) Exp-012: Shape & Presence Intelligence (1–2 fotos; keypoints 2D)
+        try:
+            if user and isinstance(request.data, dict):
+                sp_req = request.data.get('shape_presence_request')
+
+                # Iniciar flujo por intención explícita
+                msg_low = str(message or '').strip().lower()
+                want_sp = bool(
+                    re.fullmatch(
+                        r"shape\s*&\s*presence|shape\s+presence|shape\s+and\s+presence|forma\s*&\s*presencia|forma\s+y\s+presencia|presencia\s+\&\s+forma",
+                        msg_low or "",
+                    )
+                )
+                if (not isinstance(sp_req, dict)) and want_sp:
+                    out = (
+                        "[SHAPE & PRESENCE]\n"
+                        "Podemos analizar tu **presencia** y **proporción** con fotos (proxy por keypoints, sin prometer cm reales).\n\n"
+                        "- Mínimo: 1 foto (frente relajado)\n"
+                        "- Mejor: agrega 1 foto de perfil derecho\n\n"
+                        "Empecemos con **frente relajado** (cuerpo completo, buena luz, cámara a 2–3m)."
+                    )
+                    return Response(
+                        {
+                            'output': out,
+                            'quick_actions': [
+                                {'label': 'Tomar foto frente', 'type': 'shape_capture', 'view': 'front_relaxed', 'source': 'camera'},
+                                {'label': 'Adjuntar foto frente', 'type': 'shape_capture', 'view': 'front_relaxed', 'source': 'attach'},
+                                {'label': 'Cancelar', 'type': 'shape_cancel'},
+                            ],
+                        }
+                    )
+
+                if isinstance(sp_req, dict):
+                    from .qaf_shape_presence.engine import evaluate_shape_presence, render_professional_summary
+
+                    week_id_now = _week_id()
+                    weekly_state = getattr(user, 'coach_weekly_state', {}) or {}
+
+                    baseline = None
+                    try:
+                        sp = weekly_state.get('shape_presence') if isinstance(weekly_state.get('shape_presence'), dict) else {}
+                        prev_keys = [k for k in sp.keys() if isinstance(k, str) and k != week_id_now]
+                        if prev_keys:
+                            prev_key = sorted(prev_keys)[-1]
+                            prev_row = sp.get(prev_key)
+                            if isinstance(prev_row, dict) and isinstance(prev_row.get('result'), dict):
+                                baseline = prev_row.get('result')
+                    except Exception:
+                        baseline = None
+
+                    poses = sp_req.get('poses') if isinstance(sp_req.get('poses'), dict) else {}
+                    res = evaluate_shape_presence({'poses': poses, 'baseline': baseline}).payload
+                    text = render_professional_summary(res)
+
+                    # Persistir por semana
+                    try:
+                        ws2 = dict(weekly_state)
+                        sp = ws2.get('shape_presence') if isinstance(ws2.get('shape_presence'), dict) else {}
+                        sp2 = dict(sp)
+                        sp2[week_id_now] = {'result': res, 'updated_at': timezone.now().isoformat(), 'week_id': week_id_now}
+                        ws2['shape_presence'] = sp2
+                        user.coach_weekly_state = ws2
+                        user.coach_weekly_updated_at = timezone.now()
+                        user.save(update_fields=['coach_weekly_state', 'coach_weekly_updated_at'])
+                    except Exception:
+                        pass
+
+                    qas = []
+                    try:
+                        if isinstance(res, dict) and res.get('decision') != 'accepted':
+                            qas = [
+                                {'label': 'Repetir frente', 'type': 'shape_capture', 'view': 'front_relaxed', 'source': 'camera'},
+                                {'label': 'Adjuntar frente', 'type': 'shape_capture', 'view': 'front_relaxed', 'source': 'attach'},
+                                {'label': 'Cancelar', 'type': 'shape_cancel'},
+                            ]
+                    except Exception:
+                        qas = []
+
+                    return Response(
+                        {
+                            'output': text or 'Shape & Presence listo.',
+                            'qaf_shape_presence': res,
+                            'quick_actions': qas,
+                        }
+                    )
+        except Exception as ex:
+            print(f"QAF shape presence warning: {ex}")
+
+        # 0.2.d) Exp-011: Skin Health Intelligence (1 foto; energía visible + salud de piel)
         try:
             if user and isinstance(request.data, dict):
                 msg_low = str(message or '').strip().lower()
@@ -5337,9 +5425,10 @@ def chat_n8n(request):
                     )
                     qa = quick_actions_out if isinstance(quick_actions_out, list) else []
                     qa.extend([
-                        {'label': 'Tomar foto frontal', 'type': 'open_camera'},
-                        {'label': 'Tomar foto lateral', 'type': 'open_camera'},
-                        {'label': 'Adjuntar fotos', 'type': 'open_attach'},
+                        {'label': 'Postura', 'type': 'posture_start'},
+                        {'label': 'Shape & Presence', 'type': 'shape_start'},
+                        {'label': 'Tomar foto', 'type': 'open_camera'},
+                        {'label': 'Adjuntar foto', 'type': 'open_attach'},
                     ])
                     quick_actions_out = qa[:6]
         except Exception:
@@ -6898,6 +6987,74 @@ def qaf_muscle_measure(request):
             'week_id': week_id_now,
         }
         ws2['muscle_measure'] = mm2
+        user.coach_weekly_state = ws2
+        user.coach_weekly_updated_at = timezone.now()
+        user.save(update_fields=['coach_weekly_state', 'coach_weekly_updated_at'])
+    except Exception:
+        pass
+
+    return Response({'success': True, 'result': res, 'text': text})
+
+
+@api_view(['POST', 'OPTIONS'])
+@authentication_classes([JWTAuthentication])
+@permission_classes([IsAuthenticatedOrOptions])
+def qaf_shape_presence(request):
+    """Exp-012: Shape & Presence Intelligence™ (MVP).
+
+    Importante:
+    - Este endpoint NO hace pose estimation.
+    - Recibe `poses[view_id].keypoints` ya calculados en cliente.
+    - Acepta 1..2 vistas (front_relaxed recomendado; side_right_relaxed opcional).
+    """
+
+    if request.method == 'OPTIONS':
+        return Response(status=status.HTTP_200_OK)
+
+    user = _resolve_request_user(request)
+    if not user:
+        return Response({'error': 'Autenticacion requerida'}, status=status.HTTP_401_UNAUTHORIZED)
+
+    payload = request.data if isinstance(request.data, dict) else {}
+
+    week_id_now = _week_id()
+    weekly_state = getattr(user, 'coach_weekly_state', {}) or {}
+
+    baseline = None
+    try:
+        sp = weekly_state.get('shape_presence') if isinstance(weekly_state.get('shape_presence'), dict) else {}
+        prev_keys = [k for k in sp.keys() if isinstance(k, str) and k != week_id_now]
+        if prev_keys:
+            prev_key = sorted(prev_keys)[-1]
+            prev_row = sp.get(prev_key)
+            if isinstance(prev_row, dict) and isinstance(prev_row.get('result'), dict):
+                baseline = prev_row.get('result')
+    except Exception:
+        baseline = None
+
+    from .qaf_shape_presence.engine import evaluate_shape_presence, render_professional_summary
+
+    res = evaluate_shape_presence(
+        {
+            'poses': payload.get('poses') if isinstance(payload.get('poses'), dict) else {},
+            'baseline': baseline if isinstance(baseline, dict) else None,
+            'locale': (payload.get('locale') or '').strip() or 'es-CO',
+        }
+    ).payload
+
+    text = render_professional_summary(res)
+
+    # Persistir (por semana)
+    try:
+        ws2 = dict(weekly_state)
+        sp = ws2.get('shape_presence') if isinstance(ws2.get('shape_presence'), dict) else {}
+        sp2 = dict(sp)
+        sp2[week_id_now] = {
+            'result': res,
+            'updated_at': timezone.now().isoformat(),
+            'week_id': week_id_now,
+        }
+        ws2['shape_presence'] = sp2
         user.coach_weekly_state = ws2
         user.coach_weekly_updated_at = timezone.now()
         user.save(update_fields=['coach_weekly_state', 'coach_weekly_updated_at'])

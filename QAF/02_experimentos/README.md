@@ -17,3 +17,4 @@ Sugerido:
 - Exp-008: `exp-008__motivacion-psicologica/`
 - Exp-009: `exp-009__progresion-inteligente/`
 - Exp-010: `exp-010__medicion-muscular/`
+- Exp-012: `exp-012__shape-presence-intelligence/`

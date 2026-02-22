@@ -57,7 +57,7 @@ El backend pide a Vision que responda **solo JSON** con estas claves (compatible
 **Acciones:**
 - No se ejecuta calorías.
 - Se agrega bloque `[ENTRENAMIENTO / IMAGEN]` con guía de captura (frontal/lateral).
-- Se agregan quick-actions: `open_camera`, `open_attach`.
+- Se agregan quick-actions: `posture_start`, `shape_start`, `open_camera`, `open_attach`.
 - Guardrail UX: se suprimen check-ins semanales/metabólico para no mezclar contexto.
 
 ### Salud
