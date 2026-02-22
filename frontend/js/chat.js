@@ -1199,6 +1199,8 @@ function markMessageStatus(messageId, status) {
   el.classList.remove('pending', 'failed');
   if (status === 'pending') el.classList.add('pending');
   if (status === 'failed') el.classList.add('failed');
+  // Si el último mensaje del usuario pasó de pending -> sent, mostrar botón Editar.
+  try { scheduleEditButtonUpdate(); } catch (e) { /* ignore */ }
 }
 
 function addRetryAction(messageId) {
@@ -2373,7 +2375,95 @@ ts: Date.now()
 });
 persistHistory();
 }
+
+// UX secundaria: mantener el botón “Editar” en el último mensaje del usuario.
+try { scheduleEditButtonUpdate(); } catch (e) { /* ignore */ }
 return id;
+}
+
+// --- UX: Editar último mensaje del usuario (copiar al input) ---
+function _getUserMessagePlainText(el) {
+  if (!el) return '';
+  const fromData = (el.dataset && typeof el.dataset.text === 'string') ? el.dataset.text : '';
+  if (fromData && fromData.trim()) return fromData;
+  const userText = el.querySelector && el.querySelector('.user-text');
+  if (userText && typeof userText.textContent === 'string') return userText.textContent;
+  return typeof el.textContent === 'string' ? el.textContent : '';
+}
+
+function _isEditableUserMessage(el) {
+  if (!el) return false;
+  if (!(el instanceof Element)) return false;
+  if (!el.classList.contains('message') || !el.classList.contains('user')) return false;
+  if (el.classList.contains('pending') || el.classList.contains('failed')) return false;
+  if ((el.dataset && el.dataset.hasFile) === '1') return false;
+  // Si tiene adjunto inline, no editamos (reintentar adjunto ya tiene su flujo)
+  if (el.querySelector && el.querySelector('.user-attachment')) return false;
+  const txt = _getUserMessagePlainText(el);
+  return !!(txt && txt.trim());
+}
+
+function updateLastUserEditButton() {
+  try {
+    if (!messages) return;
+    // Limpiar cualquier botón previo
+    messages.querySelectorAll('.edit-last-btn').forEach((b) => {
+      try { b.remove(); } catch (e) { /* ignore */ }
+    });
+
+    const userMsgs = messages.querySelectorAll('.message.user');
+    if (!userMsgs || !userMsgs.length) return;
+
+    let target = null;
+    for (let i = userMsgs.length - 1; i >= 0; i--) {
+      const el = userMsgs[i];
+      if (_isEditableUserMessage(el)) {
+        target = el;
+        break;
+      }
+    }
+    if (!target) return;
+
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'edit-last-btn';
+    btn.textContent = 'Editar';
+    btn.addEventListener('click', (ev) => {
+      try { ev.preventDefault(); } catch (e) { /* ignore */ }
+      try { ev.stopPropagation(); } catch (e) { /* ignore */ }
+
+      const txt = _getUserMessagePlainText(target);
+      if (!txt || !txt.trim()) return;
+      input.value = txt;
+      try {
+        input.focus({ preventScroll: true });
+      } catch (e) {
+        try { input.focus(); } catch (e2) { /* ignore */ }
+      }
+      try { autoResizeInput(); } catch (e) { /* ignore */ }
+      try {
+        const end = input.value.length;
+        input.setSelectionRange(end, end);
+      } catch (e) {
+        // ignore
+      }
+      scheduleFooterMetricsUpdate();
+      scheduleViewportOffsetUpdate();
+    });
+
+    target.appendChild(btn);
+  } catch (e) {
+    // Nunca romper el chat por UX secundaria.
+  }
+}
+
+let _editBtnUpdateTimer = null;
+function scheduleEditButtonUpdate() {
+  if (_editBtnUpdateTimer) return;
+  _editBtnUpdateTimer = setTimeout(() => {
+    _editBtnUpdateTimer = null;
+    updateLastUserEditButton();
+  }, 0);
 }
 
 function appendQuickActions(actions) {
@@ -2615,6 +2705,7 @@ async function sendQuickMessage(text, extraPayload = null) {
     chatHistory.forEach((msg) => {
       appendMessage(msg.text, msg.role === 'user' ? 'user' : 'bot', { persist: false });
     });
+    try { scheduleEditButtonUpdate(); } catch (e) { /* ignore */ }
     return;
   }
 
@@ -2637,5 +2728,7 @@ async function sendQuickMessage(text, extraPayload = null) {
   if (contextual) appendMessage(contextual, 'bot');
 
   appendQuickActions(buildQuickActions(context || {}));
+
+  try { scheduleEditButtonUpdate(); } catch (e) { /* ignore */ }
 })();
 })();
