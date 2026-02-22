@@ -91,3 +91,4 @@ class ChatProgressionNoRepeatIntroTests(TestCase):
         out4 = (r4.json() or {}).get("output") or ""
         self.assertIn("próximo paso", out4.lower())
         self.assertIn("ajuste recomendado", out4.lower())
+        self.assertNotIn("mínimo viable", out4.lower())

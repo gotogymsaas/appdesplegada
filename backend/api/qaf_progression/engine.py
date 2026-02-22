@@ -179,7 +179,7 @@ def _micro_goal(action: Action, *, modality: str, exercise_name: str | None = No
         return 'Hoy: cambiamos estímulo para romper estancamiento sin riesgo.'
     if action == 'swap_exercise':
         return 'Hoy: bajar impacto y elegir una variante segura.'
-    return 'Hoy: cumplir lo esencial (mínimo viable) y proteger la constancia.'
+    return 'Hoy: cumplir lo esencial y proteger la constancia.'
 
 
 def _action_label(action: Action) -> str:
@@ -191,7 +191,7 @@ def _action_label(action: Action) -> str:
         return 'variación segura'
     if action == 'swap_exercise':
         return 'ajuste por molestia'
-    return 'mínimo viable'
+    return 'sesión esencial'
 
 
 def _next_step(action: Action, *, modality: str, exercise_name: str | None, readiness: int, rpe: float | None, completion_pct: float | None) -> tuple[str, str]:
@@ -382,7 +382,7 @@ def render_professional_summary(result: dict[str, Any]) -> str:
             _line("Excelente. Ya casi lo tengo.")
             _line("Para afinar el ajuste y que el plan te quede a tu medida, dime solo esto:")
         _line("¿cuánto del plan lograste cumplir hoy?")
-        _line("(100%, 80%, 60% o 40%)")
+        _line("(20%, 40%, 60%, 80% o 100%)")
         return "\n".join(lines).strip()
 
     # Paso final — accepted

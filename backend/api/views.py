@@ -5306,30 +5306,17 @@ def chat_n8n(request):
                         missing = ((progression_result.get('confidence') or {}).get('missing') or [])
                         missing = [str(x) for x in missing]
 
-                        def _rpe_page(high: bool):
+                        def _rpe_buttons():
+                            # UX: 5 botones (2-4-6-8-10) para evitar paging.
                             out = []
-                            rng = range(6, 11) if high else range(1, 6)
-                            for i in rng:
+                            for i in (2, 4, 6, 8, 10):
                                 out.append({
                                     'label': f"RPE {i}",
                                     'type': 'message',
                                     'text': f"RPE {i}",
                                     'payload': {'progression_action': {'session': {'rpe_1_10': i}}},
                                 })
-                            # toggle
-                            out.append({
-                                'label': 'RPE 6–10' if not high else 'RPE 1–5',
-                                'type': 'message',
-                                'text': 'RPE 6–10' if not high else 'RPE 1–5',
-                                'payload': {'progression_action': {'ui': {'rpe_page': ('high' if not high else 'low')}}},
-                            })
                             return out
-
-                        rpe_page = None
-                        try:
-                            rpe_page = str(((pa or {}).get('ui') or {}).get('rpe_page') or '').strip().lower() if isinstance(pa, dict) else ''
-                        except Exception:
-                            rpe_page = ''
 
                         # UX: si falta modalidad, pedirla primero; si no, pedir RPE y luego % de cumplimiento.
                         if 'modality' in missing:
@@ -5346,14 +5333,15 @@ def chat_n8n(request):
                                 'payload': {'progression_action': {'cardio': {'minutes': 20}}},
                             })
                         elif 'rpe_1_10' in missing:
-                            progression_quick_actions_out.extend(_rpe_page(high=(rpe_page == 'high'))[:6])
+                            progression_quick_actions_out.extend(_rpe_buttons()[:6])
                         elif 'completion_pct' in missing and len(progression_quick_actions_out) < 6:
                             # completion presets
                             opts = [
-                                (1.0, '100%'),
-                                (0.8, '80%'),
-                                (0.6, '60%'),
+                                (0.2, '20%'),
                                 (0.4, '40%'),
+                                (0.6, '60%'),
+                                (0.8, '80%'),
+                                (1.0, '100%'),
                             ]
                             for v, lab in opts:
                                 if len(progression_quick_actions_out) >= 6:
