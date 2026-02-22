@@ -5256,7 +5256,7 @@ def chat_n8n(request):
                     ptext = render_professional_summary(progression_result)
                     if ptext:
                         progression_text_for_output_override = ptext
-                        attachment_text = ((attachment_text or '').strip() + "\n\n" if (attachment_text or '').strip() else "") + f"[PROGRESIÓN]\n{ptext}".strip()
+                        attachment_text = ((attachment_text or '').strip() + "\n\n" if (attachment_text or '').strip() else "") + f"[EVOLUCIÓN DE ENTRENAMIENTO]\n{ptext}".strip()
 
                     # Quick actions guiadas para missing (sin UI nueva)
                     try:

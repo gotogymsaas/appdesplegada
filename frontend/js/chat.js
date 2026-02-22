@@ -1510,11 +1510,11 @@ function buildQuickActions(context) {
     });
   }
 
-  // 2) Progresión (Exp-009)
+  // 2) Evolución de Entrenamiento (Exp-009)
   actions.push({
-    label: 'Progresión',
+    label: 'Evolución de Entrenamiento',
     type: 'message',
-    text: 'Progresión',
+    text: 'Evolución de Entrenamiento',
     payload: { progression_request: {} },
   });
 

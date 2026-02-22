@@ -255,7 +255,7 @@ def render_professional_summary(result: dict[str, Any]) -> str:
     conf = result.get('confidence') if isinstance(result.get('confidence'), dict) else {}
     lines: list[str] = []
     if result.get('decision') == 'needs_confirmation':
-        lines.append('Para ajustar tu progresión con precisión, necesito 2–3 datos rápidos.')
+        lines.append('Para ajustar tu evolución de entrenamiento con precisión, necesito 2–3 datos rápidos.')
     if r.get('score') is not None:
         lines.append(f"Readiness: {r.get('score')}/100")
     if p.get('detected') is True:
