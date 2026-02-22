@@ -485,6 +485,20 @@ def qaf_estimate_v2(
         iid = str(it.get("item_id") or "")
         cands = it.get("portion_candidates") or []
         current = float(it.get("calories") or 0.0)
+
+        # Si el usuario confirmó porción para este ítem, la tratamos como fija.
+        # Esto evita que el rango siga siendo impulsado por candidatos heurísticos
+        # y que la UI repita la misma pregunta/botones.
+        try:
+            sp = it.get("selected_portion") if isinstance(it.get("selected_portion"), dict) else None
+            if sp and str(sp.get("source") or "").strip().lower() == "user":
+                low += current
+                high += current
+                best += current
+                continue
+        except Exception:
+            pass
+
         if not cands:
             low += current
             high += current
