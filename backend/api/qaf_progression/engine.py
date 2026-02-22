@@ -179,7 +179,66 @@ def _micro_goal(action: Action, *, modality: str, exercise_name: str | None = No
         return 'Hoy: cambiamos estímulo para romper estancamiento sin riesgo.'
     if action == 'swap_exercise':
         return 'Hoy: bajar impacto y elegir una variante segura.'
-    return 'Hoy: cumplir el mínimo viable y proteger la constancia.'
+    return 'Hoy: cumplir lo esencial (mínimo viable) y proteger la constancia.'
+
+
+def _action_label(action: Action) -> str:
+    if action == 'progress':
+        return 'progreso'
+    if action == 'deload':
+        return 'descarga inteligente'
+    if action == 'variation':
+        return 'variación segura'
+    if action == 'swap_exercise':
+        return 'ajuste por molestia'
+    return 'mínimo viable'
+
+
+def _next_step(action: Action, *, modality: str, exercise_name: str | None, readiness: int, rpe: float | None, completion_pct: float | None) -> tuple[str, str]:
+    """Devuelve (next_step, wow_line) sin depender de datos ultra específicos."""
+    mod = (modality or 'unknown').strip().lower()
+    ex = (exercise_name or '').strip()
+
+    # Fuerza
+    if mod == 'strength':
+        if action == 'progress':
+            step = (f"En tu próximo día de fuerza, suma +1 rep en la primera serie" + (f" de {ex}." if ex else " del ejercicio principal."))
+            wow = "Pequeño, pero real: así progresas sin romper técnica ni constancia."
+            return step, wow
+        if action == 'variation':
+            step = "En tu próximo día de fuerza, cambia a una variante del ejercicio principal (mismo músculo, nuevo estímulo)."
+            wow = "Esto suele destrabar estancamientos sin subir el riesgo."
+            return step, wow
+        if action == 'deload':
+            step = "En tu próximo día de fuerza, baja 10–20% la carga o el volumen y enfócate en técnica perfecta."
+            wow = "Recuperas y vuelves más fuerte: la descarga también es progreso."
+            return step, wow
+        if action == 'swap_exercise':
+            step = "En tu próximo día de fuerza, evita el movimiento que molesta y usa una variante sin dolor (rango corto + control)."
+            wow = "Cuidas el cuerpo y mantienes la cadena de hábitos activa."
+            return step, wow
+        step = "En tu próximo día de fuerza, haz lo esencial: 2 ejercicios + 2–3 series, dejando 2–3 repeticiones en reserva."
+        wow = "Ganas constancia sin pagar el costo de sobre‑exigirte hoy."
+        return step, wow
+
+    # Cardio
+    if mod == 'cardio':
+        if action == 'progress':
+            step = "En tu próximo cardio, suma +2–5 minutos manteniendo respiración controlada."
+            wow = "Progreso suave = progreso sostenible."
+            return step, wow
+        if action == 'deload':
+            step = "En tu próximo cardio, haz 15–25 min suave (zona cómoda) y termina sintiéndote mejor de lo que empezaste."
+            wow = "Recuperación inteligente hoy = mejor rendimiento mañana."
+            return step, wow
+        step = "En tu próximo cardio, prioriza constancia: 20–30 min a ritmo conversacional."
+        wow = "Lo que se repite gana."
+        return step, wow
+
+    # Unknown
+    step = "Siguiente paso: elige fuerza o cardio y te lo ajusto en 2 preguntas."
+    wow = "Así lo hacemos simple y accionable."
+    return step, wow
 
 
 @dataclass(frozen=True)
@@ -226,6 +285,8 @@ def evaluate_progression(payload: dict[str, Any]) -> ProgressionResult:
     action, action_reason = _decision(readiness=readiness, plateau=plateau, rpe=rpe, completion_pct=completion, pain=pain)
     micro = _micro_goal(action, modality=modality, exercise_name=exercise_name)
 
+    nxt, wow = _next_step(action, modality=modality, exercise_name=exercise_name, readiness=readiness, rpe=rpe, completion_pct=completion)
+
     confidence = _clamp01(0.75 - 0.12 * float(len(missing)))
     decision: Decision = 'accepted'
     decision_reason = 'ok'
@@ -241,6 +302,18 @@ def evaluate_progression(payload: dict[str, Any]) -> ProgressionResult:
         'plateau': {'detected': bool(plateau), 'reason': plateau_reason},
         'decision_engine': {'action': action, 'reason': action_reason},
         'micro_goal': micro,
+        'inputs': {
+            'modality': modality,
+            'rpe_1_10': rpe,
+            'completion_pct': completion,
+            'pain': pain,
+            'exercise_name': exercise_name,
+        },
+        'recommendation': {
+            'action_label': _action_label(action),
+            'next_step': nxt,
+            'wow': wow,
+        },
         'meta': {'algorithm': 'exp-009_progression_intelligent_v0', 'as_of': str(date.today())},
     }
     return ProgressionResult(payload=out)
@@ -253,6 +326,7 @@ def render_professional_summary(result: dict[str, Any]) -> str:
     p = result.get('plateau') if isinstance(result.get('plateau'), dict) else {}
     d = result.get('decision_engine') if isinstance(result.get('decision_engine'), dict) else {}
     conf = result.get('confidence') if isinstance(result.get('confidence'), dict) else {}
+    rec = result.get('recommendation') if isinstance(result.get('recommendation'), dict) else {}
     lines: list[str] = []
 
     # 1) Contexto (marketing + claro)
@@ -324,7 +398,7 @@ def render_professional_summary(result: dict[str, Any]) -> str:
     if p.get('detected') is True:
         lines.append("Veo señales de estancamiento. No es falta de disciplina: suele ser fatiga o estímulo repetido.")
 
-    # 3) Micro-objetivo (sin exponer acciones internas)
+    # 3) Micro-objetivo
     micro = str(result.get('micro_goal') or '').strip()
     # Evitar "Micro‑objetivo de hoy: Hoy: ..."
     if micro.lower().startswith('hoy:'):
@@ -333,6 +407,18 @@ def render_professional_summary(result: dict[str, Any]) -> str:
         # En pasos intermedios, no repetir el label completo.
         prefix = "Micro‑objetivo de hoy" if show_intro else "Objetivo"
         lines.append(f"{prefix}: {micro}")
+
+    # 3.5) Si ya está completo, entregar cierre con valor (wow)
+    if result.get('decision') == 'accepted':
+        next_step = str(rec.get('next_step') or '').strip()
+        wow_line = str(rec.get('wow') or '').strip()
+        action_label = str(rec.get('action_label') or '').strip()
+        if action_label:
+            lines.append(f"✅ Ajuste recomendado: {action_label}.")
+        if next_step:
+            lines.append(f"👉 Próximo paso: {next_step}")
+        if wow_line:
+            lines.append(wow_line)
 
     # 4) Si faltan datos, pedirlos claro (máximo 3)
     missing = conf.get('missing') if isinstance(conf.get('missing'), list) else []

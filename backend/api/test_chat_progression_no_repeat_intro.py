@@ -55,3 +55,37 @@ class ChatProgressionNoRepeatIntroTests(TestCase):
         self.assertNotIn("%", out2)  # no repetir porcentaje
         self.assertNotIn("¿por qué", out2.lower())
         self.assertNotIn("tu nivel de preparación", out2.lower())
+
+        # Paso 3: set RPE 10
+        r3 = self.client.post(
+            "/api/chat/",
+            {
+                "message": "RPE 10",
+                "sessionId": "s1",
+                "attachment": "",
+                "attachment_text": "",
+                "username": "juan",
+                "progression_action": {"session": {"rpe_1_10": 10}},
+            },
+            format="json",
+        )
+        self.assertEqual(r3.status_code, 200)
+        out3 = (r3.json() or {}).get("output") or ""
+        self.assertIn("cuánto del plan", out3.lower())
+
+        # Paso 4: completion 100% => accepted => debe traer cierre con valor
+        r4 = self.client.post(
+            "/api/chat/",
+            {
+                "message": "Cumplí 100%",
+                "sessionId": "s1",
+                "attachment": "",
+                "attachment_text": "",
+                "username": "juan",
+                "progression_action": {"session": {"completion_pct": 1.0}},
+            },
+            format="json",
+        )
+        self.assertEqual(r4.status_code, 200)
+        out4 = (r4.json() or {}).get("output") or ""
+        self.assertIn("próximo paso", out4.lower())

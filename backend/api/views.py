@@ -5277,7 +5277,14 @@ def chat_n8n(request):
                     try:
                         if isinstance(progression_result, dict):
                             ui_out = progression_result.get('ui') if isinstance(progression_result.get('ui'), dict) else {}
-                            progression_result = {**progression_result, 'ui': {**ui_out, 'show_intro': (not (isinstance(pa, dict) or had_draft))}}
+                            # Regla:
+                            # - primer paso: show_intro=True
+                            # - pasos intermedios (botones/draft): show_intro=False
+                            # - paso final accepted: show_intro=True para entregar cierre con valor
+                            show_intro = (not (isinstance(pa, dict) or had_draft))
+                            if progression_result.get('decision') == 'accepted':
+                                show_intro = True
+                            progression_result = {**progression_result, 'ui': {**ui_out, 'show_intro': bool(show_intro)}}
                     except Exception:
                         pass
 
