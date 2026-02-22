@@ -169,9 +169,9 @@ def _decision(*, readiness: int, plateau: bool, rpe: float | None, completion_pc
 def _micro_goal(action: Action, *, modality: str, exercise_name: str | None = None) -> str:
     if action == 'progress':
         if modality == 'strength' and exercise_name:
-            return f"Hoy: +1 rep en la primera serie de {exercise_name}."
+            return f"Hoy: una mejora pequeña en {exercise_name}, sin perder técnica."
         if modality == 'cardio':
-            return 'Hoy: +2–5 min manteniendo respiración controlada.'
+            return 'Hoy: un poquito más de cardio, manteniendo respiración controlada.'
         return 'Hoy: mejora mínima medible.'
     if action == 'deload':
         return 'Hoy: técnica perfecta y terminar sin acumular fatiga.'
@@ -202,36 +202,41 @@ def _next_step(action: Action, *, modality: str, exercise_name: str | None, read
     # Fuerza
     if mod == 'strength':
         if action == 'progress':
-            step = (f"En tu próximo día de fuerza, suma +1 rep en la primera serie" + (f" de {ex}." if ex else " del ejercicio principal."))
-            wow = "Pequeño, pero real: así progresas sin romper técnica ni constancia."
+            step = (
+                "En tu próximo día de fuerza, busca una mejora pequeña (por ejemplo, una repetición más o un poco más de carga) "
+                "solo si mantienes técnica y control."
+            )
+            if ex:
+                step = f"En tu próximo día de fuerza con {ex}, " + step[len("En tu próximo día de fuerza, "):]
+            wow = "Progreso real es progreso repetible: calidad primero, intensidad después."
             return step, wow
         if action == 'variation':
             step = "En tu próximo día de fuerza, cambia a una variante del ejercicio principal (mismo músculo, nuevo estímulo)."
             wow = "Esto suele destrabar estancamientos sin subir el riesgo."
             return step, wow
         if action == 'deload':
-            step = "En tu próximo día de fuerza, baja 10–20% la carga o el volumen y enfócate en técnica perfecta."
-            wow = "Recuperas y vuelves más fuerte: la descarga también es progreso."
+            step = "En tu próximo día de fuerza, baja la exigencia (menos carga o menos volumen) y enfócate en técnica perfecta."
+            wow = "Descargar a tiempo te permite volver más fuerte y constante."
             return step, wow
         if action == 'swap_exercise':
             step = "En tu próximo día de fuerza, evita el movimiento que molesta y usa una variante sin dolor (rango corto + control)."
             wow = "Cuidas el cuerpo y mantienes la cadena de hábitos activa."
             return step, wow
-        step = "En tu próximo día de fuerza, haz lo esencial: 2 ejercicios + 2–3 series, dejando 2–3 repeticiones en reserva."
-        wow = "Ganas constancia sin pagar el costo de sobre‑exigirte hoy."
+        step = "En tu próximo día de fuerza, haz una sesión esencial: menos volumen, técnica limpia y termina con energía en reserva."
+        wow = "Ganas constancia sin pagar el costo de sobre‑exigirte."
         return step, wow
 
     # Cardio
     if mod == 'cardio':
         if action == 'progress':
-            step = "En tu próximo cardio, suma +2–5 minutos manteniendo respiración controlada."
-            wow = "Progreso suave = progreso sostenible."
+            step = "En tu próximo cardio, agrega un poquito de tiempo o ritmo, manteniendo respiración controlada."
+            wow = "Progreso suave y constante = progreso sostenible."
             return step, wow
         if action == 'deload':
-            step = "En tu próximo cardio, haz 15–25 min suave (zona cómoda) y termina sintiéndote mejor de lo que empezaste."
+            step = "En tu próximo cardio, ve suave (zona cómoda) y termina sintiéndote mejor de lo que empezaste."
             wow = "Recuperación inteligente hoy = mejor rendimiento mañana."
             return step, wow
-        step = "En tu próximo cardio, prioriza constancia: 20–30 min a ritmo conversacional."
+        step = "En tu próximo cardio, prioriza constancia: ritmo conversacional y sin ir al límite."
         wow = "Lo que se repite gana."
         return step, wow
 

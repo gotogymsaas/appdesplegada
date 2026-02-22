@@ -92,3 +92,4 @@ class ChatProgressionNoRepeatIntroTests(TestCase):
         self.assertIn("próximo paso", out4.lower())
         self.assertIn("ajuste recomendado", out4.lower())
         self.assertNotIn("mínimo viable", out4.lower())
+        self.assertNotIn("2 ejercicios", out4.lower())
