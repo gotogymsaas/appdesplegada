@@ -329,112 +329,95 @@ def render_professional_summary(result: dict[str, Any]) -> str:
     rec = result.get('recommendation') if isinstance(result.get('recommendation'), dict) else {}
     lines: list[str] = []
 
-    # 1) Contexto (marketing + claro)
-    score = None
-    try:
-        score = int(r.get('score')) if r.get('score') is not None else None
-    except Exception:
-        score = None
-
-    display_name = str(result.get('user_display_name') or '').strip() or None
-
-    def _bucket_copy(readiness_0_100: int) -> tuple[str, str, str]:
-        """Devuelve (mode, headline, why) por tramos de 20%."""
-        r = max(0, min(100, int(readiness_0_100)))
-
-        # Tramos de 20%: 0–20, 21–40, 41–60, 61–80, 81–100
-        if r <= 20:
-            mode = 'recuperación inteligente'
-            headline = (
-                "hoy lo más valioso es recuperar: baja intensidad, cuida técnica y sal con más energía de la que entraste."
-            )
-            why = "Las señales de hoy apuntan a energía baja: apretar aquí suele costar más de lo que suma."
-            return mode, headline, why
-        if r <= 40:
-            mode = 'mínimo viable'
-            headline = (
-                "sí puedes entrenar, pero con objetivo ‘mínimo viable’: cumplir lo esencial sin forzar, para no romper la constancia."
-            )
-            why = "Las señales de hoy están bajas‑medias: hoy gana la consistencia, no el heroísmo."
-            return mode, headline, why
-        if r <= 60:
-            mode = 'avance con control'
-            headline = (
-                "sí puedes entrenar, pero el mejor resultado hoy viene de proteger la constancia, no de exprimirte."
-            )
-            why = "Las señales de hoy apuntan a energía media: suficiente para cumplir, pero no ideal para subir intensidad."
-            return mode, headline, why
-        if r <= 80:
-            mode = 'progreso sostenible'
-            headline = (
-                "es un buen día para progresar con calma: una mejora pequeña (pero real) sin perder técnica ni control."
-            )
-            why = "Las señales de hoy apuntan a energía buena: puedes empujar un poco si mantienes forma y respiración controlada."
-            return mode, headline, why
-        mode = 'día para empujar'
-        headline = (
-            "es un gran día para avanzar: si el plan está claro, puedes subir un poco el estímulo manteniendo calidad."
-        )
-        why = "Las señales de hoy apuntan a energía alta: aprovecha, pero sin perder técnica ni excederte."
-        return mode, headline, why
-
     ui = result.get('ui') if isinstance(result.get('ui'), dict) else {}
     show_intro = ui.get('show_intro')
     if show_intro is None:
         show_intro = True
     show_intro = bool(show_intro)
 
-    if score is not None and show_intro:
-        pct_approx = int(round(float(score)))
-        de10 = int(max(0, min(10, round(float(score) / 10.0))))
-        mode, headline, why = _bucket_copy(pct_approx)
+    display_name = str(result.get('user_display_name') or '').strip() or None
+    name = display_name or ""
 
-        prefix = f"{display_name}, " if display_name else ""
-        lines.append(f"{prefix}hoy tu cuerpo está en modo ‘{mode}’.".strip())
-        lines.append(f"Tu nivel de preparación para entrenar está alrededor de {pct_approx}% (≈ {de10} de cada 10): {headline}")
-        lines.append(f"¿Por qué te lo recomiendo así? {why}")
+    missing = conf.get('missing') if isinstance(conf.get('missing'), list) else []
+    missing = [str(x).strip() for x in missing if str(x).strip()]
+    inputs = result.get('inputs') if isinstance(result.get('inputs'), dict) else {}
+    modality = str(inputs.get('modality') or '').strip().lower()
 
-    # 2) Señal de plateau, si aplica
-    if p.get('detected') is True:
-        lines.append("Veo señales de estancamiento. No es falta de disciplina: suele ser fatiga o estímulo repetido.")
+    def _line(s: str) -> None:
+        s = str(s).strip()
+        if s:
+            lines.append(s)
 
-    # 3) Micro-objetivo
+    # Refuerzo (solo cuando mostramos intro)
+    if p.get('detected') is True and show_intro:
+        _line("Veo señales de estancamiento: no es falta de disciplina, es una señal útil para ajustar el estímulo.")
+
+    # Paso 1 — modalidad
+    if result.get('decision') == 'needs_confirmation' and 'modality' in missing:
+        if show_intro:
+            _line(f"{name}, vamos a optimizar tu Evolución de Entrenamiento.".strip(", "))
+            _line("En menos de 30 segundos te digo exactamente qué necesita tu cuerpo hoy para avanzar sin estancarte:")
+            _line("progresar, mantener el ritmo o hacer una descarga inteligente.")
+            _line("La meta es simple: mejorar sin romper tu constancia.")
+            _line("Respóndeme solo esto para ajustarlo perfecto:")
+        _line("¿hoy fue Fuerza o Cardio?")
+        return "\n".join(lines).strip()
+
+    # Paso 2 — RPE
+    if result.get('decision') == 'needs_confirmation' and 'rpe_1_10' in missing:
+        if show_intro:
+            if modality == 'strength':
+                _line("Perfecto. Ahora voy a ajustar tu intensidad para que sigas avanzando sin sobrecargarte.")
+            else:
+                _line("Perfecto. Ahora voy a ajustar tu cardio para que avances sin quemarte.")
+            _line("La meta es simple: cumplir lo esencial hoy y proteger tu constancia para mañana.")
+            _line("Dime esto con sinceridad:")
+        _line("¿qué tan duro se sintió el entrenamiento?")
+        _line("(1 = muy suave, 10 = al límite)")
+        return "\n".join(lines).strip()
+
+    # Paso 3 — % cumplimiento
+    if result.get('decision') == 'needs_confirmation' and 'completion_pct' in missing:
+        if show_intro:
+            _line("Excelente. Ya casi lo tengo.")
+            _line("Para afinar el ajuste y que el plan te quede a tu medida, dime solo esto:")
+        _line("¿cuánto del plan lograste cumplir hoy?")
+        _line("(100%, 80%, 60% o 40%)")
+        return "\n".join(lines).strip()
+
+    # Paso final — accepted
+    if result.get('decision') == 'accepted':
+        if show_intro:
+            _line(
+                f"Listo{', ' + name if name else ''}. Con lo que me dijiste, este es el ajuste más inteligente para que sigas avanzando sin perder constancia:"
+            )
+
+        action_label = str(rec.get('action_label') or '').strip()
+        next_step = str(rec.get('next_step') or '').strip()
+        wow_line = str(rec.get('wow') or '').strip()
+
+        if action_label:
+            _line(f"✅ Ajuste recomendado (hoy): {action_label}.")
+        if next_step:
+            _line(f"👉 Próximo paso (tu siguiente sesión): {next_step}")
+        if wow_line:
+            _line(wow_line)
+        _line("Esto es lo que genera progreso real: hacer lo correcto hoy para poder repetirlo mañana.")
+        return "\n".join(lines).strip()
+
+    # Fallback corto
     micro = str(result.get('micro_goal') or '').strip()
-    # Evitar "Micro‑objetivo de hoy: Hoy: ..."
     if micro.lower().startswith('hoy:'):
         micro = micro[4:].strip()
     if micro:
-        # En pasos intermedios, no repetir el label completo.
-        prefix = "Micro‑objetivo de hoy" if show_intro else "Objetivo"
-        lines.append(f"{prefix}: {micro}")
+        _line(f"Objetivo: {micro}")
 
-    # 3.5) Si ya está completo, entregar cierre con valor (wow)
-    if result.get('decision') == 'accepted':
-        next_step = str(rec.get('next_step') or '').strip()
-        wow_line = str(rec.get('wow') or '').strip()
-        action_label = str(rec.get('action_label') or '').strip()
-        if action_label:
-            lines.append(f"✅ Ajuste recomendado: {action_label}.")
-        if next_step:
-            lines.append(f"👉 Próximo paso: {next_step}")
-        if wow_line:
-            lines.append(wow_line)
-
-    # 4) Si faltan datos, pedirlos claro (máximo 3)
-    missing = conf.get('missing') if isinstance(conf.get('missing'), list) else []
-    missing = [str(x).strip() for x in missing if str(x).strip()]
-    if result.get('decision') == 'needs_confirmation' and missing:
-        # UX: pedimos 1 cosa por vez, alineado con los botones que el chat muestra en cada paso.
-        # Orden: modalidad -> RPE -> % cumplimiento.
+    if missing:
         if 'modality' in missing:
-            lines.append("Ahora dime solo esto para ajustarlo perfecto: ¿hoy fue Fuerza o Cardio?")
+            _line("¿hoy fue Fuerza o Cardio?")
         elif 'rpe_1_10' in missing:
-            if show_intro:
-                lines.append("Perfecto. Ahora una cosa más:")
-            lines.append("¿Qué tan duro se sintió? (RPE 1=suave, 10=al límite)")
+            _line("¿qué tan duro se sintió el entrenamiento? (1=suave, 10=al límite)")
         elif 'completion_pct' in missing:
-            if show_intro:
-                lines.append("Último dato y te lo dejo ajustado:")
-            lines.append("¿Cuánto del plan lograste hoy? (100%, 80%, 60% o 40%)")
+            _line("¿cuánto del plan lograste cumplir hoy? (100/80/60/40)")
 
-    return "\n".join([x for x in lines if str(x).strip()]).strip()
+    return "\n".join(lines).strip()

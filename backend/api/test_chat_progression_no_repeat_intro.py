@@ -32,8 +32,9 @@ class ChatProgressionNoRepeatIntroTests(TestCase):
         )
         self.assertEqual(r1.status_code, 200)
         out1 = (r1.json() or {}).get("output") or ""
-        self.assertIn("modo", out1.lower())
-        self.assertIn("%", out1)
+        self.assertIn("optimizar", out1.lower())
+        self.assertIn("en menos de 30 segundos", out1.lower())
+        self.assertIn("fuerza o cardio", out1.lower())
 
         # Paso 2: click 'Cardio' (modalidad). Debe preguntar RPE sin repetir el bloque largo.
         r2 = self.client.post(
@@ -51,10 +52,10 @@ class ChatProgressionNoRepeatIntroTests(TestCase):
         self.assertEqual(r2.status_code, 200)
         out2 = (r2.json() or {}).get("output") or ""
 
-        self.assertIn("rpe", out2.lower())
-        self.assertNotIn("%", out2)  # no repetir porcentaje
-        self.assertNotIn("¿por qué", out2.lower())
-        self.assertNotIn("tu nivel de preparación", out2.lower())
+        self.assertIn("qué tan duro", out2.lower())
+        self.assertIn("al límite", out2.lower())
+        self.assertNotIn("en menos de 30 segundos", out2.lower())
+        self.assertNotIn("respóndeme solo esto", out2.lower())
 
         # Paso 3: set RPE 10
         r3 = self.client.post(
@@ -89,3 +90,4 @@ class ChatProgressionNoRepeatIntroTests(TestCase):
         self.assertEqual(r4.status_code, 200)
         out4 = (r4.json() or {}).get("output") or ""
         self.assertIn("próximo paso", out4.lower())
+        self.assertIn("ajuste recomendado", out4.lower())

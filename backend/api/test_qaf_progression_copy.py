@@ -17,9 +17,8 @@ class QAFProgressionCopyTests(SimpleTestCase):
         text = render_professional_summary(result)
 
         # Debe ser humano y sin claves internas
-        self.assertIn("avance con control", text.lower())
-        self.assertIn("55%", text)
-        self.assertIn("Micro‑objetivo de hoy", text)
+        self.assertIn("optimizar", text.lower())
+        self.assertIn("evolución de entrenamiento", text.lower())
         self.assertNotIn("minimum_viable", text)
         self.assertNotIn("rpe_1_10", text)
         self.assertNotIn("completion_pct", text)
@@ -31,19 +30,21 @@ class QAFProgressionCopyTests(SimpleTestCase):
         # Debe explicar lo que pide
         self.assertIn("¿hoy fue Fuerza o Cardio?".lower(), text.lower())
         # Secuencial: en este paso (falta modalidad) no debería pedir aún RPE ni %
-        self.assertNotIn("RPE", text)
+        self.assertNotIn("al límite", text.lower())
         self.assertNotIn("100%", text)
 
-    def test_summary_bucket_0_20_is_recovery_intelligent(self):
+    def test_summary_does_not_repeat_long_intro_when_show_intro_false(self):
         result = {
             "decision": "needs_confirmation",
-            "readiness": {"score": 20},
+            "readiness": {"score": 55},
+            "plateau": {"detected": False, "reason": ""},
             "decision_engine": {"action": "minimum_viable", "reason": "default_safe"},
-            "micro_goal": "Hoy: cumplir el mínimo viable y proteger la constancia.",
             "confidence": {"score": 0.5, "missing": ["modality"]},
+            "ui": {"show_intro": False},
         }
 
         text = render_professional_summary(result)
-        self.assertIn("recuperación inteligente", text.lower())
-        self.assertIn("20%", text)
+
+        # Con show_intro False, debe ser corto (solo pregunta), sin el bloque largo.
         self.assertIn("¿hoy fue fuerza o cardio?".lower(), text.lower())
+        self.assertNotIn("en menos de 30 segundos", text.lower())
