@@ -1943,6 +1943,83 @@ form.addEventListener('submit', async (e) => {
 
   if (!text && !limited.length) return;
 
+  // --- Editar último mensaje del usuario (real) ---
+  // Si hay target de edición y NO hay adjuntos, actualizamos el mensaje y regeneramos respuesta.
+  const editTargetId = (() => {
+    try { return String(input.dataset.editTargetId || '').trim(); } catch (e2) { return ''; }
+  })();
+  if (editTargetId && !limited.length) {
+    const target = document.getElementById(editTargetId);
+    if (target && _isEditableUserMessage(target)) {
+      // 1) Actualizar burbuja
+      try {
+        target.dataset.text = text;
+      } catch (ex) {
+        // ignore
+      }
+      const userTextEl = target.querySelector('.user-text');
+      if (userTextEl) userTextEl.textContent = text;
+
+      // 2) Recortar DOM: borrar todo lo que esté después (respuestas/botones previos)
+      try {
+        let node = target.nextSibling;
+        while (node) {
+          const next = node.nextSibling;
+          try { node.remove(); } catch (ex2) { /* ignore */ }
+          node = next;
+        }
+      } catch (ex) {
+        // ignore
+      }
+
+      // 3) Recortar historial persistido
+      try {
+        const targetTs = (target.dataset && target.dataset.ts) ? Number(target.dataset.ts) : NaN;
+        const idx = Number.isFinite(targetTs)
+          ? chatHistory.findIndex((m) => m && m.role === 'user' && Number(m.ts) === targetTs)
+          : -1;
+        if (idx >= 0) {
+          chatHistory[idx] = { ...chatHistory[idx], text };
+          chatHistory = chatHistory.slice(0, idx + 1);
+          persistHistory();
+        }
+      } catch (ex) {
+        // ignore
+      }
+
+      // 4) Limpiar estado de edición + reenviar
+      try {
+        delete input.dataset.editTargetId;
+        delete input.dataset.editTargetTs;
+      } catch (ex) {
+        // ignore
+      }
+
+      // Marcar como pendiente mientras procesamos
+      try {
+        target.classList.add('pending');
+      } catch (ex) {
+        // ignore
+      }
+
+      resetInput();
+      clearSelectedFiles();
+      closeToolsMenu();
+
+      // Regenerar respuesta para el mensaje corregido
+      await processMessage(text, null, editTargetId);
+      return;
+    } else {
+      // Si el target ya no es válido, limpiamos estado y seguimos como envío normal
+      try {
+        delete input.dataset.editTargetId;
+        delete input.dataset.editTargetTs;
+      } catch (ex) {
+        // ignore
+      }
+    }
+  }
+
   if (files.length > 4) {
     appendMessage('Puedo adjuntar **hasta 4** imágenes a la vez. Enviaré las primeras 4.', 'bot');
   }
@@ -2324,9 +2401,19 @@ localStorage.setItem(SESSION_DAY_KEY, todayKey());
 function appendMessage(text, className, opts = {}) {
 const div = document.createElement('div');
 div.className = `message ${className}`;
-if (opts.meta) {
+const isUser = className.includes('user');
+const hasAttachment = !!(opts.attachment && opts.attachment.file);
+// Guardar siempre el texto original del usuario para retry/editar (sin contaminar con botones).
+if (isUser) {
+  const raw = (opts.meta && typeof opts.meta.text === 'string') ? opts.meta.text : (text || '');
+  div.dataset.text = raw;
+  div.dataset.hasFile = (opts.meta && opts.meta.hasFile) || hasAttachment ? '1' : '0';
+} else if (opts.meta) {
   div.dataset.text = opts.meta.text || '';
   div.dataset.hasFile = opts.meta.hasFile ? '1' : '0';
+}
+if (opts.ts) {
+  try { div.dataset.ts = String(opts.ts); } catch (e) { /* ignore */ }
 }
 // Bot: mantener formato (subconjunto Markdown) sin depender de librerías externas.
 // User: texto plano, salvo cuando agregamos adjuntos (HTML controlado por nosotros).
@@ -2341,10 +2428,12 @@ if (className.includes('bot')) {
     const hasText = !!safeText.trim();
     div.innerHTML = `${hasText ? `<div class="user-text">${safeText}</div>` : ''}${attachmentHtml}`;
   } else {
-    div.textContent = text;
+    // Render consistente para poder editar sin romper botones/adjuntos.
+    div.innerHTML = `<div class="user-text">${safeText}</div>`;
   }
 }
-const id = 'msg-' + Date.now();
+const nowTs = Date.now();
+const id = 'msg-' + nowTs;
 div.id = id;
 messages.appendChild(div);
 
@@ -2368,11 +2457,13 @@ if (doScroll) messages.scrollTop = messages.scrollHeight;
 updateScrollControls();
 const persist = opts.persist !== false && !className.includes('loading');
 if (persist) {
-chatHistory.push({
-role: className.includes('user') ? 'user' : 'bot',
-text,
-ts: Date.now()
-});
+  const recordTs = (opts.ts && Number.isFinite(Number(opts.ts))) ? Number(opts.ts) : nowTs;
+  try { div.dataset.ts = String(recordTs); } catch (e) { /* ignore */ }
+  chatHistory.push({
+    role: className.includes('user') ? 'user' : 'bot',
+    text,
+    ts: recordTs
+  });
 persistHistory();
 }
 
@@ -2388,7 +2479,7 @@ function _getUserMessagePlainText(el) {
   if (fromData && fromData.trim()) return fromData;
   const userText = el.querySelector && el.querySelector('.user-text');
   if (userText && typeof userText.textContent === 'string') return userText.textContent;
-  return typeof el.textContent === 'string' ? el.textContent : '';
+  return '';
 }
 
 function _isEditableUserMessage(el) {
@@ -2435,6 +2526,12 @@ function updateLastUserEditButton() {
       const txt = _getUserMessagePlainText(target);
       if (!txt || !txt.trim()) return;
       input.value = txt;
+      try {
+        input.dataset.editTargetId = String(target.id || '');
+        input.dataset.editTargetTs = String((target.dataset && target.dataset.ts) ? target.dataset.ts : '');
+      } catch (e) {
+        // ignore
+      }
       try {
         input.focus({ preventScroll: true });
       } catch (e) {
