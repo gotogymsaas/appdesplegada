@@ -254,16 +254,44 @@ def render_professional_summary(result: dict[str, Any]) -> str:
     d = result.get('decision_engine') if isinstance(result.get('decision_engine'), dict) else {}
     conf = result.get('confidence') if isinstance(result.get('confidence'), dict) else {}
     lines: list[str] = []
-    if result.get('decision') == 'needs_confirmation':
-        lines.append('Para ajustar tu evolución de entrenamiento con precisión, necesito 2–3 datos rápidos.')
-    if r.get('score') is not None:
-        lines.append(f"Readiness: {r.get('score')}/100")
+
+    # 1) Contexto breve y humano
+    score = None
+    try:
+        score = int(r.get('score')) if r.get('score') is not None else None
+    except Exception:
+        score = None
+    if score is not None:
+        if score >= 70:
+            band = 'alto'
+        elif score >= 50:
+            band = 'normal'
+        else:
+            band = 'bajo'
+        lines.append(f"Tu estado para entrenar hoy: {score}/100 ({band}).")
+
+    # 2) Señal de plateau, si aplica
     if p.get('detected') is True:
-        lines.append('Plateau: detectado (no es falta de disciplina; es señal de fatiga/estímulo).')
-    if d.get('action'):
-        lines.append(f"Acción: {d.get('action')}")
-    if result.get('micro_goal'):
-        lines.append(f"Micro-objetivo: {result.get('micro_goal')}")
-    if conf.get('missing'):
-        lines.append('Faltan: ' + ', '.join([str(x) for x in conf.get('missing')]))
-    return "\n".join(lines).strip()
+        lines.append("Veo señales de estancamiento. No es falta de disciplina: suele ser fatiga o estímulo repetido.")
+
+    # 3) Micro-objetivo (sin exponer acciones internas)
+    micro = str(result.get('micro_goal') or '').strip()
+    if micro:
+        lines.append(f"Micro‑objetivo de hoy: {micro}")
+
+    # 4) Si faltan datos, pedirlos claro (máximo 3)
+    missing = conf.get('missing') if isinstance(conf.get('missing'), list) else []
+    missing = [str(x).strip() for x in missing if str(x).strip()]
+    if result.get('decision') == 'needs_confirmation' and missing:
+        lines.append("Para ajustarlo bien y no pasarnos, dime esto (2–3 toques):")
+
+        if 'modality' in missing:
+            lines.append("1) ¿Hoy fue Fuerza o Cardio?")
+
+        if 'rpe_1_10' in missing:
+            lines.append("2) ¿Qué tan duro se sintió? (RPE 1=suave, 10=al límite)")
+
+        if 'completion_pct' in missing:
+            lines.append("3) ¿Cuánto del plan lograste hoy? (100%, 80%, 60% o 40%)")
+
+    return "\n".join([x for x in lines if str(x).strip()]).strip()
