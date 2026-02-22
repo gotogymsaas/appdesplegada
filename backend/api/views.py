@@ -5994,10 +5994,73 @@ def chat_n8n(request):
         if (attachment_text or "").strip() and not _is_attachment_text_placeholder(attachment_text):
             attachment_url_for_n8n = ""
 
+        # Motor de cognición (QAF): decisión determinista para que n8n/LLM solo narre.
+        # No cambia UX: solo enriquece payload y, en modo quantum o baja claridad, añade un resumen corto.
+        qaf_cognition = None
+        qaf_cognition_summary = ""
+        try:
+            if user is not None:
+                from .qaf_cognition.engine import evaluate_cognition
+
+                week_id_now = _week_id()
+                user_profile = {
+                    'goal_type': getattr(user, 'goal_type', None),
+                    'activity_level': getattr(user, 'activity_level', None),
+                }
+
+                observations = {}
+                try:
+                    if isinstance(request.data, dict) and isinstance(request.data.get('qaf_context'), dict):
+                        observations = dict(request.data.get('qaf_context') or {})
+                except Exception:
+                    observations = {}
+                if isinstance(vision_parsed, dict):
+                    observations.setdefault('vision', vision_parsed)
+
+                qaf_cognition = evaluate_cognition(
+                    user_profile=user_profile,
+                    coach_state=getattr(user, 'coach_state', {}) or {},
+                    coach_weekly_state=getattr(user, 'coach_weekly_state', {}) or {},
+                    observations=observations,
+                    message=message,
+                    week_id=week_id_now,
+                    locale='es-CO',
+                )
+
+                if isinstance(qaf_cognition, dict):
+                    dec = qaf_cognition.get('decision') if isinstance(qaf_cognition.get('decision'), dict) else {}
+                    mode = str(dec.get('mode') or '').strip().lower()
+                    dtyp = str(dec.get('type') or '').strip().lower()
+                    if mode in ('quantum',) or dtyp in ('ask_clarifying', 'needs_confirmation'):
+                        actions = dec.get('next_3_actions') if isinstance(dec.get('next_3_actions'), list) else []
+                        titles = [str(a.get('title') or '').strip() for a in actions if isinstance(a, dict) and a.get('title')]
+                        titles = [t for t in titles if t][:3]
+                        follow = dec.get('follow_up_questions') if isinstance(dec.get('follow_up_questions'), list) else []
+                        prompts = [str(q.get('prompt') or '').strip() for q in follow if isinstance(q, dict) and q.get('prompt')]
+                        prompts = [p for p in prompts if p][:2]
+
+                        lines = []
+                        if mode:
+                            lines.append(f"modo: {mode}")
+                        if titles:
+                            lines.append("acciones_3: " + " | ".join(titles))
+                        if prompts:
+                            lines.append("pregunta: " + " | ".join(prompts))
+                        qaf_cognition_summary = "\n".join(lines).strip()
+
+                        if qaf_cognition_summary:
+                            attachment_text = ((attachment_text or '').strip() + "\n\n" if (attachment_text or '').strip() else "") + (
+                                "[QAF / COGNICIÓN]\n" + qaf_cognition_summary
+                            )
+        except Exception:
+            qaf_cognition = None
+            qaf_cognition_summary = ""
+
         payload = {
             "chatInput": final_input,
             "system_rules": {
                 "professional_focus": professional_rule,
+                "qaf_cognition_summary": qaf_cognition_summary,
             },
             "message": message,
             "sessionId": session_id,
@@ -6007,6 +6070,7 @@ def chat_n8n(request):
             "attachment_text": attachment_text,
             "attachment_text_diagnostic": attachment_text_diagnostic,
             "qaf": qaf_result,
+            "qaf_cognition": qaf_cognition,
             "qaf_context": {"vision": vision_parsed} if isinstance(vision_parsed, dict) else None,
             "qaf_metabolic": metabolic_result,
             "qaf_meal_plan": meal_plan_result,
