@@ -4990,6 +4990,8 @@ def chat_n8n(request):
                 lr = request.data.get('lifestyle_request') if isinstance(request.data, dict) else None
                 habit_done = request.data.get('lifestyle_habit_done') if isinstance(request.data, dict) else None
 
+                lifestyle_habit_only = False
+
                 want_lifestyle = False
                 lifestyle_activation_mode = None  # payload | explicit | heuristic
                 if isinstance(lr, dict) or isinstance(habit_done, dict):
@@ -5050,6 +5052,7 @@ def chat_n8n(request):
                     if isinstance(habit_done, dict):
                         hid = str(habit_done.get('id') or '').strip()
                         if hid:
+                            lifestyle_habit_only = True
                             cs = getattr(user, 'coach_state', {}) or {}
                             cs2 = dict(cs)
                             done = cs2.get('lifestyle_done') if isinstance(cs2.get('lifestyle_done'), dict) else {}
@@ -5072,6 +5075,11 @@ def chat_n8n(request):
                 if want_lifestyle:
                     from datetime import timedelta
                     from .qaf_lifestyle.engine import evaluate_lifestyle, render_professional_summary
+
+                    # UX: si el usuario solo está marcando un micro-hábito como hecho,
+                    # no repetir el análisis completo en el chat.
+                    if lifestyle_habit_only and (not isinstance(lr, dict)):
+                        return Response({'output': '✅ Listo. Registré ese micro-hábito para hoy.'}, status=200)
 
                     days_i = 14
                     if isinstance(lr, dict) and lr.get('days') is not None:

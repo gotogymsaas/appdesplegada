@@ -98,3 +98,23 @@ class ChatLifestyleActivationTests(TestCase):
         self.assertEqual(r4.status_code, 200)
         out4 = (r4.json() or {}).get("output") or ""
         self.assertIn("Estado de hoy", out4)
+
+    @patch("api.views.requests.post", return_value=_DummyN8nResp())
+    @override_settings(SECURE_SSL_REDIRECT=False)
+    def test_lifestyle_mark_habit_done_does_not_repeat_full_summary(self, _mock_post):
+        resp = self.client.post(
+            "/api/chat/",
+            {
+                "message": "✅ micro",
+                "sessionId": "",
+                "attachment": "",
+                "attachment_text": "",
+                "username": "juan",
+                "lifestyle_habit_done": {"id": "mobility_3"},
+            },
+            format="json",
+        )
+        self.assertEqual(resp.status_code, 200)
+        out = (resp.json() or {}).get("output") or ""
+        self.assertIn("Registré", out)
+        self.assertNotIn("DHSS:", out)
