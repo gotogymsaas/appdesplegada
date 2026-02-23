@@ -4781,6 +4781,116 @@ def chat_n8n(request):
                     res = evaluate_posture_proportion({'poses': poses, 'baseline': baseline}).payload
                     text = render_professional_summary(res)
 
+                    # Post-proceso (lujo): delegar explicación al Quantum Coach (n8n) usando el resultado QAF.
+                    # Guardrails: no pedir nuevas fotos/datos, solo texto plano, sin HTML/iframe.
+                    try:
+                        qc_text = ""
+                        if isinstance(res, dict) and str(res.get('decision') or '').strip().lower() == 'accepted':
+                            vars_ = res.get('variables') if isinstance(res.get('variables'), dict) else {}
+                            patterns = res.get('patterns') if isinstance(res.get('patterns'), list) else []
+                            imm = res.get('immediate_corrections') if isinstance(res.get('immediate_corrections'), list) else []
+                            weekly = res.get('weekly_adjustment') if isinstance(res.get('weekly_adjustment'), dict) else {}
+                            conf = res.get('confidence') if isinstance(res.get('confidence'), dict) else {}
+                            conf_pct = None
+                            try:
+                                if conf.get('score') is not None:
+                                    conf_pct = int(round(float(conf.get('score')) * 100.0))
+                            except Exception:
+                                conf_pct = None
+
+                            prompt = (
+                                "Eres Quantum Coach. Tu trabajo es convertir un reporte QAF técnico en una explicación clara, premium y útil para una persona sin conocimientos.\n"
+                                "IMPORTANTE: ya existe análisis; NO pidas más fotos ni más datos.\n"
+                                "No diagnóstico médico. No promesas. No centímetros.\n"
+                                "Responde SOLO en texto plano (sin HTML, sin <iframe>).\n\n"
+                                "Estructura obligatoria (en este orden):\n"
+                                "1) Título: Arquitectura Corporal\n"
+                                "2) Resumen de 2–3 líneas (qué significa y por qué importa)\n"
+                                "3) Lo que detecté (3 bullets máximo, sustentado en métricas)\n"
+                                "4) Qué hago hoy (4–6 bullets): micro-ajustes + 2 ejercicios extra con series/reps/tiempo\n"
+                                "5) Plan semanal (3 sesiones): 4–6 bullets con foco y progresión simple\n"
+                                "6) Fit/ropa (2–3 bullets): cómo la postura afecta cómo cae ropa\n"
+                                "7) Seguimiento: cómo repetir fotos y qué cambio esperar\n\n"
+                                "Tono: lujo, claridad, cero jerga. Explica los porcentajes como ‘nivel de estabilidad/limpieza del eje’.\n\n"
+                                f"Confianza de captura: {conf_pct}%\n"
+                                f"Índices: {json.dumps({k: vars_.get(k) for k in ('postural_efficiency_score','posture_score','proportion_score','alignment_silhouette_index')}, ensure_ascii=False)}\n"
+                                f"Señales: {json.dumps({'pose_line': vars_.get('pose_line'), 'symmetry_monitor': vars_.get('symmetry_monitor')}, ensure_ascii=False)}\n"
+                                f"Patrones: {patterns}\n"
+                                f"Micro-ajustes (motor): {imm}\n"
+                                f"Ajuste semanal (motor): {weekly}\n"
+                            )
+
+                            n8n_payload = {
+                                'chatInput': prompt,
+                                'message': prompt,
+                                'sessionId': session_id,
+                                'username': (getattr(user, 'username', '') or ''),
+                                'auth_header': auth_header,
+                                'attachment': '',
+                                'attachment_text': '',
+                                'qaf': {'type': 'exp-013_body_architecture_explainer', 'result': res},
+                                'system_rules': {
+                                    'module': 'exp-013_body_architecture_explainer',
+                                    'no_new_buttons': True,
+                                    'no_medical': True,
+                                },
+                            }
+                            resp = requests.post(n8n_url, json=n8n_payload, timeout=45)
+                            if resp.status_code == 200:
+                                try:
+                                    data = resp.json()
+                                except Exception:
+                                    data = {'output': resp.text}
+                                if isinstance(data, dict) and isinstance(data.get('output'), str):
+                                    qc_text = (data.get('output') or '').strip()
+                                elif isinstance(data, str):
+                                    qc_text = data.strip()
+
+                        # Si viene HTML/iframe, extraer texto de srcdoc y limpiar tags.
+                        try:
+                            raw_out = str(qc_text or '').strip()
+                            if raw_out.lower().startswith('<iframe'):
+                                try:
+                                    import html as _html
+                                    m = re.search(r"\bsrcdoc=(\"|')(.*?)(\1)", raw_out, flags=re.IGNORECASE | re.DOTALL)
+                                    if m:
+                                        srcdoc = _html.unescape(m.group(2))
+                                        srcdoc = re.sub(r"<\s*br\s*/?>", "\n", srcdoc, flags=re.IGNORECASE)
+                                        srcdoc = re.sub(r"<[^>]+>", "", srcdoc)
+                                        qc_text = (srcdoc or '').strip()
+                                except Exception:
+                                    pass
+                        except Exception:
+                            pass
+
+                        # Guardrail: si n8n intenta pedir foto/datos, se descarta.
+                        try:
+                            low_out = str(qc_text or '').lower()
+                            if re.search(r"\b(env[ií]a|enviame|enviarme|adjunta|adjuntar)\b.*\bfoto\b", low_out):
+                                qc_text = ""
+                            if re.search(r"\bnecesito\b.*\b(foto|imagen)\b", low_out):
+                                qc_text = ""
+                            if '<iframe' in low_out:
+                                qc_text = ""
+                        except Exception:
+                            pass
+
+                        # Evitar coletilla de pregunta final
+                        try:
+                            lines2 = [ln.rstrip() for ln in str(qc_text or '').splitlines()]
+                            while lines2 and not lines2[-1].strip():
+                                lines2.pop()
+                            if lines2 and ('¿' in lines2[-1] or lines2[-1].strip().endswith('?')):
+                                lines2.pop()
+                            qc_text = "\n".join(lines2).strip()
+                        except Exception:
+                            pass
+
+                        if qc_text.strip():
+                            text = qc_text
+                    except Exception:
+                        pass
+
                     # Persistir por semana
                     try:
                         ws2 = dict(weekly_state)
