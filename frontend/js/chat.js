@@ -2086,6 +2086,28 @@ if (fileInput) {
   fileInput.addEventListener('change', () => {
     const files = getSelectedFiles();
     const file = files[0] || null;
+
+    // Guardrail: si el flujo muscular está activo, NO mandar imágenes al backend por el canal genérico.
+    // En vez de eso, asignar automáticamente cada foto al siguiente ángulo faltante.
+    if (files && files.length && muscleFlow && muscleFlow.active && !muscleFlow.captureTarget) {
+      const ordered = ['front_relaxed', 'side_right_relaxed', 'back_relaxed', 'front_flex'];
+      const poses = (muscleFlow.poses && typeof muscleFlow.poses === 'object') ? muscleFlow.poses : {};
+      const missing = ordered.filter((v) => !(poses[v] && Array.isArray(poses[v].keypoints) && poses[v].keypoints.length));
+
+      setAttachmentPreview(null);
+      clearSelectedFiles();
+
+      (async () => {
+        for (let i = 0; i < Math.min(files.length, 4); i++) {
+          const f = files[i];
+          const view = missing[i] || missing[missing.length - 1] || 'front_relaxed';
+          // eslint-disable-next-line no-await-in-loop
+          await handleMuscleCapture(f, view);
+        }
+      })();
+      return;
+    }
+
     if (file && ppFlow.active && ppFlow.captureTarget) {
       const view = ppFlow.captureTarget;
       setAttachmentPreview(null);
@@ -2130,6 +2152,27 @@ if (cameraInput) {
   cameraInput.addEventListener('change', () => {
     const files = getSelectedFiles();
     const file = files[0] || null;
+
+    // Guardrail: igual que attach, si muscleFlow está activo, procesar localmente.
+    if (files && files.length && muscleFlow && muscleFlow.active && !muscleFlow.captureTarget) {
+      const ordered = ['front_relaxed', 'side_right_relaxed', 'back_relaxed', 'front_flex'];
+      const poses = (muscleFlow.poses && typeof muscleFlow.poses === 'object') ? muscleFlow.poses : {};
+      const missing = ordered.filter((v) => !(poses[v] && Array.isArray(poses[v].keypoints) && poses[v].keypoints.length));
+
+      setAttachmentPreview(null);
+      clearSelectedFiles();
+
+      (async () => {
+        for (let i = 0; i < Math.min(files.length, 4); i++) {
+          const f = files[i];
+          const view = missing[i] || missing[missing.length - 1] || 'front_relaxed';
+          // eslint-disable-next-line no-await-in-loop
+          await handleMuscleCapture(f, view);
+        }
+      })();
+      return;
+    }
+
     if (file && ppFlow.active && ppFlow.captureTarget) {
       const view = ppFlow.captureTarget;
       setAttachmentPreview(null);
