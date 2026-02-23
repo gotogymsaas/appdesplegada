@@ -3824,6 +3824,232 @@ def chat_n8n(request):
         elif not session_id or session_id == 'invitado':
             session_id = f"guest_{uuid.uuid4().hex}"
 
+        # =========================
+        # FAST-PATH (determinista): Exp-011 Vitalidad de la Piel
+        # Evita que n8n/LLM responda primero y se pierdan los scores.
+        # =========================
+        try:
+            msg_low = str(message or '').strip().lower()
+            cs = getattr(user, 'coach_state', {}) or {} if user else {}
+
+            def _skin_mode_active() -> bool:
+                try:
+                    if str(cs.get('health_mode') or '').strip().lower() != 'skin':
+                        return False
+                    until_raw = str(cs.get('health_mode_until') or '').strip()
+                    if not until_raw:
+                        return True
+                    until_dt = datetime.fromisoformat(until_raw)
+                    if until_dt.tzinfo is None:
+                        until_dt = until_dt.replace(tzinfo=timezone.get_current_timezone())
+                    return timezone.now() <= until_dt
+                except Exception:
+                    return bool(str(cs.get('health_mode') or '').strip().lower() == 'skin')
+
+            want_skin = False
+            try:
+                if (('vitalidad' in msg_low) and ('piel' in msg_low or 'peil' in msg_low)):
+                    want_skin = True
+                if 'skin health' in msg_low or 'skincare' in msg_low:
+                    want_skin = True
+                if re.fullmatch(r"belleza\s*/\s*piel|belleza\s+piel", msg_low or ""):
+                    want_skin = True
+            except Exception:
+                want_skin = False
+
+            mode_active = _skin_mode_active()
+
+            # Cancelar (server-side)
+            try:
+                if user and isinstance(request.data, dict) and request.data.get('skin_cancel') is True:
+                    cs2 = dict(cs)
+                    cs2['health_mode'] = ''
+                    cs2['health_mode_until'] = ''
+                    cs2.pop('skin_pending_attachment', None)
+                    user.coach_state = cs2
+                    user.coach_state_updated_at = timezone.now()
+                    user.save(update_fields=['coach_state', 'coach_state_updated_at'])
+                    return Response({'output': '[VITALIDAD DE LA PIEL]\nListo. Cerré el proceso.', 'skin_flow_stage': 'completed'})
+            except Exception:
+                pass
+
+            # Si el usuario está en el modo (o lo pidió) y NO hay foto aún, devolver CTAs siempre.
+            if user and (want_skin or mode_active) and not attachment_url:
+                # Activar modo si venía por intención
+                if want_skin and not mode_active:
+                    try:
+                        cs2 = dict(cs)
+                        cs2['health_mode'] = 'skin'
+                        cs2['health_mode_until'] = (timezone.now() + timedelta(minutes=15)).isoformat()
+                        user.coach_state = cs2
+                        user.coach_state_updated_at = timezone.now()
+                        user.save(update_fields=['coach_state', 'coach_state_updated_at'])
+                        cs = cs2
+                        mode_active = True
+                    except Exception:
+                        pass
+
+                out = (
+                    "[VITALIDAD DE LA PIEL]\n"
+                    "**✅ Empecemos**\n"
+                    "Con 1 foto puedo darte una lectura visual con métricas + acciones simples (sin diagnósticos).\n\n"
+                    "**📷 Para que mida bien:** luz natural, sin filtros, sin contraluz, rostro centrado."
+                )
+                return Response(
+                    {
+                        'output': out,
+                        'skin_flow_stage': 'need_photo',
+                        'quick_actions': [
+                            {'label': 'Tomar foto', 'type': 'open_camera'},
+                            {'label': 'Adjuntar foto', 'type': 'open_attach'},
+                            {'label': 'Cancelar', 'type': 'skin_cancel'},
+                        ],
+                    }
+                )
+
+            # Si hay foto y el usuario está en el modo (o lo pidió), analizar ya.
+            if user and attachment_url and (want_skin or mode_active):
+                # Asegurar modo activo
+                if want_skin and not mode_active:
+                    try:
+                        cs2 = dict(cs)
+                        cs2['health_mode'] = 'skin'
+                        cs2['health_mode_until'] = (timezone.now() + timedelta(minutes=15)).isoformat()
+                        user.coach_state = cs2
+                        user.coach_state_updated_at = timezone.now()
+                        user.save(update_fields=['coach_state', 'coach_state_updated_at'])
+                        cs = cs2
+                        mode_active = True
+                    except Exception:
+                        pass
+
+                # Descargar bytes solo si es attachment del usuario.
+                image_bytes = None
+                image_content_type = None
+                try:
+                    container_name, blob_name = _extract_blob_ref_from_url(str(attachment_url))
+                    if container_name == _chat_attachment_container() and blob_name:
+                        safe_username = user.username.replace('/', '_')
+                        if blob_name.startswith(f"{safe_username}/"):
+                            max_bytes = int(os.getenv('CHAT_VISION_MAX_BYTES', str(4 * 1024 * 1024)) or (4 * 1024 * 1024))
+                            resp = requests.get(str(attachment_url), timeout=20)
+                            if resp.status_code == 200 and resp.content and len(resp.content) <= max_bytes:
+                                image_bytes = resp.content
+                                image_content_type = (resp.headers.get('Content-Type') or 'image/jpeg')
+                except Exception:
+                    image_bytes = None
+
+                if not image_bytes:
+                    return Response(
+                        {
+                            'output': '[VITALIDAD DE LA PIEL]\nNo pude usar la foto (permiso/tamaño). Intenta adjuntarla de nuevo.',
+                            'skin_flow_stage': 'need_photo',
+                            'quick_actions': [
+                                {'label': 'Tomar foto', 'type': 'open_camera'},
+                                {'label': 'Adjuntar foto', 'type': 'open_attach'},
+                                {'label': 'Cancelar', 'type': 'skin_cancel'},
+                            ],
+                        }
+                    )
+
+                # Contexto (lifestyle + auto-report)
+                ctx = {}
+                try:
+                    lifestyle_last = (cs.get('lifestyle_last') or {}).get('result') if isinstance(cs.get('lifestyle_last'), dict) else None
+                    if isinstance(lifestyle_last, dict):
+                        sig = lifestyle_last.get('signals') if isinstance(lifestyle_last.get('signals'), dict) else {}
+                        ctx['sleep_minutes'] = (sig.get('sleep') or {}).get('value')
+                        ctx['steps'] = (sig.get('steps') or {}).get('value')
+                        try:
+                            stress_score01 = (sig.get('stress_inv') or {}).get('score01')
+                            if stress_score01 is not None:
+                                s = float(stress_score01)
+                                s = max(0.0, min(1.0, s))
+                                ctx['stress_1_5'] = round((1.0 - s) * 4.0 + 1.0, 1)
+                        except Exception:
+                            pass
+                except Exception:
+                    ctx = {}
+                try:
+                    sc = cs.get('skin_context') if isinstance(cs.get('skin_context'), dict) else {}
+                    if isinstance(sc, dict):
+                        for k in ('water_liters', 'stress_1_5', 'movement_1_5', 'sun_minutes', 'steps'):
+                            if sc.get(k) is not None:
+                                ctx[k] = sc.get(k)
+                except Exception:
+                    pass
+
+                # Baseline semanal
+                week_id_now = _week_id()
+                weekly_state = getattr(user, 'coach_weekly_state', {}) or {}
+                baseline = None
+                try:
+                    sh = weekly_state.get('skin_health') if isinstance(weekly_state.get('skin_health'), dict) else {}
+                    prev_keys = [k for k in sh.keys() if isinstance(k, str) and k != week_id_now]
+                    if prev_keys:
+                        prev_key = sorted(prev_keys)[-1]
+                        prev_row = sh.get(prev_key)
+                        if isinstance(prev_row, dict) and isinstance(prev_row.get('result'), dict):
+                            baseline = prev_row.get('result')
+                except Exception:
+                    baseline = None
+
+                from .qaf_skin_health.engine import evaluate_skin_health, render_professional_summary
+                res = evaluate_skin_health(image_bytes=image_bytes, content_type=image_content_type, context=ctx, baseline=baseline).payload
+                try:
+                    if isinstance(res, dict):
+                        res = dict(res)
+                        res['user_display_name'] = (getattr(user, 'full_name', None) or getattr(user, 'username', '') or '').strip()
+                except Exception:
+                    pass
+                text = render_professional_summary(res)
+
+                # Persistir semanal
+                try:
+                    ws2 = dict(weekly_state)
+                    sh = ws2.get('skin_health') if isinstance(ws2.get('skin_health'), dict) else {}
+                    sh2 = dict(sh)
+                    sh2[week_id_now] = {'result': res, 'updated_at': timezone.now().isoformat(), 'week_id': week_id_now}
+                    ws2['skin_health'] = sh2
+                    user.coach_weekly_state = ws2
+                    user.coach_weekly_updated_at = timezone.now()
+                    user.save(update_fields=['coach_weekly_state', 'coach_weekly_updated_at'])
+                except Exception:
+                    pass
+
+                # Guardar último para CTA de hábitos
+                try:
+                    cs2 = dict(cs)
+                    cs2['skin_last_result'] = {'result': res, 'updated_at': timezone.now().isoformat()}
+                    user.coach_state = cs2
+                    user.coach_state_updated_at = timezone.now()
+                    user.save(update_fields=['coach_state', 'coach_state_updated_at'])
+                except Exception:
+                    pass
+
+                # CTA post-análisis
+                qas = []
+                try:
+                    if isinstance(res, dict) and str(res.get('decision') or '').strip().lower() != 'accepted':
+                        qas = [
+                            {'label': 'Tomar foto', 'type': 'open_camera'},
+                            {'label': 'Adjuntar foto', 'type': 'open_attach'},
+                            {'label': 'Cancelar', 'type': 'skin_cancel'},
+                        ]
+                    else:
+                        qas = [
+                            {'label': '✅ Aceptar (ver hábitos)', 'type': 'message', 'text': 'Ver hábitos', 'payload': {'skin_habits_request': True}},
+                            {'label': 'Cancelar', 'type': 'skin_cancel'},
+                        ]
+                except Exception:
+                    qas = [
+                        {'label': 'Cancelar', 'type': 'skin_cancel'},
+                    ]
+
+                return Response({'output': text or 'Vitalidad de la Piel listo.', 'qaf_skin_health': res, 'quick_actions': qas, 'skin_flow_stage': 'analysis_done'})
+        except Exception as ex:
+            print(f"Vitalidad fast-path warning: {ex}")
+
         # Sync por evento (contextual): si el usuario expresa fatiga/estrés, encolar una sync rápida.
         try:
             if user and message:
