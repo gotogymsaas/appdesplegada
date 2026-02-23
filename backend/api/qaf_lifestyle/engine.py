@@ -356,27 +356,104 @@ def render_professional_summary(result: dict[str, Any]) -> str:
         return ""
     dhss = result.get("dhss") if isinstance(result.get("dhss"), dict) else {}
     conf = result.get("confidence") if isinstance(result.get("confidence"), dict) else {}
+    sig = result.get("signals") if isinstance(result.get("signals"), dict) else {}
     patterns = result.get("patterns") if isinstance(result.get("patterns"), list) else []
     micro = result.get("microhabits") if isinstance(result.get("microhabits"), list) else []
 
     lines: list[str] = []
-    lines.append(f"decision: {result.get('decision')}")
-    if dhss.get("score") is not None:
-        lines.append(f"DHSS: {dhss.get('score')} ({dhss.get('band')})")
-    if conf.get("score") is not None:
+
+    lines.append("Estado de hoy — Lifestyle Intelligence")
+
+    # DHSS
+    band = str(dhss.get('band') or '').strip()
+    score = dhss.get('score')
+    if score is not None:
         try:
-            lines.append(f"confidence: {round(float(conf.get('score')), 3)}")
+            score_i = int(score)
+        except Exception:
+            score_i = None
+        if score_i is not None:
+            label = (
+                "Recuperación" if band == 'recovery' else
+                "Fatiga" if band == 'fatigue' else
+                "Capacidad moderada" if band == 'moderate' else
+                "Alta capacidad" if band == 'high_capacity' else
+                "Estado" 
+            )
+            lines.append(f"DHSS: {score_i}/100 — {label}")
+            lines.append("(DHSS = qué tan listo estás hoy para exigir tu cuerpo sin quemarte)")
+
+    # Confianza
+    if conf.get('score') is not None:
+        try:
+            pct = round(float(conf.get('score')) * 100.0, 0)
+            lines.append(f"Confianza del dato: {pct:.0f}%")
         except Exception:
             pass
+
+    # Lectura rápida de señales (si hay valores)
+    def _v(path: str):
+        cur = sig
+        for part in path.split('.'):
+            if not isinstance(cur, dict):
+                return None
+            cur = cur.get(part)
+        return cur
+
+    sleep_min = _v('sleep.value')
+    steps = _v('steps.value')
+    rhr = _v('stress_inv.value')
+
+    quick: list[str] = []
+    try:
+        if sleep_min is not None:
+            quick.append(f"Sueño: {int(round(float(sleep_min) / 60.0))}h")
+    except Exception:
+        pass
+    try:
+        if steps is not None:
+            quick.append(f"Pasos: {int(round(float(steps)))}")
+    except Exception:
+        pass
+    try:
+        if rhr is not None:
+            quick.append(f"FC reposo: {int(round(float(rhr)))} bpm")
+    except Exception:
+        pass
+    if quick:
+        lines.append("\n📌 Lo que veo hoy")
+        lines.append("• " + " · ".join(quick[:3]))
+
+    # Patrones (máx 2)
     if patterns:
-        msg = []
+        msgs = []
         for p in patterns[:2]:
-            if isinstance(p, dict) and p.get("message"):
-                msg.append(str(p.get("message")))
-        if msg:
-            lines.append("patrones: " + " | ".join(msg))
+            if isinstance(p, dict) and p.get('message'):
+                msgs.append(str(p.get('message')))
+        if msgs:
+            lines.append("\n🔎 Patrones")
+            for m in msgs:
+                lines.append(f"• {m}")
+
+    # Recomendación de entrenamiento hoy (determinista por banda)
+    lines.append("\n🎯 Recomendación de entrenamiento (hoy)")
+    if band in ('recovery', 'fatigue'):
+        lines.append("Hoy gana la consistencia, no la intensidad: haz una sesión suave para bajar estrés y cuidar recuperación.")
+        lines.append("Opciones: caminata 20–30 min o movilidad/estiramiento 8–12 min.")
+    elif band == 'moderate':
+        lines.append("Puedes entrenar, pero sin ir al límite: intensidad moderada y técnica perfecta.")
+        lines.append("Opciones: fuerza moderada (RPE 6–7) o cardio zona 2 25–40 min.")
+    else:
+        lines.append("Buen día para progresar: puedes empujar un poco más si tu técnica y energía se sienten estables.")
+        lines.append("Opciones: fuerza con progresión o intervalos cortos si estás acostumbrado.")
+
+    # Micro-hábitos
     if micro:
-        names = [str(x.get("label")) for x in micro if isinstance(x, dict) and x.get("label")]
+        names = [str(x.get('label')) for x in micro if isinstance(x, dict) and x.get('label')]
         if names:
-            lines.append("micro-hábitos: " + "; ".join(names[:3]))
+            lines.append("\n✅ Micro-hábitos (elige 1–3)")
+            for n in names[:3]:
+                lines.append(f"• {n}")
+
+    lines.append("\nSi quieres, dime qué vas a hacer hoy (fuerza, cardio o descanso) y te lo dejo en una rutina de 10–30 min lista para ejecutar.")
     return "\n".join(lines).strip()

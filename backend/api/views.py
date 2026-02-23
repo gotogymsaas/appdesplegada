@@ -4995,8 +4995,23 @@ def chat_n8n(request):
                     want_lifestyle = True
                 else:
                     msg_low = str(message or '').lower()
-                    if re.search(r"\b(estado\s+de\s+hoy|como\s+voy\s+hoy|mi\s+energia\s+hoy|dhss|lifestyle)\b", msg_low):
+                    # Activación explícita
+                    if re.search(r"\b(estado\s+de\s+hoy|como\s+voy\s+hoy|mi\s+energ[ií]a\s+hoy|dhss|lifestyle)\b", msg_low):
                         want_lifestyle = True
+
+                    # Activación intuitiva por auto-reporte + intención (entrenar hoy / sin quemarme)
+                    if not want_lifestyle:
+                        has_sleep = bool(re.search(r"\b(dorm[ií]|sueñ[oa]|sleep)\b", msg_low))
+                        has_stress = bool(re.search(r"\b(estr[eé]s|estres|ansios|ansiedad|agotad|cansad|fatig)\b", msg_low))
+                        has_move = bool(re.search(r"\b(camin[eé]|caminar|pasos|steps|movim)\b", msg_low))
+                        wants_training = bool(re.search(r"\b(entren|training|rutina|workout)\b", msg_low))
+                        todayish = bool(re.search(r"\b(hoy|ahora)\b", msg_low))
+                        burnout = bool(re.search(r"\b(quemarme|burn\s*out|sin\s+quemarme|sin\s+agotarme|sin\s+reventarme)\b", msg_low))
+
+                        # Heurística: si el usuario expresa 2+ señales (sueño/estrés/movimiento) y pregunta por entreno hoy.
+                        signals = int(has_sleep) + int(has_stress) + int(has_move)
+                        if (signals >= 2) and (wants_training or burnout) and todayish:
+                            want_lifestyle = True
 
                 # Registrar hábito como hecho (sin UI nueva)
                 try:
@@ -5019,6 +5034,8 @@ def chat_n8n(request):
                             user.save(update_fields=['coach_state', 'coach_state_updated_at'])
                 except Exception:
                     pass
+
+                lifestyle_requested = bool(want_lifestyle)
 
                 if want_lifestyle:
                     from datetime import timedelta
@@ -6431,7 +6448,9 @@ def chat_n8n(request):
                         data.setdefault('qaf_lifestyle', lifestyle_result)
 
                     out_text = data.get('output')
-                    if isinstance(out_text, str) and lifestyle_text_for_output_override:
+                    if lifestyle_requested and lifestyle_text_for_output_override:
+                        data['output'] = lifestyle_text_for_output_override
+                    elif isinstance(out_text, str) and lifestyle_text_for_output_override:
                         low = out_text.lower()
                         has_state = ('estado de hoy' in low) or ('dhss' in low) or ('micro' in low)
                         if (not out_text.strip()) or ('problema tecnico' in low) or ('problema técnico' in low):
