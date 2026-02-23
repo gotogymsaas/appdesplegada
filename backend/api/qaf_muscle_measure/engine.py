@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import date
 from typing import Any
+import math
 
 
 @dataclass(frozen=True)
@@ -45,6 +46,39 @@ def _dist(a: tuple[float, float], b: tuple[float, float]) -> float:
     dx = float(a[0]) - float(b[0])
     dy = float(a[1]) - float(b[1])
     return float((dx * dx + dy * dy) ** 0.5)
+
+
+def _angle(a: tuple[float, float], b: tuple[float, float], c: tuple[float, float]) -> float | None:
+    """Ángulo ABC en grados."""
+    try:
+        bax = float(a[0]) - float(b[0])
+        bay = float(a[1]) - float(b[1])
+        bcx = float(c[0]) - float(b[0])
+        bcy = float(c[1]) - float(b[1])
+        ba = math.hypot(bax, bay)
+        bc = math.hypot(bcx, bcy)
+        if ba <= 1e-9 or bc <= 1e-9:
+            return None
+        dot = bax * bcx + bay * bcy
+        cosv = max(-1.0, min(1.0, float(dot) / float(ba * bc)))
+        return float(math.degrees(math.acos(cosv)))
+    except Exception:
+        return None
+
+
+def _get_xy(kp: dict[str, dict[str, float]], name: str) -> tuple[float, float] | None:
+    k = kp.get(name)
+    if not k:
+        return None
+    return (float(k["x"]), float(k["y"]))
+
+
+def _group_score_from_ratio(r: float | None, *, lo: float, hi: float) -> int:
+    if r is None:
+        return 0
+    if hi <= lo:
+        return 0
+    return int(round(_clamp((float(r) - float(lo)) / (float(hi) - float(lo)), 0.0, 1.0) * 100.0))
 
 
 def _mid(kp: dict[str, dict[str, float]], a: str, b: str) -> tuple[tuple[float, float] | None, float]:
@@ -95,6 +129,7 @@ def evaluate_muscle_measure(payload: dict[str, Any]) -> MuscleMeasureResult:
 
     poses = payload.get("poses") if isinstance(payload.get("poses"), dict) else {}
     baseline = payload.get("baseline") if isinstance(payload.get("baseline"), dict) else None
+    focus = str(payload.get("focus") or "").strip().lower() or None
 
     # Views soportadas (opcionales)
     allowed_views = ("front_relaxed", "side_right_relaxed", "back_relaxed", "front_flex")
@@ -151,6 +186,12 @@ def evaluate_muscle_measure(payload: dict[str, Any]) -> MuscleMeasureResult:
     upper_lower_score = None
     posture_score = None
     definition_score = None
+
+    # Proxies por grupo (0..100). Son *relativos* y dependen de encuadre/pose/luz.
+    arms_score = None
+    back_score = None
+    glutes_score = None
+    thigh_score = None
 
     insights: list[str] = []
     actions: list[str] = []
@@ -228,6 +269,31 @@ def evaluate_muscle_measure(payload: dict[str, Any]) -> MuscleMeasureResult:
                 insights.append(f"Tu silueta (proxy V-taper) está en {v_taper_score}/100. Si quieres mejorarlo: espalda alta + deltoides + control de cintura.")
                 actions.append("Añade 6–10 series semanales de espalda alta (remos/pull) y deltoides lateral.")
 
+            # Grupo: glúteos (proxy) usando cadera vs hombros (no es proyección real, solo relación visual).
+            try:
+                if shoulder_w > 1e-6 and hip_w > 1e-6:
+                    hip_over_sh = float(hip_w / shoulder_w)
+                    glutes_score = _group_score_from_ratio(hip_over_sh, lo=0.72, hi=0.98)
+            except Exception:
+                pass
+
+            # Grupo: piernas (proxy) usando longitud pierna vs torso (más estabilidad de medición que "volumen").
+            try:
+                if leg_len and leg_len > 1e-6:
+                    leg_over_torso = float(leg_len / max(1e-6, scale))
+                    thigh_score = _group_score_from_ratio(leg_over_torso, lo=1.55, hi=2.15)
+            except Exception:
+                pass
+
+            # Grupo: espalda (proxy) mezclando V-taper + postura.
+            try:
+                if v_taper_score is not None and posture_score is not None:
+                    back_score = int(round(_clamp((0.65 * (v_taper_score / 100.0) + 0.35 * (posture_score / 100.0)), 0.0, 1.0) * 100.0))
+                elif v_taper_score is not None:
+                    back_score = int(v_taper_score)
+            except Exception:
+                pass
+
     # 2) Side view: forward head / rounded shoulders (muy básico)
     if "side_right_relaxed" in views_in:
         kp = get_kp("side_right_relaxed")
@@ -248,6 +314,27 @@ def evaluate_muscle_measure(payload: dict[str, Any]) -> MuscleMeasureResult:
                 if forward_head >= 0.22:
                     insights.append("En perfil se sugiere cabeza adelantada. Un par de ajustes diarios mejoran mucho cómo te ves y cómo te sientes.")
                     actions.append("Haz 2×10 chin-tucks + estiramiento de pectoral 2 min/día.")
+
+    # 2.b) Brazos / bíceps (proxy) usando el ángulo de codo en "front_flex" si existe.
+    if "front_flex" in views_in:
+        kp = get_kp("front_flex")
+        # Un codo más flexionado (ángulo menor) sugiere mejor ejecución de la pose.
+        lsh = _get_xy(kp, "left_shoulder")
+        lel = _get_xy(kp, "left_elbow")
+        lwr = _get_xy(kp, "left_wrist")
+        rsh = _get_xy(kp, "right_shoulder")
+        rel = _get_xy(kp, "right_elbow")
+        rwr = _get_xy(kp, "right_wrist")
+        angles = []
+        for a, b, c in ((lsh, lel, lwr), (rsh, rel, rwr)):
+            if a and b and c:
+                ang = _angle(a, b, c)
+                if ang is not None:
+                    angles.append(float(ang))
+        if angles:
+            ang_avg = sum(angles) / max(1, len(angles))
+            # Heurística: 60° = buena flex, 150° = casi recto.
+            arms_score = int(round(_clamp((150.0 - ang_avg) / (150.0 - 60.0), 0.0, 1.0) * 100.0))
 
     # 3) Definición visual: MVP no fiable sin control de luz. Devolvemos score conservador basado en calidad.
     if quality_scores:
@@ -275,9 +362,36 @@ def evaluate_muscle_measure(payload: dict[str, Any]) -> MuscleMeasureResult:
     def _nz(v):
         return int(v) if v is not None else 0
 
+    # Progreso vs baseline (semana pasada) si existe.
+    vs_last_week = None
+    try:
+        if isinstance(baseline, dict):
+            bvars = baseline.get("variables") if isinstance(baseline.get("variables"), dict) else {}
+            deltas = {}
+            for key, cur in (
+                ("symmetry", symmetry_score),
+                ("v_taper", v_taper_score),
+                ("upper_lower_balance", upper_lower_score),
+                ("static_posture", posture_score),
+                ("definition", definition_score),
+                ("measurement_consistency", measurement_consistency),
+            ):
+                try:
+                    prev = int(bvars.get(key) or 0)
+                    cur_i = int(cur) if cur is not None else 0
+                    deltas[key] = {"prev": prev, "now": cur_i, "delta": int(cur_i - prev)}
+                except Exception:
+                    continue
+            if deltas:
+                vs_last_week = {"available": True, "deltas": deltas}
+    except Exception:
+        vs_last_week = None
+
     payload_out = {
         "decision": decision,
         "decision_reason": decision_reason,
+        "focus": focus,
+        "progress": {"vs_last_week": vs_last_week},
         "confidence": {
             "score": round(float(confidence), 4),
             "uncertainty_score": round(float(uncertainty), 4),
@@ -288,10 +402,10 @@ def evaluate_muscle_measure(payload: dict[str, Any]) -> MuscleMeasureResult:
             "symmetry": _nz(symmetry_score),
             "volume_by_group": {
                 "shoulders": _nz(v_taper_score),
-                "back": 0,
-                "glutes": 0,
-                "thigh": 0,
-                "arms": 0,
+                "back": _nz(back_score),
+                "glutes": _nz(glutes_score),
+                "thigh": _nz(thigh_score),
+                "arms": _nz(arms_score),
             },
             "v_taper": _nz(v_taper_score),
             "upper_lower_balance": _nz(upper_lower_score),
@@ -299,6 +413,13 @@ def evaluate_muscle_measure(payload: dict[str, Any]) -> MuscleMeasureResult:
             "definition": _nz(definition_score),
             "measurement_consistency": int(measurement_consistency),
         },
+        "muscles_recognized": [
+            "hombros (proxy V-taper)",
+            "espalda (proxy por V-taper + postura)",
+            "brazos/bíceps (proxy en frente flex suave)",
+            "glúteos/cadera (proxy por relación cadera-hombros)",
+            "pierna (proxy por relación pierna-torso)",
+        ],
         "insights": (insights[:3] if insights else ["Medición lista. Si quieres más precisión, agrega 2–4 vistas en la misma luz y encuadre."])
         ,
         "recommended_actions": (actions[:3] if actions else ["Repite la medición con la misma luz/encuadre para comparar semana a semana."]),
@@ -313,29 +434,136 @@ def render_professional_summary(result: dict[str, Any]) -> str:
     if not isinstance(result, dict):
         return ""
 
-    lines: list[str] = []
-    lines.append(f"decision: {result.get('decision')}")
+    user_display_name = str(result.get("user_display_name") or "").strip()
+    hello = f"Hola {user_display_name}," if user_display_name else "Hola,"
 
+    decision = str(result.get("decision") or "").strip().lower()
     conf = result.get("confidence") if isinstance(result.get("confidence"), dict) else {}
-    if conf.get("score") is not None:
-        try:
-            lines.append(f"confidence: {round(float(conf.get('score')), 3)}")
-        except Exception:
-            pass
-
     vars_ = result.get("variables") if isinstance(result.get("variables"), dict) else {}
+    vol = vars_.get("volume_by_group") if isinstance(vars_.get("volume_by_group"), dict) else {}
+    focus = str(result.get("focus") or "").strip().lower() or None
+
+    confidence_score = None
     try:
-        lines.append(f"simetría: {int(vars_.get('symmetry') or 0)}/100")
-        lines.append(f"v-taper: {int(vars_.get('v_taper') or 0)}/100")
-        lines.append(f"postura (proxy): {int(vars_.get('static_posture') or 0)}/100")
-        lines.append(f"consistencia medición: {int(vars_.get('measurement_consistency') or 0)}/100")
+        confidence_score = float(conf.get("score")) if conf.get("score") is not None else None
+    except Exception:
+        confidence_score = None
+
+    n_views = 0
+    try:
+        n_views = int(conf.get("n_views") or 0)
+    except Exception:
+        n_views = 0
+
+    consistency = int(vars_.get("measurement_consistency") or 0)
+    posture = int(vars_.get("static_posture") or 0)
+    symmetry = int(vars_.get("symmetry") or 0)
+    v_taper = int(vars_.get("v_taper") or 0)
+
+    lines: list[str] = [hello]
+
+    if decision != "accepted":
+        lines.append(
+            "No pude detectar bien tu cuerpo en esta foto (o la calidad fue baja)."
+        )
+        lines.append("Para que la medición sea útil semana a semana:")
+        lines.append("- Cuerpo completo (pies a cabeza)")
+        lines.append("- Buena luz + fondo limpio")
+        lines.append("- Cámara a 2–3m, altura del pecho")
+        lines.append("- Misma pose y encuadre cada semana")
+        return "\n".join(lines).strip()
+
+    lines.append("Perfecto. Ya tengo tu **Medición del progreso muscular** (comparación relativa; no promete cm exactos).")
+    if confidence_score is not None:
+        lines.append(f"Calidad de medición: {int(round(confidence_score * 100.0))}/100 (con {n_views} vista(s)).")
+
+    lines.append("")
+    lines.append("¿Qué estoy midiendo realmente?")
+    lines.append("- Ratios y alineación (hombros/cadera, simetría, postura) a partir de keypoints 2D")
+    lines.append("- Proxies por grupo (brazos/glúteos/espalda/pierna) que dependen de luz/pose/encuadre")
+    lines.append("- Consistencia de medición para que la comparación semanal sea justa")
+
+    lines.append("")
+    lines.append("Resumen de hoy (0–100):")
+    lines.append(f"- Consistencia de medición: {consistency}/100")
+    lines.append(f"- Postura estática (proxy): {posture}/100")
+    lines.append(f"- Simetría (hombros/pelvis): {symmetry}/100")
+    lines.append(f"- Silueta V‑taper (proxy): {v_taper}/100")
+
+    # Proxies por grupo
+    def _g(name: str) -> int:
+        try:
+            return int(vol.get(name) or 0)
+        except Exception:
+            return 0
+
+    lines.append("")
+    lines.append("Proxies por grupo (0–100):")
+    lines.append(f"- Brazos/bíceps (pose flex): {_g('arms')}/100")
+    lines.append(f"- Espalda: {_g('back')}/100")
+    lines.append(f"- Glúteos/cadera: {_g('glutes')}/100")
+    lines.append(f"- Pierna: {_g('thigh')}/100")
+
+    # Comparación vs semana pasada
+    try:
+        prog = result.get("progress") if isinstance(result.get("progress"), dict) else {}
+        vs = prog.get("vs_last_week") if isinstance(prog.get("vs_last_week"), dict) else None
+        if vs and isinstance(vs.get("deltas"), dict):
+            deltas = vs.get("deltas")
+            def _fmt_delta(k: str, label: str) -> str | None:
+                d = deltas.get(k) if isinstance(deltas.get(k), dict) else None
+                if not d:
+                    return None
+                try:
+                    delta = int(d.get("delta") or 0)
+                    sign = "+" if delta >= 0 else ""
+                    return f"- {label}: {sign}{delta} pts"
+                except Exception:
+                    return None
+
+            parts = [
+                _fmt_delta("symmetry", "Simetría"),
+                _fmt_delta("v_taper", "V‑taper"),
+                _fmt_delta("static_posture", "Postura"),
+                _fmt_delta("measurement_consistency", "Consistencia"),
+            ]
+            parts = [p for p in parts if p]
+            if parts:
+                lines.append("")
+                lines.append("Cambios vs tu semana pasada:")
+                lines.extend(parts[:4])
     except Exception:
         pass
 
+    # Qué hacer esta semana (marketing + accionable)
+    lines.append("")
+    lines.append("Qué deberías hacer esta semana (para que el progreso se note y se mida mejor):")
+    lines.append("1) Repite la medición 1 vez/semana, misma luz/encuadre/ropa.")
+    lines.append("2) Entrena con progresión simple (más reps o más carga) en 2–3 ejercicios clave.")
+
+    # Ajuste por foco
+    if focus in ("biceps", "bíceps", "bicep"):
+        lines.append("")
+        lines.append("Enfoque: Bíceps (brazo más lleno y marcado)")
+        lines.append("- 2 días/semana: 6–10 series totales de curl (mancuerna/barra/polea)")
+        lines.append("- 1 ejercicio de tirón (remo/pull‑down) para soporte de espalda y brazo")
+        lines.append("- Rango 8–15 reps, dejando 1–2 reps en reserva")
+    elif focus in ("glutes", "gluteos", "glúteos"):
+        lines.append("")
+        lines.append("Enfoque: Glúteos (más forma y potencia)")
+        lines.append("- 2 días/semana: hip thrust o puente pesado + RDL (bisagra) + zancada")
+        lines.append("- 8–12 series efectivas/semana (sube 1–2 series si recuperas bien)")
+        lines.append("- Pausa de 1s arriba en thrust para sentir activación")
+
+    # Insights del motor
     insights = result.get("insights")
     if isinstance(insights, list) and insights:
+        lines.append("")
+        lines.append("Notas rápidas:")
         for x in insights[:3]:
             if str(x).strip():
-                lines.append(f"insight: {str(x).strip()}")
+                lines.append(f"- {str(x).strip()}")
 
+    lines.append("")
+    lines.append("Si sientes dolor fuerte o mareo, baja intensidad o detente. Progreso sí; lesión no.")
     return "\n".join(lines).strip()

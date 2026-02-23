@@ -278,7 +278,7 @@ function startMuscleFlow() {
   saveMuscleState();
 
   appendMessage(
-    'Vamos a hacer una **medición muscular** con fotos (comparación relativa, sin prometer cm exactos).\n\n' +
+    'Vamos a hacer una **Medición del progreso muscular** con fotos (comparación relativa, sin prometer cm exactos).\n\n' +
       'Puedes enviar **mínimo 1** y **máximo 4** fotos:\n' +
       '- Frente relajado (recomendado)\n' +
       '- Perfil derecho (opcional)\n' +
@@ -419,7 +419,7 @@ function cancelMuscleFlow(opts = {}) {
     // ignore
   }
   if (!opts.silent && wasActive) {
-    appendMessage('Listo. Si quieres retomarlo, escribe: "Comparar músculo".', 'bot');
+    appendMessage('Listo. Si quieres retomarlo, escribe: "Medición del progreso muscular".', 'bot');
   }
 }
 
@@ -660,7 +660,7 @@ function sendMuscleAnalyze() {
     appendMessage('Primero necesito al menos 1 foto (frente relajado).', 'bot');
     return;
   }
-  sendQuickMessage('Analizar músculo', {
+  sendQuickMessage('Medición del progreso muscular', {
     muscle_measure_request: {
       poses: poses,
       locale: 'es-CO',

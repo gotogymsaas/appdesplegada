@@ -3993,15 +3993,37 @@ def chat_n8n(request):
             if user and isinstance(request.data, dict):
                 mm_req = request.data.get('muscle_measure_request')
 
-                # Iniciar flujo desde quick-action de Salud: "Comparar músculo"
+                # Intención por texto (activación intuitiva)
                 msg_low = str(message or '').strip().lower()
-                if (not isinstance(mm_req, dict)) and re.fullmatch(r"comparar\s+m[uú]sculo|comparar\s+musculo|muscle\s+measure", msg_low or ""):
+                want_mm = False
+                if isinstance(mm_req, dict):
+                    want_mm = True
+                else:
+                    # Frases naturales: medir/comparar progreso muscular, semana pasada, y focos comunes.
+                    if re.search(
+                        r"\b("
+                        r"medir\s+m[uú]sculo|medici[oó]n\s+muscular|"
+                        r"progreso\s+muscular|medici[oó]n\s+del\s+progreso\s+muscular|"
+                        r"comparar\s+m[uú]sculo|comparar\s+musculo|"
+                        r"medici[oó]n\s+del\s+progreso|"
+                        r"semana\s+pasada|vs\s+la\s+semana\s+pasada|"
+                        r"b[ií]ceps|tr[ií]ceps|brazo\w*|"
+                        r"gl[uú]te\w*|pierna\w*|cu[aá]driceps|"
+                        r"hombro\w*|espalda\w*"
+                        r")\b",
+                        msg_low or "",
+                    ):
+                        want_mm = True
+
+                # Iniciar flujo desde quick-action / activación por texto
+                if (not isinstance(mm_req, dict)) and want_mm:
                     out = (
-                        "[MEDICIÓN MUSCULAR]\n"
-                        "Podemos medir tu progreso con fotos (sin prometer cm exactos).\n\n"
+                        "[MEDICIÓN DEL PROGRESO MUSCULAR]\n"
+                        "Vamos a comparar tu progreso con fotos semana a semana (comparación relativa; no promete cm exactos).\n\n"
                         "- Mínimo: 1 foto (frente relajado)\n"
                         "- Mejor: agrega perfil, espalda y flex suave\n\n"
-                        "Empecemos con **frente relajado** (cuerpo completo, buena luz, cámara a 2–3m)."
+                        "Empecemos con **frente relajado** (cuerpo completo, buena luz, cámara a 2–3m).\n\n"
+                        "Tip: si quieres foco (ej. bíceps o glúteos), dímelo y lo adapto."
                     )
                     return Response(
                         {
@@ -4009,6 +4031,8 @@ def chat_n8n(request):
                             'quick_actions': [
                                 {'label': 'Tomar foto frente', 'type': 'muscle_capture', 'view': 'front_relaxed', 'source': 'camera'},
                                 {'label': 'Adjuntar foto frente', 'type': 'muscle_capture', 'view': 'front_relaxed', 'source': 'attach'},
+                                {'label': 'Enfocar bíceps', 'type': 'message', 'text': 'Enfocar bíceps', 'payload': {'muscle_measure_request': {'focus': 'biceps'}}},
+                                {'label': 'Enfocar glúteos', 'type': 'message', 'text': 'Enfocar glúteos', 'payload': {'muscle_measure_request': {'focus': 'glutes'}}},
                                 {'label': 'Cancelar', 'type': 'muscle_cancel'},
                             ],
                         }
@@ -4033,7 +4057,17 @@ def chat_n8n(request):
                         baseline = None
 
                     poses = mm_req.get('poses') if isinstance(mm_req.get('poses'), dict) else {}
-                    res = evaluate_muscle_measure({'poses': poses, 'baseline': baseline}).payload
+                    focus = mm_req.get('focus') if isinstance(mm_req.get('focus'), str) else None
+
+                    res = evaluate_muscle_measure({'poses': poses, 'baseline': baseline, 'focus': focus}).payload
+
+                    # UX: nombre amigable para saludo
+                    try:
+                        display = (getattr(user, 'full_name', '') or '').strip() or (getattr(user, 'username', '') or '').strip()
+                        if display and isinstance(res, dict):
+                            res = {**res, 'user_display_name': display}
+                    except Exception:
+                        pass
                     text = render_professional_summary(res)
 
                     # Persistir por semana
@@ -4057,6 +4091,12 @@ def chat_n8n(request):
                                 {'label': 'Repetir frente', 'type': 'muscle_capture', 'view': 'front_relaxed', 'source': 'camera'},
                                 {'label': 'Adjuntar frente', 'type': 'muscle_capture', 'view': 'front_relaxed', 'source': 'attach'},
                                 {'label': 'Cancelar', 'type': 'muscle_cancel'},
+                            ]
+                        else:
+                            # CTAs suaves (sin UI nueva)
+                            qas = [
+                                {'label': 'Enfocar bíceps', 'type': 'message', 'text': 'Enfocar bíceps', 'payload': {'muscle_measure_request': {'poses': poses, 'focus': 'biceps'}}},
+                                {'label': 'Enfocar glúteos', 'type': 'message', 'text': 'Enfocar glúteos', 'payload': {'muscle_measure_request': {'poses': poses, 'focus': 'glutes'}}},
                             ]
                     except Exception:
                         qas = []
@@ -5893,7 +5933,7 @@ def chat_n8n(request):
                     )
                     qa = quick_actions_out if isinstance(quick_actions_out, list) else []
                     qa.extend([
-                        {'label': 'Comparar músculo', 'type': 'message', 'text': 'Comparar músculo'},
+                        {'label': 'Medición del progreso muscular', 'type': 'message', 'text': 'Medición del progreso muscular'},
                         {'label': 'Belleza / piel', 'type': 'message', 'text': 'Belleza / piel'},
                     ])
                     quick_actions_out = qa[:6]
@@ -5914,13 +5954,15 @@ def chat_n8n(request):
                     attachment_text = ((attachment_text or '').strip() + "\n\n" if (attachment_text or '').strip() else "") + (
                         "[ENTRENAMIENTO / IMAGEN]\n"
                         "Puedo ayudarte con técnica/postura, pero necesito 2 fotos: frontal y lateral (cuerpo completo, buena luz, cámara a la altura del pecho, 2–3m).\n"
-                        "Si solo es una selfie o una foto casual, también puedo responder como Quantum Coach."
+                        "Si solo es una selfie o una foto casual, también puedo responder como Quantum Coach.\n\n"
+                        "Si tu objetivo es **comparar progreso muscular** semana a semana, también lo podemos hacer con fotos (sin prometer cm exactos)."
                     )
                     qa = quick_actions_out if isinstance(quick_actions_out, list) else []
                     qa.extend([
                         {'label': 'Postura', 'type': 'posture_start'},
                         {'label': 'Postura & Proporción', 'type': 'pp_start'},
                         {'label': 'Shape & Presence', 'type': 'shape_start'},
+                        {'label': 'Medición del progreso muscular', 'type': 'message', 'text': 'Medición del progreso muscular'},
                         {'label': 'Tomar foto', 'type': 'open_camera'},
                         {'label': 'Adjuntar foto', 'type': 'open_attach'},
                     ])
@@ -7656,11 +7698,22 @@ def qaf_muscle_measure(request):
 
     from .qaf_muscle_measure.engine import evaluate_muscle_measure, render_professional_summary
 
+    focus = payload.get('focus') if isinstance(payload.get('focus'), str) else None
+
     res = evaluate_muscle_measure({
         'poses': payload.get('poses') if isinstance(payload.get('poses'), dict) else {},
         'baseline': baseline if isinstance(baseline, dict) else None,
+        'focus': focus,
         'locale': locale,
     }).payload
+
+    # UX: nombre amigable para saludo
+    try:
+        display = (getattr(user, 'full_name', '') or '').strip() or (getattr(user, 'username', '') or '').strip()
+        if display and isinstance(res, dict):
+            res = {**res, 'user_display_name': display}
+    except Exception:
+        pass
 
     text = render_professional_summary(res)
 
