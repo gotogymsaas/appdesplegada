@@ -4865,6 +4865,15 @@ def chat_n8n(request):
                         user_ctx = pr.get('user_context') if isinstance(pr.get('user_context'), dict) else {}
                         locale = (pr.get('locale') or '').strip() or 'es-CO'
 
+                        # Calibración opcional por altura del perfil (cm).
+                        try:
+                            if isinstance(user_ctx, dict) and user_ctx.get('height_cm') is None:
+                                hcm = _normalize_height_cm_from_user_value(getattr(user, 'height', None))
+                                if hcm:
+                                    user_ctx = {**user_ctx, 'height_cm': float(hcm)}
+                        except Exception:
+                            pass
+
                     def _posture_payload_ok(p: dict) -> bool:
                         if not isinstance(p, dict):
                             return False

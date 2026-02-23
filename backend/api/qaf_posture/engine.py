@@ -224,6 +224,27 @@ def evaluate_posture(payload: dict[str, Any]) -> PostureResult:
     side = poses.get("side") if isinstance(poses.get("side"), dict) else {}
     user_ctx = payload.get("user_context") if isinstance(payload.get("user_context"), dict) else {}
 
+    # Calibración opcional por altura (cm). Si no hay, seguimos con proxies.
+    height_cm = None
+    try:
+        height_cm = float(user_ctx.get('height_cm')) if user_ctx.get('height_cm') is not None else None
+    except Exception:
+        height_cm = None
+
+    front_img = front.get('image') if isinstance(front.get('image'), dict) else {}
+    img_w = None
+    img_h = None
+    try:
+        img_w = int(front_img.get('width')) if front_img.get('width') is not None else None
+        img_h = int(front_img.get('height')) if front_img.get('height') is not None else None
+        if img_w is not None and img_w <= 0:
+            img_w = None
+        if img_h is not None and img_h <= 0:
+            img_h = None
+    except Exception:
+        img_w = None
+        img_h = None
+
     kp_f = _kp_map(front)
     kp_s = _kp_map(side)
     q_front = _pose_quality(kp_f, _REQ_FRONT)
@@ -350,6 +371,64 @@ def evaluate_posture(payload: dict[str, Any]) -> PostureResult:
             head_offset = abs(float(nose["x"]) - float(ref[0])) / s
             conf = min(float(nose.get("score") or 0.0), float(c_sh or c_hip), sc_conf_f)
             signals.append(_signal("head_center_offset", head_offset, threshold=0.12, confidence=conf))
+
+        # Calibración por altura (cm estimados): convertir algunas medidas si el encuadre es usable.
+        try:
+            if height_cm and img_w and img_h:
+                # Estimar altura corporal visible en px usando y (top: nariz/oreja/hombros; bottom: tobillos).
+                top_candidates = []
+                for name in ("nose", "left_ear", "right_ear", "left_shoulder", "right_shoulder"):
+                    p = kp_f.get(name)
+                    if p and p.get('y') is not None:
+                        top_candidates.append(float(p['y']) * float(img_h))
+                bottom_candidates = []
+                for name in ("left_ankle", "right_ankle"):
+                    p = kp_f.get(name)
+                    if p and p.get('y') is not None:
+                        bottom_candidates.append(float(p['y']) * float(img_h))
+
+                if top_candidates and bottom_candidates:
+                    top_y = min(top_candidates)
+                    bot_y = max(bottom_candidates)
+                    body_h_px = float(bot_y - top_y)
+
+                    # Guardrails: necesitamos algo cercano a cuerpo completo.
+                    if body_h_px > 0.55 * float(img_h) and height_cm >= 80.0 and height_cm <= 260.0:
+                        # Corrección suave: top_y no es la coronilla; ajustamos un poco.
+                        body_h_px = body_h_px * 1.08
+                        cm_per_px = float(height_cm) / max(1.0, body_h_px)
+
+                        def _px(pt: dict[str, float]) -> tuple[float, float]:
+                            return (float(pt['x']) * float(img_w), float(pt['y']) * float(img_h))
+
+                        def _dist_cm(a: dict[str, float], b: dict[str, float]) -> float:
+                            return _dist(_px(a), _px(b)) * cm_per_px
+
+                        # shoulder_width_cm / hip_width_cm
+                        if sh_l and sh_r:
+                            conf_cm = min(float(sh_l.get('score') or 0.0), float(sh_r.get('score') or 0.0), sc_conf_f)
+                            signals.append(_signal('shoulder_width_cm', _dist_cm(sh_l, sh_r), threshold=None, confidence=conf_cm))
+                        if hip_l and hip_r:
+                            conf_cm = min(float(hip_l.get('score') or 0.0), float(hip_r.get('score') or 0.0), sc_conf_f)
+                            signals.append(_signal('hip_width_cm', _dist_cm(hip_l, hip_r), threshold=None, confidence=conf_cm))
+
+                        # arm_length_cm (hombro->muñeca)
+                        if sh_l and wr_l:
+                            conf_cm = min(float(sh_l.get('score') or 0.0), float(wr_l.get('score') or 0.0), sc_conf_f)
+                            signals.append(_signal('arm_length_left_cm', _dist_cm(sh_l, wr_l), threshold=None, confidence=conf_cm))
+                        if sh_r and wr_r:
+                            conf_cm = min(float(sh_r.get('score') or 0.0), float(wr_r.get('score') or 0.0), sc_conf_f)
+                            signals.append(_signal('arm_length_right_cm', _dist_cm(sh_r, wr_r), threshold=None, confidence=conf_cm))
+
+                        # leg_length_cm (cadera->tobillo)
+                        if hip_l and an_l:
+                            conf_cm = min(float(hip_l.get('score') or 0.0), float(an_l.get('score') or 0.0), sc_conf_f)
+                            signals.append(_signal('leg_length_left_cm', _dist_cm(hip_l, an_l), threshold=None, confidence=conf_cm))
+                        if hip_r and an_r:
+                            conf_cm = min(float(hip_r.get('score') or 0.0), float(an_r.get('score') or 0.0), sc_conf_f)
+                            signals.append(_signal('leg_length_right_cm', _dist_cm(hip_r, an_r), threshold=None, confidence=conf_cm))
+        except Exception:
+            pass
 
         for side_key in ("left", "right"):
             hip = kp_f.get(f"{side_key}_hip")
@@ -647,6 +726,38 @@ def render_professional_summary(result: dict[str, Any]) -> str:
         if personal:
             lines.append("medidas personales (proxy):")
             for m in personal[:6]:
+                lines.append(f"- {m}")
+
+        # Medidas en cm (estimadas) si hubo calibración por altura
+        cm_lines: list[str] = []
+        swc = _sig('shoulder_width_cm')
+        if swc and swc.get('value') is not None:
+            try:
+                cm_lines.append(f"Ancho de hombros (cm estimado): {float(swc.get('value')):.1f} cm")
+            except Exception:
+                pass
+        hwc = _sig('hip_width_cm')
+        if hwc and hwc.get('value') is not None:
+            try:
+                cm_lines.append(f"Ancho de cadera (cm estimado): {float(hwc.get('value')):.1f} cm")
+            except Exception:
+                pass
+        alc = _sig('arm_length_left_cm')
+        if alc and alc.get('value') is not None:
+            try:
+                cm_lines.append(f"Brazo izq (hombro→muñeca): {float(alc.get('value')):.1f} cm")
+            except Exception:
+                pass
+        arc = _sig('arm_length_right_cm')
+        if arc and arc.get('value') is not None:
+            try:
+                cm_lines.append(f"Brazo der (hombro→muñeca): {float(arc.get('value')):.1f} cm")
+            except Exception:
+                pass
+
+        if cm_lines:
+            lines.append("medidas en cm (estimadas):")
+            for m in cm_lines[:6]:
                 lines.append(f"- {m}")
     except Exception:
         pass
