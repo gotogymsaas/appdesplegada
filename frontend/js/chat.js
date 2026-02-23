@@ -1868,10 +1868,10 @@ function buildQuickActions(context) {
   }
 
   // 2) Vitalidad de la Piel (Exp-011)
-  actions.push({ label: 'Vitalidad de la Piel', type: 'skin_start' });
+  actions.push({ label: 'Alta Costura Inteligente', type: 'shape_start' });
 
-  // 3) Postura (Exp-006)
-  actions.push({ label: 'Corrección de postura', type: 'posture_start' });
+  // 3) Vitalidad de la Piel (Exp-011)
+  actions.push({ label: 'Vitalidad de la Piel', type: 'skin_start' });
 
   return actions.slice(0, 3);
 }

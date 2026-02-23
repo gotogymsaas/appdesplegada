@@ -4925,12 +4925,49 @@ def chat_n8n(request):
 
                 # Iniciar flujo por intención explícita
                 msg_low = str(message or '').strip().lower()
-                want_sp = bool(
-                    re.fullmatch(
-                        r"shape\s*&\s*presence|shape\s+presence|shape\s+and\s+presence|forma\s*&\s*presencia|forma\s+y\s+presencia|presencia\s+\&\s+forma|alta\s*costura\s*inteligente|alta\s*costura|alta\s+costura\s+inteligente",
-                        msg_low or "",
+
+                # Activación intuitiva (texto libre): tolera acentos y frases más largas.
+                msg_norm = msg_low
+                try:
+                    import unicodedata
+
+                    msg_norm = "".join(
+                        ch for ch in unicodedata.normalize('NFKD', msg_low) if not unicodedata.combining(ch)
+                    )
+                except Exception:
+                    msg_norm = msg_low
+                msg_norm = re.sub(r"\s+", " ", msg_norm or "").strip()
+
+                # 1) Triggers directos (si el usuario lo pide por nombre)
+                explicit = bool(
+                    re.search(
+                        r"\b("
+                        r"alta costura inteligente|alta costura|couture|"
+                        r"shape\s*&\s*presence|shape presence|shape and presence|"
+                        r"forma\s*&\s*presencia|forma y presencia|presencia\s*&\s*forma"
+                        r")\b",
+                        msg_norm,
                     )
                 )
+
+                # 2) Frases naturales: intención de asesoría visual + acción de analizar/foto/outfit
+                style_kw = bool(
+                    re.search(
+                        r"\b(asesoria visual|asesoria de imagen|disenador|dise[ñn]ador|"
+                        r"silueta|proporcion(?:es)?|proporciones|verticalidad|presencia|v\s*-?taper|quiet luxury|"
+                        r"sastreria|solapa|escote|cuello)\b",
+                        msg_norm,
+                    )
+                )
+                action_kw = bool(
+                    re.search(
+                        r"\b(analiza|analizar|analisis|evaluar|mide|medir|foto|imagen|outfit|ropa|look|"
+                        r"cuerpo completo|perfil|frente)\b",
+                        msg_norm,
+                    )
+                )
+
+                want_sp = explicit or (style_kw and action_kw)
                 if (not isinstance(sp_req, dict)) and want_sp:
                     out = (
                         "**Alta Costura Inteligente**\n"
