@@ -4792,6 +4792,62 @@ def chat_n8n(request):
                 if want_posture:
                     from .qaf_posture.engine import evaluate_posture, render_professional_summary
 
+                    def _posture_extract_metrics(res: dict[str, Any]) -> dict[str, float]:
+                        sigs = res.get('signals') if isinstance(res.get('signals'), list) else []
+                        out: dict[str, float] = {}
+                        for s in sigs:
+                            if not isinstance(s, dict):
+                                continue
+                            name = str(s.get('name') or '').strip()
+                            v = s.get('value')
+                            if not name or v is None:
+                                continue
+                            try:
+                                out[name] = float(v)
+                            except Exception:
+                                continue
+                        return out
+
+                    def _posture_delta(prev: dict[str, float], cur: dict[str, float]) -> list[dict[str, Any]]:
+                        """Deltas vs medición previa. Positive/negative se interpreta según métrica."""
+                        deltas: list[dict[str, Any]] = []
+
+                        # Métricas donde MENOR es mejor
+                        lower_better = {
+                            'shoulder_asymmetry': 'Hombros (asimetría)',
+                            'hip_asymmetry': 'Cadera (asimetría)',
+                            'forward_head': 'Cabeza adelantada (proxy)',
+                            'rounded_shoulders': 'Hombros redondeados (proxy)',
+                            'pelvis_knee_offset': 'Pelvis/rodilla (proxy)',
+                            'head_center_offset': 'Cabeza descentrada (proxy)',
+                        }
+
+                        # Métricas donde MAYOR es mejor (más cerca a extensión)
+                        higher_better = {
+                            'knee_angle_left': 'Rodilla izq (ángulo)',
+                            'knee_angle_right': 'Rodilla der (ángulo)',
+                        }
+
+                        def _mk(key: str, label: str, d: float, kind: str):
+                            deltas.append({
+                                'key': key,
+                                'label': label,
+                                'delta': round(float(d), 4),
+                                'kind': kind,
+                            })
+
+                        for key, label in lower_better.items():
+                            if key in prev and key in cur:
+                                _mk(key, label, float(cur[key]) - float(prev[key]), 'lower_better')
+
+                        for key, label in higher_better.items():
+                            if key in prev and key in cur:
+                                _mk(key, label, float(cur[key]) - float(prev[key]), 'higher_better')
+
+                        # Ordenar por impacto absoluto
+                        deltas.sort(key=lambda x: abs(float(x.get('delta') or 0.0)), reverse=True)
+                        return deltas
+
                     # Seguridad mínima: no inferimos desde 'visión descriptiva'. Solo usamos keypoints.
                     poses = None
                     user_ctx = {}
@@ -4830,6 +4886,47 @@ def chat_n8n(request):
 
                     if isinstance(poses, dict) and _posture_payload_ok(poses):
                         posture_result = evaluate_posture({'poses': poses, 'user_context': user_ctx, 'locale': locale}).payload
+
+                        # Persistir últimas 4 mediciones (solo cuando hay output estructurado)
+                        try:
+                            if isinstance(posture_result, dict):
+                                cur_metrics = _posture_extract_metrics(posture_result)
+                                # Solo guardamos si hay señales suficientes (evitar basura)
+                                if cur_metrics:
+                                    cs0 = getattr(user, 'coach_state', {}) or {}
+                                    cs1 = dict(cs0)
+                                    hist = cs1.get('posture_measurements')
+                                    hist_list = hist if isinstance(hist, list) else []
+                                    hist_list = [x for x in hist_list if isinstance(x, dict)]
+
+                                    prev_metrics = None
+                                    if hist_list:
+                                        prev_metrics = hist_list[-1].get('metrics') if isinstance(hist_list[-1].get('metrics'), dict) else None
+
+                                    entry = {
+                                        'ts': timezone.now().isoformat(),
+                                        'week_id': _week_id(),
+                                        'decision': str(posture_result.get('decision') or ''),
+                                        'confidence': float(((posture_result.get('confidence') or {}).get('score')) or 0.0) if isinstance(posture_result.get('confidence'), dict) else 0.0,
+                                        'metrics': {k: round(float(v), 6) for k, v in cur_metrics.items()},
+                                        'labels': [str(x.get('key') or '') for x in (posture_result.get('labels') or []) if isinstance(x, dict) and str(x.get('key') or '').strip()],
+                                    }
+
+                                    hist_list.append(entry)
+                                    # Mantener solo últimas 4
+                                    hist_list = hist_list[-4:]
+                                    cs1['posture_measurements'] = hist_list
+                                    user.coach_state = cs1
+                                    user.coach_state_updated_at = timezone.now()
+                                    user.save(update_fields=['coach_state', 'coach_state_updated_at'])
+
+                                    # Inyectar progreso vs última medición (si existía)
+                                    if isinstance(prev_metrics, dict):
+                                        deltas = _posture_delta(prev_metrics, cur_metrics)
+                                        posture_result = {**posture_result, 'progress': {'vs_last': deltas[:6]}}
+                        except Exception:
+                            pass
+
                         ptext = render_professional_summary(posture_result)
                         if ptext:
                             posture_text_for_output_override = ptext

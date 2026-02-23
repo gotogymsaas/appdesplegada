@@ -398,6 +398,10 @@ def render_professional_summary(result: dict[str, Any]) -> str:
             lines.append(f"confianza del análisis: {pct:.0f}%")
         except Exception:
             pass
+
+    progress = result.get('progress') if isinstance(result.get('progress'), dict) else {}
+    vs_last = progress.get('vs_last') if isinstance(progress.get('vs_last'), list) else []
+
     # Aviso profesional: parcialidad
     try:
         if decision != 'accepted':
@@ -418,6 +422,41 @@ def render_professional_summary(result: dict[str, Any]) -> str:
     except Exception:
         pass
 
+    if vs_last:
+        lines.append("\n📈 Cambios vs tu última medición:")
+        shown = 0
+        for item in vs_last:
+            if not isinstance(item, dict):
+                continue
+            label = str(item.get('label') or '').strip()
+            kind = str(item.get('kind') or '').strip()
+            try:
+                delta = float(item.get('delta') or 0.0)
+            except Exception:
+                continue
+            if not label:
+                continue
+
+            # Interpretación simple y honesta: magnitud + dirección.
+            if abs(delta) < 1e-9:
+                continue
+
+            if kind == 'lower_better':
+                emoji = "✅" if delta < 0 else "⚠️"
+                direction = "mejor" if delta < 0 else "peor"
+            elif kind == 'higher_better':
+                emoji = "✅" if delta > 0 else "⚠️"
+                direction = "mejor" if delta > 0 else "peor"
+            else:
+                emoji = "ℹ️"
+                direction = "cambio"
+
+            mag = abs(delta)
+            # Unidades: normalmente son "proxy"; mostramos magnitud acotada.
+            lines.append(f"- {emoji} {label}: {direction} (Δ {mag:.2f})")
+            shown += 1
+            if shown >= 4:
+                break
     # Métricas interesantes (sin prometer cm reales; son proporciones normalizadas por escala corporal)
     try:
         def _sig(name: str):
