@@ -400,13 +400,20 @@ function startPpFlow() {
   savePpState();
 
   appendMessage(
-    'Vamos a hacer **Arquitectura Corporal** (experiencia premium) con fotos (proxies por keypoints, sin prometer cm reales).\n\n' +
-      'Esto traduce tu alineación en decisiones simples que se sienten en la vida real: estabilidad, eficiencia y presencia.\n\n' +
-      'Necesito **2** fotos obligatorias y 1 opcional (recomendado):\n' +
-      '- Frente relajado (obligatoria)\n' +
-      '- Perfil derecho (obligatoria)\n' +
-      '- Espalda (opcional recomendado)\n\n' +
-      'Empecemos con **frente relajado** (cuerpo completo, buena luz, cámara a 2–3m).',
+    '**Arquitectura Corporal**\n\n' +
+      'Experiencia de nivel profesional: traduzco tu alineación en decisiones prácticas para mejorar tu estabilidad, eficiencia y presencia.\n\n' +
+      'Trabajo con puntos de referencia visuales (keypoints 2D).\n' +
+      'No son medidas en centímetros ni constituyen diagnóstico médico.\n\n' +
+      'Para darte un resultado preciso necesito 3 vistas guiadas:\n\n' +
+      '• Frente relajado (obligatoria)\n' +
+      '• Perfil derecho (obligatoria)\n' +
+      '• Espalda (opcional, recomendada para máxima precisión)\n\n' +
+      '**Empecemos con frente relajado:**\n\n' +
+      'Cuerpo completo (pies a cabeza)\n' +
+      'Buena luz frontal\n' +
+      'Cámara a la altura del pecho\n' +
+      'Distancia de 2–3 metros\n\n' +
+      'En menos de un minuto te diré qué ajustar hoy y qué trabajar esta semana para optimizar tu estructura.',
     'bot'
   );
   appendQuickActions([
@@ -777,7 +784,7 @@ async function handlePpCapture(file, view) {
     attachment: { file, objectUrl },
   });
 
-  appendMessage('Analizando (calibración postural local)...', 'bot');
+  appendMessage('Analizando tu estructura…\n(calibración postural en curso)', 'bot');
 
   let pose;
   try {
@@ -793,16 +800,35 @@ async function handlePpCapture(file, view) {
   ppFlow.captureTarget = null;
   savePpState();
 
+  // Contexto premium post-proceso local
+  try {
+    appendMessage(
+      view === 'front_relaxed'
+        ? 'Estoy ajustando los ejes principales de tu alineación para que el resultado sea preciso y coherente.'
+        : 'Estoy integrando tus ejes principales para definir proporción y balance con mayor claridad.',
+      'bot'
+    );
+  } catch (e) {
+    // ignore
+  }
+
   const nextView = _nextPpOffer(view);
   if (nextView) {
     const label = _humanPpViewLabel(nextView).toLowerCase();
     const isOptional = nextView === 'back_relaxed';
-    appendMessage(
-      isOptional
-        ? `¿Quieres agregar **${label}** (opcional) para mejorar el análisis o analizamos ya?`
-        : `Ahora necesito **${label}** para completar el análisis.`,
-      'bot'
-    );
+    if (!isOptional) {
+      appendMessage(
+        'Ahora necesito tu **perfil derecho** para completar el análisis y darte una lectura estructural completa.\n\n' +
+          'Con esta segunda vista podré afinar proporciones y definir los ajustes con mayor exactitud.',
+        'bot'
+      );
+    } else {
+      appendMessage(
+        'Para máxima precisión, puedes agregar una vista de **espalda** (opcional) y así completar la arquitectura completa de tu alineación.\n\n' +
+          '¿Prefieres añadirla para un análisis más profundo o avanzamos con lo que ya tenemos?',
+        'bot'
+      );
+    }
     appendQuickActions([
       { label: `Tomar ${label}`, type: 'pp_capture', view: nextView, source: 'camera' },
       { label: `Adjuntar ${label}`, type: 'pp_capture', view: nextView, source: 'attach' },

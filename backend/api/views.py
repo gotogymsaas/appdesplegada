@@ -4739,14 +4739,20 @@ def chat_n8n(request):
 
                 if (not isinstance(pp_req, dict)) and want_pp:
                     out = (
-                        "**Arquitectura Corporal**\n"
-                        "Experiencia premium: traduzco tu alineación en decisiones prácticas (estabilidad, eficiencia y presencia).\n"
-                        "(Proxies por keypoints 2D; **no son medidas en cm** y no es diagnóstico.)\n\n"
-                        "Necesito 3 fotos (guiadas):\n"
-                        "- Frente relajado (obligatoria)\n"
-                        "- Perfil derecho (obligatoria)\n"
-                        "- Espalda (opcional recomendado)\n\n"
-                        "Empecemos con **frente relajado** (cuerpo completo, buena luz, cámara a la altura del pecho, 2–3m)."
+                        "**Arquitectura Corporal**\n\n"
+                        "Experiencia de nivel profesional: traduzco tu alineación en decisiones prácticas para mejorar tu estabilidad, eficiencia y presencia.\n\n"
+                        "Trabajo con puntos de referencia visuales (keypoints 2D).\n"
+                        "No son medidas en centímetros ni constituyen diagnóstico médico.\n\n"
+                        "Para darte un resultado preciso necesito 3 vistas guiadas:\n\n"
+                        "• Frente relajado (obligatoria)\n"
+                        "• Perfil derecho (obligatoria)\n"
+                        "• Espalda (opcional, recomendada para máxima precisión)\n\n"
+                        "**Empecemos con frente relajado:**\n\n"
+                        "Cuerpo completo (pies a cabeza)\n"
+                        "Buena luz frontal\n"
+                        "Cámara a la altura del pecho\n"
+                        "Distancia de 2–3 metros\n\n"
+                        "En menos de un minuto te diré qué ajustar hoy y qué trabajar esta semana para optimizar tu estructura."
                     )
                     return Response(
                         {
@@ -4904,6 +4910,16 @@ def chat_n8n(request):
                     except Exception:
                         pass
 
+                    # Guardar último resultado (memoria corta) para usarlo como contexto en sugerencias/entrenamientos posteriores.
+                    try:
+                        csx = dict(getattr(user, 'coach_state', {}) or {})
+                        csx['body_architecture_last_result'] = {'result': res, 'updated_at': timezone.now().isoformat()}
+                        user.coach_state = csx
+                        user.coach_state_updated_at = timezone.now()
+                        user.save(update_fields=['coach_state', 'coach_state_updated_at'])
+                    except Exception:
+                        pass
+
                     qas = []
                     try:
                         if isinstance(res, dict) and res.get('decision') != 'accepted':
@@ -4913,10 +4929,9 @@ def chat_n8n(request):
                                 {'label': 'Cancelar', 'type': 'pp_cancel'},
                             ]
                         else:
-                            # WOW: permitir retomar 1 foto rápida y re-analizar
+                            # Al cierre: botón de finalización (sin mezclar más acciones aquí).
                             qas = [
-                                {'label': 'Repetir frente (WOW)', 'type': 'pp_capture', 'view': 'front_relaxed', 'source': 'camera'},
-                                {'label': 'Repetir perfil (WOW)', 'type': 'pp_capture', 'view': 'side_right_relaxed', 'source': 'camera'},
+                                {'label': 'Finalizar', 'type': 'pp_cancel'},
                             ]
                     except Exception:
                         qas = []
