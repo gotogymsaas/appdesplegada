@@ -388,19 +388,35 @@ def render_professional_summary(result: dict[str, Any]) -> str:
     rec = result.get("recommendations") if isinstance(result.get("recommendations"), dict) else {}
     routine = rec.get("routine") if isinstance(rec.get("routine"), list) else []
 
+    progress = result.get('progress') if isinstance(result.get('progress'), dict) else {}
+    vs_last = progress.get('vs_last') if isinstance(progress.get('vs_last'), list) else []
+
+    history = result.get('history') if isinstance(result.get('history'), dict) else {}
+    hist_count: int | None = None
+    try:
+        if history.get('count') is not None:
+            hist_count = int(history.get('count'))
+    except Exception:
+        hist_count = None
+
     lines: list[str] = []
     decision = str(result.get('decision') or '').strip() or 'unknown'
-    lines.append("Corrección de postura — resumen")
-    lines.append(f"estado: {decision}")
+
+    if vs_last and (hist_count is None or hist_count >= 2):
+        lines.append("Corrección de postura — Tu progreso")
+    elif hist_count == 1 and decision == 'accepted':
+        lines.append("Corrección de postura — Punto de partida")
+    else:
+        lines.append("Corrección de postura — Tu resumen")
+
+    if decision != 'accepted':
+        lines.append(f"estado: {decision}")
     if conf.get("score") is not None:
         try:
             pct = round(float(conf.get('score')) * 100.0, 0)
-            lines.append(f"confianza del análisis: {pct:.0f}%")
+            lines.append(f"Confianza del análisis: {pct:.0f}%")
         except Exception:
             pass
-
-    progress = result.get('progress') if isinstance(result.get('progress'), dict) else {}
-    vs_last = progress.get('vs_last') if isinstance(progress.get('vs_last'), list) else []
 
     # Aviso profesional: parcialidad
     try:
@@ -423,7 +439,7 @@ def render_professional_summary(result: dict[str, Any]) -> str:
         pass
 
     if vs_last:
-        lines.append("\n📈 Cambios vs tu última medición:")
+        lines.append("\n📈 Tu evolución vs la última medición:")
         shown = 0
         for item in vs_last:
             if not isinstance(item, dict):
@@ -441,22 +457,44 @@ def render_professional_summary(result: dict[str, Any]) -> str:
             if abs(delta) < 1e-9:
                 continue
 
+            improved: bool | None = None
             if kind == 'lower_better':
-                emoji = "✅" if delta < 0 else "⚠️"
-                direction = "mejor" if delta < 0 else "peor"
+                improved = delta < 0
             elif kind == 'higher_better':
-                emoji = "✅" if delta > 0 else "⚠️"
-                direction = "mejor" if delta > 0 else "peor"
+                improved = delta > 0
+
+            if improved is True:
+                emoji = "✅"
+                verb = "mejoraste"
+                arrow = "↑"
+            elif improved is False:
+                emoji = "⚠️"
+                verb = "ligera variación"
+                arrow = "↓"
             else:
                 emoji = "ℹ️"
-                direction = "cambio"
+                verb = "cambio"
+                arrow = "→"
 
             mag = abs(delta)
             # Unidades: normalmente son "proxy"; mostramos magnitud acotada.
-            lines.append(f"- {emoji} {label}: {direction} (Δ {mag:.2f})")
+            lines.append(f"{emoji} {label}: {verb} ({arrow} {mag:.2f})")
             shown += 1
             if shown >= 4:
                 break
+
+        if hist_count is not None and hist_count >= 3:
+            lines.append("\n🔎 Lo importante")
+            lines.append("Pequeñas correcciones sostenidas → cambios visibles.")
+
+    if (not vs_last) and hist_count == 1 and decision == 'accepted':
+        lines.append("\n📈 Próximo paso")
+        lines.append("Haz una segunda medición en 3–7 días. Con eso ya podremos mostrarte mejoras reales.")
+        lines.append("\n🔎 Para que la comparación sea confiable")
+        lines.append("• Misma luz")
+        lines.append("• Misma distancia (2–3 m)")
+        lines.append("• Cámara a la altura del pecho")
+        lines.append("• Cuerpo completo visible")
     # Métricas interesantes (sin prometer cm reales; son proporciones normalizadas por escala corporal)
     try:
         def _sig(name: str):

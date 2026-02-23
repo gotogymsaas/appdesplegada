@@ -4755,6 +4755,12 @@ def chat_n8n(request):
                                     user.coach_state_updated_at = timezone.now()
                                     user.save(update_fields=['coach_state', 'coach_state_updated_at'])
 
+                                    # Metadata de historial para copy (sin afectar el motor)
+                                    try:
+                                        posture_result = {**posture_result, 'history': {'count': int(len(hist_list))}}
+                                    except Exception:
+                                        posture_result = {**posture_result}
+
                                     # En la segunda simulación, apagamos los botones.
                                     if row_count >= 2:
                                         show_sim_actions = False

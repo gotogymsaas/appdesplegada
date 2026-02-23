@@ -684,15 +684,18 @@ function startPostureFlow() {
   savePostureState();
 
   appendMessage(
-    'Vamos con **Corrección de postura**. En menos de 1 minuto te digo qué está pasando y te dejo una rutina simple para mejorar.\n\n' +
-      '**Foto 1 (frontal)** y **Foto 2 (lateral/perfil)**.\n\n' +
-      'Tips rápidos para que salga perfecto (con ayuda o con espejo):\n' +
-      '- Celular a la altura del pecho, a 2–3m\n' +
-      '- Cuerpo completo (pies a cabeza)\n' +
-      '- Buena luz y fondo limpio\n' +
-      '- Brazos relajados\n' +
-      '- Si estás solo: apoya el celular y usa temporizador; o toma la foto frente al espejo (sin tapar el cuerpo).\n\n' +
-      'Empecemos con la foto **frontal**.',
+    '**Corrección de postura**\n\n' +
+      'En menos de 60 segundos te muestro qué está afectando tu alineación y te dejo una rutina simple para mejorar tu presencia y prevenir molestias.\n\n' +
+      'Necesito 2 fotos:\n' +
+      '📸 Frontal\n' +
+      '📸 Perfil (lateral)\n\n' +
+      'Para que el análisis sea preciso:\n\n' +
+      '• Celular a la altura del pecho (2–3 m de distancia)\n' +
+      '• Cuerpo completo (de pies a cabeza)\n' +
+      '• Buena luz y fondo limpio\n' +
+      '• Brazos relajados\n' +
+      '• Si estás solo: usa temporizador o espejo sin taparte\n\n' +
+      'Empecemos con la foto frontal.',
     'bot'
   );
   appendQuickActions([
@@ -711,7 +714,7 @@ function cancelPostureFlow(opts = {}) {
     // ignore
   }
   if (!opts.silent && wasActive) {
-    appendMessage('Listo. Si quieres retomarlo, toca "Corrección de postura" o escribe: "corrección de postura".', 'bot');
+    appendMessage('Listo.\nCuando quieras retomarlo, toca "Corrección de postura" o escribe: corrección de postura.', 'bot');
   }
 }
 
@@ -919,7 +922,7 @@ async function handlePostureCapture(file, view) {
     attachment: { file, objectUrl },
   });
 
-  appendMessage('Analizando postura (pose estimation local)...', 'bot');
+  appendMessage('Estamos analizando tu alineación corporal…', 'bot');
 
   let pose;
   try {
@@ -937,11 +940,11 @@ async function handlePostureCapture(file, view) {
       const pct = Math.round((q.ratio || 0) * 100);
       appendMessage(
         `No logré verte con suficiente claridad (calidad aprox: ${pct}%).\n\n` +
-          'Tips para que funcione:\n' +
-          '- Aléjate un poco para que salgan pies a cabeza\n' +
-          '- Más luz (frontal) y fondo limpio\n' +
-          '- Celular estable (apoyado/temporizador)\n' +
-          '- Evita recortes del cuerpo\n\n' +
+          'Para que el resultado sea realmente útil:\n\n' +
+          '• Aléjate un poco para que salga el cuerpo completo\n' +
+          '• Más luz frontal\n' +
+          '• Celular estable\n' +
+          '• Evita recortes\n\n' +
           '¿La repetimos?',
         'bot'
       );
@@ -965,9 +968,9 @@ async function handlePostureCapture(file, view) {
     savePostureState();
     appendMessage(
       '✅ Foto frontal lista.\n\n' +
-        'Ahora vamos por la foto **lateral** (perfil).\n\n' +
-        'Tip si estás solo: apoya el celular de lado y usa temporizador, o toma la foto frente a un espejo (perfil), sin taparte con el teléfono.\n\n' +
-        'Si prefieres, también puedo hacer un **análisis parcial** solo con esta foto (menos preciso).',
+        'Ahora vamos con la vista lateral (perfil).\n' +
+        'Con ambas vistas puedo darte un resultado más preciso y confiable.\n\n' +
+        'Si prefieres, puedo hacer un análisis parcial con esta foto, pero será menos exacto.',
       'bot'
     );
     appendQuickActions([
@@ -983,8 +986,8 @@ async function handlePostureCapture(file, view) {
   savePostureState();
   appendMessage(
     '✅ Listo. Ya tengo frontal + lateral.\n\n' +
-      'Antes de recomendar ejercicios, cuido tu seguridad (para evitar movimientos que te puedan irritar):\n' +
-      '¿tienes dolor agudo, hormigueo, adormecimiento o lesión reciente?',
+      'Antes de recomendar ejercicios, cuido tu seguridad.\n\n' +
+      '¿Tienes dolor agudo, hormigueo, adormecimiento o una lesión reciente?',
     'bot'
   );
   appendQuickActions([

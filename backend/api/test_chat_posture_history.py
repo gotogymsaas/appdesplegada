@@ -97,7 +97,7 @@ class ChatPostureHistoryTests(TestCase):
         )
         self.assertEqual(r2.status_code, 200)
         out2 = (r2.json() or {}).get("output") or ""
-        self.assertIn("Cambios vs tu última medición", out2)
+        self.assertIn("Tu evolución vs la última medición", out2)
 
         self.user.refresh_from_db()
         cs2 = self.user.coach_state or {}
