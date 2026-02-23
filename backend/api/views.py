@@ -3931,9 +3931,32 @@ def chat_n8n(request):
 
             # Post-análisis: ver hábitos sugeridos (sin pedir foto de nuevo)
             try:
-                if user and mode_active and isinstance(request.data, dict) and request.data.get('skin_habits_request') is True:
+                habits_requested = False
+                try:
+                    if user and isinstance(request.data, dict) and request.data.get('skin_habits_request') is True:
+                        habits_requested = True
+                    # Robustez: algunos clientes pueden enviar solo el texto del botón.
+                    if (not habits_requested) and user:
+                        if re.search(r"\b(ver\s+h[aá]bitos|h[aá]bitos\s+sugeridos)\b", msg_low or "") and re.search(r"\b(piel|skin)\b", msg_low or ""):
+                            habits_requested = True
+                except Exception:
+                    habits_requested = False
+
+                if user and habits_requested:
                     last_blob = cs.get('skin_last_result') if isinstance(cs.get('skin_last_result'), dict) else None
                     last_res = (last_blob or {}).get('result') if isinstance((last_blob or {}).get('result'), dict) else None
+
+                    # Freshness guardrail: si es demasiado viejo, pedir que haga análisis primero.
+                    try:
+                        updated_at = str((last_blob or {}).get('updated_at') or '').strip()
+                        if updated_at:
+                            dt = datetime.fromisoformat(updated_at)
+                            if dt.tzinfo is None:
+                                dt = dt.replace(tzinfo=timezone.get_current_timezone())
+                            if timezone.now() - dt > timedelta(hours=2):
+                                last_res = None
+                    except Exception:
+                        pass
 
                     if not isinstance(last_res, dict):
                         # cerrar modo
@@ -3948,7 +3971,7 @@ def chat_n8n(request):
                         except Exception:
                             pass
 
-                        return Response({'output': "**Vitalidad de la Piel**\nNo encontré un resultado reciente. Haz el análisis con 1 foto y luego toca ‘Ver hábitos sugeridos para la piel’.", 'skin_flow_stage': 'completed'})
+                        return Response({'output': "**Vitalidad de la Piel**\nPara darte sugerencias personalizadas necesito un análisis reciente. Haz el análisis con 1 foto y luego toca ‘Ver hábitos sugeridos para la piel’.", 'skin_flow_stage': 'completed'})
 
                     # Intentar hábitos vía n8n (más humanos), con fallback determinista.
                     habits_text = ""
@@ -3969,9 +3992,10 @@ def chat_n8n(request):
                         scores_all = last_res.get('scores') if isinstance(last_res.get('scores'), dict) else {}
 
                         prompt = (
-                            "Genera hábitos sugeridos para mantener/mejorar la piel basándote SOLO en este resultado (no inventes diagnósticos).\n"
+                            "Genera sugerencias y hábitos personalizados basándote SOLO en este resultado.\n"
+                            "IMPORTANTE: ya hay análisis; NO pidas otra foto ni más datos.\n"
                             "Formato: Mañana / Noche / Semanal. 5–8 bullets máximo.\n"
-                            "Evita medicamentos, activos médicos o promesas.\n\n"
+                            "Evita diagnósticos, medicamentos o activos médicos y evita promesas.\n\n"
                             f"Vitalidad Score: {score}%" + (f" | Confianza de captura: {conf_pct}%" if conf_pct is not None else "") + "\n"
                             f"Subscores: {last_res.get('sub_scores')}\n"
                             f"Scores extra: {scores_all}\n"
@@ -4009,6 +4033,16 @@ def chat_n8n(request):
                     except Exception:
                         habits_text = ""
 
+                    # Guardrail: si n8n intenta pedir una foto, lo consideramos respuesta genérica y caemos a fallback.
+                    try:
+                        low_out = str(habits_text or '').lower()
+                        if re.search(r"\b(env[ií]a|enviame|enviarme|adjunta|adjuntar)\b.*\bfoto\b", low_out):
+                            habits_text = ""
+                        if re.search(r"\bpara\s+poder\s+orientarte\s+mejor\b.*\bfoto\b", low_out):
+                            habits_text = ""
+                    except Exception:
+                        pass
+
                     if not habits_text.strip():
                         plan = last_res.get('recommendation_plan') if isinstance(last_res.get('recommendation_plan'), dict) else {}
                         prios = plan.get('priorities') if isinstance(plan.get('priorities'), list) else []
@@ -4018,6 +4052,8 @@ def chat_n8n(request):
 
                         out_lines = [
                             "**Vitalidad de la Piel**",
+                            "De acuerdo a tus resultados del análisis, estas son tus sugerencias personalizadas a realizar:",
+                            "",
                             "**✅ Hábitos sugeridos para la piel**",
                         ]
                         if prios:
@@ -4040,6 +4076,17 @@ def chat_n8n(request):
                         user.coach_state = cs2
                         user.coach_state_updated_at = timezone.now()
                         user.save(update_fields=['coach_state', 'coach_state_updated_at'])
+                    except Exception:
+                        pass
+
+                    # Prefacio consistente (incluso si viene de n8n)
+                    try:
+                        if habits_text.strip() and ("de acuerdo a tus resultados" not in habits_text.lower()):
+                            habits_text = (
+                                "**Vitalidad de la Piel**\n"
+                                "De acuerdo a tus resultados del análisis, estas son tus sugerencias personalizadas a realizar:\n\n"
+                                + habits_text.strip()
+                            )
                     except Exception:
                         pass
 
