@@ -4016,26 +4016,26 @@ def chat_n8n(request):
                         want_mm = True
 
                 # Iniciar flujo desde quick-action / activación por texto
+                # UX: primero elegir enfoque (menos botones al tiempo) y luego guiar la foto.
                 if (not isinstance(mm_req, dict)) and want_mm:
                     out = (
                         "[MEDICIÓN DEL PROGRESO MUSCULAR]\n"
-                        "Vamos a comparar tu progreso con fotos semana a semana (comparación relativa; no promete cm exactos).\n\n"
-                        "- Mínimo: 1 foto (frente relajado)\n"
-                        "- Mejor: agrega perfil, espalda y flex suave\n\n"
-                        "Empecemos con **frente relajado** (cuerpo completo, buena luz, cámara a 2–3m).\n\n"
-                        "Tip: si quieres foco (ej. bíceps o glúteos), dímelo y lo adapto."
+                        "Vamos a crear tu **tablero de evolución** y compararlo con tu última medición.\n\n"
+                        "Para que funcione de verdad:\n"
+                        "- Misma luz, misma distancia (2–3m), misma altura de cámara\n"
+                        "- Cuerpo completo y sin recortar hombros/cadera\n\n"
+                        "Primero dime qué quieres medir hoy:"
                     )
                     return Response(
                         {
                             'output': out,
                             'quick_actions': [
-                                {'label': 'Tomar foto frente', 'type': 'muscle_capture', 'view': 'front_relaxed', 'source': 'camera'},
-                                {'label': 'Adjuntar foto frente', 'type': 'muscle_capture', 'view': 'front_relaxed', 'source': 'attach'},
-                                {'label': 'Enfocar bíceps', 'type': 'message', 'text': 'Enfocar bíceps', 'payload': {'muscle_measure_request': {'focus': 'biceps'}}},
-                                {'label': 'Enfocar glúteos', 'type': 'message', 'text': 'Enfocar glúteos', 'payload': {'muscle_measure_request': {'focus': 'glutes'}}},
-                                {'label': 'Enfocar abdomen', 'type': 'message', 'text': 'Enfocar abdomen', 'payload': {'muscle_measure_request': {'focus': 'abs'}}},
+                                {'label': 'Progreso general', 'type': 'message', 'text': 'Progreso general', 'payload': {'muscle_measure_request': {'focus': 'general'}}},
+                                {'label': 'Bíceps', 'type': 'message', 'text': 'Bíceps', 'payload': {'muscle_measure_request': {'focus': 'biceps'}}},
+                                {'label': 'Glúteos', 'type': 'message', 'text': 'Glúteos', 'payload': {'muscle_measure_request': {'focus': 'glutes'}}},
+                                {'label': 'Abdomen', 'type': 'message', 'text': 'Abdomen', 'payload': {'muscle_measure_request': {'focus': 'abs'}}},
                                 {'label': 'Cancelar', 'type': 'muscle_cancel'},
-                            ],
+                            ][:6],
                         }
                     )
 
@@ -4085,10 +4085,12 @@ def chat_n8n(request):
                             fx_label = 'abdomen' if fx in ('abs', 'abdomen') else ('bíceps' if fx in ('biceps', 'bíceps') else ('glúteos' if fx in ('glutes', 'gluteos', 'glúteos') else fx))
                             guide = (
                                 f"[MEDICIÓN DEL PROGRESO MUSCULAR — Enfoque {fx_label.upper()}]\n"
-                                "Perfecto. Para que la medición sea consistente semana a semana:\n\n"
-                                "- Misma luz + misma distancia\n"
+                                "Perfecto. Vamos paso a paso (una foto a la vez) para que el resultado sea comparable.\n\n"
+                                "Cómo tomar la foto:\n"
+                                "- Buena luz + fondo limpio\n"
                                 "- Cámara a 2–3m, altura del pecho\n"
-                                "- No recortes hombros/cadera (si se recorta, baja la confiabilidad)\n\n"
+                                "- Cuerpo completo (pies a cabeza)\n"
+                                "- Sin recortar hombros/cadera\n\n"
                                 "Empecemos con **frente relajado**."
                             )
                             return Response(

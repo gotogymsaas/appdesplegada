@@ -691,7 +691,15 @@ def render_professional_summary(result: dict[str, Any]) -> str:
                     return None
                 try:
                     delta = int(d.get("delta") or 0)
+                    prev = int(d.get("prev") or 0)
                     sign = "+" if delta >= 0 else ""
+                    pct = None
+                    try:
+                        pct = (float(delta) / float(prev) * 100.0) if prev > 0 else None
+                    except Exception:
+                        pct = None
+                    if pct is not None:
+                        return f"- {label}: {sign}{delta} pts ({sign}{pct:.1f}%)"
                     return f"- {label}: {sign}{delta} pts"
                 except Exception:
                     return None

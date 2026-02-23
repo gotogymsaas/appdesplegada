@@ -2122,12 +2122,12 @@ if (fileInput) {
       clearSelectedFiles();
 
       (async () => {
-        for (let i = 0; i < Math.min(files.length, 4); i++) {
-          const f = files[i];
-          const view = missing[i] || missing[missing.length - 1] || 'front_relaxed';
-          // eslint-disable-next-line no-await-in-loop
-          await handleMuscleCapture(f, view);
+        if (files.length > 1) {
+          appendMessage('Recibí varias fotos. Para que la medición sea más clara, vamos **una por una**.', 'bot');
         }
+        const f = files[0];
+        const view = missing[0] || 'front_relaxed';
+        await handleMuscleCapture(f, view);
       })();
       return;
     }
@@ -2187,12 +2187,12 @@ if (cameraInput) {
       clearSelectedFiles();
 
       (async () => {
-        for (let i = 0; i < Math.min(files.length, 4); i++) {
-          const f = files[i];
-          const view = missing[i] || missing[missing.length - 1] || 'front_relaxed';
-          // eslint-disable-next-line no-await-in-loop
-          await handleMuscleCapture(f, view);
+        if (files.length > 1) {
+          appendMessage('Recibí varias fotos. Para que la medición sea más clara, vamos **una por una**.', 'bot');
         }
+        const f = files[0];
+        const view = missing[0] || 'front_relaxed';
+        await handleMuscleCapture(f, view);
       })();
       return;
     }
