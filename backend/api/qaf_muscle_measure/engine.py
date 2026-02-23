@@ -393,10 +393,29 @@ def evaluate_muscle_measure(payload: dict[str, Any]) -> MuscleMeasureResult:
             if cpp is not None:
                 linear_cm["arm_length"] = round(float(arm_len) * float(cpp), 1)
 
-    # 3) Definición visual: MVP no fiable sin control de luz. Devolvemos score conservador basado en calidad.
-    if quality_scores:
-        qavg = sum(quality_scores) / max(1, len(quality_scores))
-        definition_score = int(round(_clamp(qavg, 0.0, 1.0) * 100.0))
+    # 3) Marcación/definición visual (beta): si el cliente manda appearance (pixeles), lo usamos.
+    # Si no existe, devolvemos un score conservador basado en calidad (NO es marcación real).
+    try:
+        defs: list[float] = []
+        for view_id, pose in views_in.items():
+            if not isinstance(pose, dict):
+                continue
+            app = pose.get('appearance') if isinstance(pose.get('appearance'), dict) else None
+            if not isinstance(app, dict):
+                continue
+            v = _safe_float(app.get('torso_definition_beta'))
+            if v is None:
+                continue
+            defs.append(float(v))
+        if defs:
+            definition_score = int(round(_clamp(sum(defs) / max(1, len(defs)), 0.0, 100.0)))
+        elif quality_scores:
+            qavg = sum(quality_scores) / max(1, len(quality_scores))
+            definition_score = int(round(_clamp(qavg, 0.0, 1.0) * 100.0))
+    except Exception:
+        if quality_scores:
+            qavg = sum(quality_scores) / max(1, len(quality_scores))
+            definition_score = int(round(_clamp(qavg, 0.0, 1.0) * 100.0))
 
     # 4) Consistencia de medición (variable #7)
     base_cons = 0.0
@@ -587,6 +606,14 @@ def render_professional_summary(result: dict[str, Any]) -> str:
     lines.append(f"- Postura estática (proxy): {posture}/100")
     lines.append(f"- Simetría (hombros/pelvis): {symmetry}/100")
     lines.append(f"- Silueta V‑taper (proxy): {v_taper}/100")
+
+    try:
+        defn = int(vars_.get('definition') or 0)
+    except Exception:
+        defn = 0
+    if defn:
+        lines.append(f"- Marcación visual (beta): {defn}/100")
+        lines.append("  (Depende mucho de luz/ángulo. No es % de grasa; úsalo como tendencia.)")
 
     # Proxies por grupo
     def _g(name: str) -> int:

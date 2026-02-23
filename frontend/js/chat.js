@@ -440,7 +440,102 @@ function _nextMuscleOffer(view) {
   return null;
 }
 
-async function estimateMusclePoseFromImageFile(file) {
+function _computeTorsoDefinitionBeta(img, keypoints) {
+  try {
+    const kps = Array.isArray(keypoints) ? keypoints : [];
+    const map = {};
+    kps.forEach((kp) => {
+      if (!kp || !kp.name) return;
+      map[String(kp.name)] = kp;
+    });
+
+    const ls = map.left_shoulder;
+    const rs = map.right_shoulder;
+    const lh = map.left_hip;
+    const rh = map.right_hip;
+    if (!ls || !rs || !lh || !rh) return null;
+
+    const w = Number(img.naturalWidth || img.width || 0);
+    const h = Number(img.naturalHeight || img.height || 0);
+    if (!w || !h) return null;
+
+    // Bounding box torso
+    const x1 = Math.max(0, Math.min(ls.x, rs.x, lh.x, rh.x) * w);
+    const x2 = Math.min(w, Math.max(ls.x, rs.x, lh.x, rh.x) * w);
+    const y1 = Math.max(0, Math.min(ls.y, rs.y, lh.y, rh.y) * h);
+    const y2 = Math.min(h, Math.max(ls.y, rs.y, lh.y, rh.y) * h);
+
+    const bw = Math.max(1, Math.floor(x2 - x1));
+    const bh = Math.max(1, Math.floor(y2 - y1));
+    if (bw < 60 || bh < 80) return null;
+
+    // ROI abdomen: mitad inferior del torso, centrada.
+    const roiX = Math.floor(x1 + bw * 0.15);
+    const roiW = Math.floor(bw * 0.7);
+    const roiY = Math.floor(y1 + bh * 0.45);
+    const roiH = Math.floor(bh * 0.5);
+    if (roiW < 40 || roiH < 40) return null;
+
+    const canvas = document.createElement('canvas');
+    canvas.width = roiW;
+    canvas.height = roiH;
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+    if (!ctx) return null;
+    ctx.drawImage(img, roiX, roiY, roiW, roiH, 0, 0, roiW, roiH);
+    const imgData = ctx.getImageData(0, 0, roiW, roiH);
+    const data = imgData.data;
+
+    // Métrica simple: energía de gradiente + contraste, con guardrail de iluminación.
+    let sum = 0;
+    let sum2 = 0;
+    let edges = 0;
+    const n = roiW * roiH;
+    if (!n) return null;
+
+    // Precompute luminance
+    const lum = new Float32Array(n);
+    for (let i = 0; i < n; i++) {
+      const r = data[i * 4];
+      const g = data[i * 4 + 1];
+      const b = data[i * 4 + 2];
+      const y = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+      lum[i] = y;
+      sum += y;
+      sum2 += y * y;
+    }
+    const mean = sum / n;
+    const variance = Math.max(0, sum2 / n - mean * mean);
+    const std = Math.sqrt(variance);
+
+    // Demasiado oscuro o demasiado brillante = poco confiable
+    if (mean < 35 || mean > 235) return { score: 0, mean, std, note: 'luz_no_fiable' };
+
+    // Aproximación de gradiente (diferencias vecinales)
+    const thresh = Math.max(10, std * 0.6);
+    for (let y = 1; y < roiH - 1; y++) {
+      for (let x = 1; x < roiW - 1; x++) {
+        const idx = y * roiW + x;
+        const gx = Math.abs(lum[idx + 1] - lum[idx - 1]);
+        const gy = Math.abs(lum[idx + roiW] - lum[idx - roiW]);
+        const gmag = gx + gy;
+        if (gmag > thresh) edges += 1;
+      }
+    }
+    const edgeDensity = edges / Math.max(1, (roiW - 2) * (roiH - 2));
+
+    // Combinar: edgeDensity (0..~0.25) y std (contraste)
+    const edgeScore = Math.max(0, Math.min(1, (edgeDensity - 0.02) / (0.14 - 0.02)));
+    const contrastScore = Math.max(0, Math.min(1, (std - 12) / (38 - 12)));
+    const score01 = 0.65 * edgeScore + 0.35 * contrastScore;
+    const score = Math.round(score01 * 100);
+
+    return { score, mean, std, edgeDensity };
+  } catch (e) {
+    return null;
+  }
+}
+
+async function estimateMusclePoseFromImageFile(file, opts = {}) {
   // Igual que posture, pero dejamos la función separada por claridad.
   const url = URL.createObjectURL(file);
   try {
@@ -459,9 +554,29 @@ async function estimateMusclePoseFromImageFile(file) {
       estimator.send({ image: img });
     });
     const kps = mediapipeLandmarksToKeypoints(res.poseLandmarks);
+
+    let appearance = null;
+    try {
+      if (opts && opts.withAppearance) {
+        const td = _computeTorsoDefinitionBeta(img, kps);
+        if (td && typeof td === 'object') {
+          appearance = {
+            torso_definition_beta: Number.isFinite(Number(td.score)) ? Number(td.score) : 0,
+            mean_luma: td.mean,
+            contrast_std: td.std,
+            edge_density: td.edgeDensity,
+            note: td.note || null,
+          };
+        }
+      }
+    } catch (e) {
+      // ignore
+    }
+
     return {
       keypoints: kps,
       image: { width: img.naturalWidth || img.width || 0, height: img.naturalHeight || img.height || 0 },
+      appearance: appearance,
     };
   } finally {
     try {
@@ -488,7 +603,7 @@ async function handleMuscleCapture(file, view) {
 
   let pose;
   try {
-    pose = await estimateMusclePoseFromImageFile(file);
+    pose = await estimateMusclePoseFromImageFile(file, { withAppearance: true });
   } catch (e) {
     console.warn('Muscle pose estimation failed:', e);
     appendMessage('No pude detectar bien tu cuerpo. Repite con mejor luz y cuerpo completo.', 'bot');
@@ -536,7 +651,7 @@ async function handleShapeCapture(file, view) {
   let pose;
   try {
     // Reutilizamos el mismo pipeline que medición muscular.
-    pose = await estimateMusclePoseFromImageFile(file);
+    pose = await estimateMusclePoseFromImageFile(file, { withAppearance: false });
   } catch (e) {
     console.warn('Shape pose estimation failed:', e);
     appendMessage('No pude detectar bien tu cuerpo. Repite con mejor luz y cuerpo completo.', 'bot');
@@ -2324,18 +2439,34 @@ async function processMessage(text, file, pendingId, extraPayload = null) {
     // Quick actions (botones con estilo existente)
     try {
       if (data && typeof data === 'object' && Array.isArray(data.quick_actions) && data.quick_actions.length) {
-        // Guardrail UX: si el flujo de postura está activo, no mezclar botones de otros módulos.
+        // Guardrail UX: si un flujo está activo, no mezclar botones de otros módulos.
         try {
+          const actionsIn = data.quick_actions || [];
+
           if (postureFlow && postureFlow.active) {
-            const filtered = (data.quick_actions || []).filter((a) => {
+            const filtered = actionsIn.filter((a) => {
               if (!a || typeof a !== 'object') return false;
               const t = String(a.type || '').trim();
               return t.startsWith('posture_');
             });
             if (filtered.length) appendQuickActions(filtered);
-          } else {
-            appendQuickActions(data.quick_actions);
+            return;
           }
+
+          if (muscleFlow && muscleFlow.active) {
+            const filtered = actionsIn.filter((a) => {
+              if (!a || typeof a !== 'object') return false;
+              const t = String(a.type || '').trim();
+              if (t.startsWith('muscle_')) return true;
+              // Permitir CTAs de enfoque que mandan payload muscle_measure_request
+              if (t === 'message' && a.payload && typeof a.payload === 'object' && a.payload.muscle_measure_request) return true;
+              return false;
+            });
+            if (filtered.length) appendQuickActions(filtered);
+            return;
+          }
+
+          appendQuickActions(actionsIn);
         } catch (e) {
           appendQuickActions(data.quick_actions);
         }
