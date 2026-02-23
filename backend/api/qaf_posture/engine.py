@@ -267,8 +267,16 @@ def evaluate_posture(payload: dict[str, Any]) -> PostureResult:
         s = float(scale_f)
         sh_l = kp_f.get("left_shoulder")
         sh_r = kp_f.get("right_shoulder")
+        el_l = kp_f.get("left_elbow")
+        el_r = kp_f.get("right_elbow")
+        wr_l = kp_f.get("left_wrist")
+        wr_r = kp_f.get("right_wrist")
         hip_l = kp_f.get("left_hip")
         hip_r = kp_f.get("right_hip")
+        kn_l = kp_f.get("left_knee")
+        kn_r = kp_f.get("right_knee")
+        an_l = kp_f.get("left_ankle")
+        an_r = kp_f.get("right_ankle")
         nose = kp_f.get("nose")
 
         if sh_l and sh_r:
@@ -284,6 +292,56 @@ def evaluate_posture(payload: dict[str, Any]) -> PostureResult:
             signals.append(_signal("hip_asymmetry", hip_asym, threshold=0.09, confidence=conf))
             if hip_asym >= 0.11:
                 label("hip_asymmetry", severity="mild", confidence=conf, evidence=["front", "hip_asymmetry"])
+
+        # Medidas personales (proxy) — normalizadas por torso (hombros->cadera).
+        try:
+            if sh_l and sh_r:
+                w = _dist((float(sh_l["x"]), float(sh_l["y"])) , (float(sh_r["x"]), float(sh_r["y"]))) / s
+                conf = min(float(sh_l.get("score") or 0.0), float(sh_r.get("score") or 0.0), sc_conf_f)
+                signals.append(_signal("shoulder_width", float(w), threshold=None, confidence=conf))
+        except Exception:
+            pass
+
+        try:
+            if hip_l and hip_r:
+                w = _dist((float(hip_l["x"]), float(hip_l["y"])) , (float(hip_r["x"]), float(hip_r["y"]))) / s
+                conf = min(float(hip_l.get("score") or 0.0), float(hip_r.get("score") or 0.0), sc_conf_f)
+                signals.append(_signal("hip_width", float(w), threshold=None, confidence=conf))
+        except Exception:
+            pass
+
+        try:
+            if hip_l and an_l:
+                ll = _dist((float(hip_l["x"]), float(hip_l["y"])) , (float(an_l["x"]), float(an_l["y"]))) / s
+                conf = min(float(hip_l.get("score") or 0.0), float(an_l.get("score") or 0.0), sc_conf_f)
+                signals.append(_signal("leg_length_left", float(ll), threshold=None, confidence=conf))
+        except Exception:
+            pass
+
+        try:
+            if hip_r and an_r:
+                ll = _dist((float(hip_r["x"]), float(hip_r["y"])) , (float(an_r["x"]), float(an_r["y"]))) / s
+                conf = min(float(hip_r.get("score") or 0.0), float(an_r.get("score") or 0.0), sc_conf_f)
+                signals.append(_signal("leg_length_right", float(ll), threshold=None, confidence=conf))
+        except Exception:
+            pass
+
+        # Longitud de brazo (proxy). Requiere muñeca; si no está, no se calcula.
+        try:
+            if sh_l and wr_l:
+                al = _dist((float(sh_l["x"]), float(sh_l["y"])) , (float(wr_l["x"]), float(wr_l["y"]))) / s
+                conf = min(float(sh_l.get("score") or 0.0), float(wr_l.get("score") or 0.0), sc_conf_f)
+                signals.append(_signal("arm_length_left", float(al), threshold=None, confidence=conf))
+        except Exception:
+            pass
+
+        try:
+            if sh_r and wr_r:
+                al = _dist((float(sh_r["x"]), float(sh_r["y"])) , (float(wr_r["x"]), float(wr_r["y"]))) / s
+                conf = min(float(sh_r.get("score") or 0.0), float(wr_r.get("score") or 0.0), sc_conf_f)
+                signals.append(_signal("arm_length_right", float(al), threshold=None, confidence=conf))
+        except Exception:
+            pass
 
         mid_sh, c_sh = _mid(kp_f, "left_shoulder", "right_shoulder")
         mid_hip, c_hip = _mid(kp_f, "left_hip", "right_hip")
@@ -539,9 +597,56 @@ def render_professional_summary(result: dict[str, Any]) -> str:
             if v is not None:
                 metrics.append(f"Hombros redondeados (proxy): {v:.1f}%" + (f" (umbral {t:.1f}%)" if t is not None else ""))
 
+        # Medidas personales (proxy) — NO son cm; son valores relativos a tu torso (hombros->cadera).
+        def _rel(v: Any) -> float | None:
+            try:
+                return float(v)
+            except Exception:
+                return None
+
+        personal: list[str] = []
+        sw = _sig('shoulder_width')
+        if sw and sw.get('value') is not None:
+            v = _rel(sw.get('value'))
+            if v is not None:
+                personal.append(f"Ancho de hombros (relativo): {v:.2f}× torso")
+
+        hw = _sig('hip_width')
+        if hw and hw.get('value') is not None:
+            v = _rel(hw.get('value'))
+            if v is not None:
+                personal.append(f"Ancho de cadera (relativo): {v:.2f}× torso")
+
+        al = _sig('arm_length_left')
+        ar = _sig('arm_length_right')
+        if al and al.get('value') is not None:
+            v = _rel(al.get('value'))
+            if v is not None:
+                personal.append(f"Longitud de brazo izq (proxy): {v:.2f}× torso")
+        if ar and ar.get('value') is not None:
+            v = _rel(ar.get('value'))
+            if v is not None:
+                personal.append(f"Longitud de brazo der (proxy): {v:.2f}× torso")
+
+        ll = _sig('leg_length_left')
+        lr = _sig('leg_length_right')
+        if ll and ll.get('value') is not None:
+            v = _rel(ll.get('value'))
+            if v is not None:
+                personal.append(f"Longitud de pierna izq (proxy): {v:.2f}× torso")
+        if lr and lr.get('value') is not None:
+            v = _rel(lr.get('value'))
+            if v is not None:
+                personal.append(f"Longitud de pierna der (proxy): {v:.2f}× torso")
+
         if metrics:
             lines.append("métricas (aprox):")
             for m in metrics[:4]:
+                lines.append(f"- {m}")
+
+        if personal:
+            lines.append("medidas personales (proxy):")
+            for m in personal[:6]:
                 lines.append(f"- {m}")
     except Exception:
         pass

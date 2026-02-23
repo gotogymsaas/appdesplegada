@@ -3913,8 +3913,10 @@ def chat_n8n(request):
                 or isinstance(ppr0, dict)
                 or re.search(r"\b(postura|posture|proporci[oó]n|proporcion|proportion|m[uú]sculo|musculo|muscle|shape|presence|presencia)\b", msg_low0)
             )
+            posture_requested = bool(isinstance(pr0, dict))
         except Exception:
             suppress_weekly_checkins = False
+            posture_requested = False
 
         def _week_weights_from_state(state, week_id: str):
             try:
@@ -6398,7 +6400,9 @@ def chat_n8n(request):
                         data.setdefault('qaf_posture', posture_result)
 
                     out_text = data.get('output')
-                    if isinstance(out_text, str) and posture_text_for_output_override:
+                    if posture_requested and posture_text_for_output_override:
+                        data['output'] = posture_text_for_output_override
+                    elif isinstance(out_text, str) and posture_text_for_output_override:
                         low = out_text.lower()
                         has_posture = ('postura' in low) or ('hombro' in low) or ('cabeza' in low)
                         if (not out_text.strip()) or ('problema tecnico' in low) or ('problema técnico' in low):
