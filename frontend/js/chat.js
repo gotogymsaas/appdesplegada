@@ -728,7 +728,7 @@ async function handleShapeCapture(file, view) {
     attachment: { file, objectUrl },
   });
 
-  appendMessage('Analizando (pose estimation local)...', 'bot');
+  appendMessage('Analizando (calibración visual local)...', 'bot');
 
   let pose;
   try {
@@ -748,7 +748,7 @@ async function handleShapeCapture(file, view) {
   const nextView = _nextShapeOffer(view);
   if (nextView) {
     const label = _humanShapeViewLabel(nextView).toLowerCase();
-    appendMessage(`¿Quieres agregar **${label}** para mejorar el análisis o analizar ya?`, 'bot');
+    appendMessage(`¿Quieres agregar **${label}** para una lectura más fina o analizamos ya?`, 'bot');
     appendQuickActions([
       { label: `Tomar ${label}`, type: 'shape_capture', view: nextView, source: 'camera' },
       { label: `Adjuntar ${label}`, type: 'shape_capture', view: nextView, source: 'attach' },

@@ -555,7 +555,10 @@ def render_professional_summary(result: dict[str, Any]) -> str:
     else:
         lines.append("\n**✅ Listo**")
 
-    lines.append("\nGracias por compartir tus fotos. Voy a traducir tus proporciones en decisiones de alta costura (cortes, largos y estructura).")
+    lines.append(
+        "\nGracias por compartir tus fotos. Ahora traduzco tus proporciones ópticas en decisiones de alta costura "
+        "(corte, largo, estructura y caída)."
+    )
 
     # Mapa (wow, escaneable)
     try:
@@ -582,11 +585,11 @@ def render_professional_summary(result: dict[str, Any]) -> str:
             lines.append(f"- Perfil (stacking): {int(vars_.get('profile_stack') or 0)}")
 
         lines.append("\n**🪡 Cómo leer tus índices (alta costura)**")
-        lines.append("- Presencia global: qué tan ‘editorial’ se ve tu línea completa (caída + balance + lectura en cámara).")
-        lines.append("- Alineación: limpieza del eje (hombros/pelvis/cabeza) → mejora cómo ‘cae’ cualquier prenda.")
-        lines.append("- V‑taper (proxy): arquitectura hombro–cintura → define qué tan bien se sostiene una sastrería estructurada.")
-        lines.append("- Verticalidad: torso vs pierna (óptico) → decide tiro, largos de chaqueta y dónde ubicar la cintura visual.")
-        lines.append("- Perfil: línea cuello‑torso → decide escotes, solapas y cuellos para estilizar la parte superior.")
+        lines.append("- Presencia global: lectura de lujo en cámara (caída + balance + continuidad de línea).")
+        lines.append("- Alineación: eje limpio (hombros/pelvis/cabeza) → mejora la caída y la percepción de sastrería.")
+        lines.append("- V‑taper (proxy): arquitectura hombro–cintura → define cuánta estructura admite sin ‘pesar’ visualmente.")
+        lines.append("- Verticalidad: torso vs pierna (óptico) → guía tiro, largos de chaqueta y ubicación de cintura visual.")
+        lines.append("- Perfil: línea cuello‑torso → afina escotes, solapas y cuellos para estilizar la parte superior.")
     except Exception:
         pass
 

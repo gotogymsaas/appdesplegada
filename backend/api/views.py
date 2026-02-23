@@ -4934,10 +4934,10 @@ def chat_n8n(request):
                 if (not isinstance(sp_req, dict)) and want_sp:
                     out = (
                         "**Alta Costura Inteligente**\n"
-                        "Asesoría visual tipo diseñador: arquitectura de silueta + verticalidad + presencia (ratios *ópticos*, sin cm reales).\n\n"
+                        "Asesoría visual tipo diseñador (estética de atelier): arquitectura de silueta + verticalidad + presencia (ratios *ópticos*, sin cm reales).\n\n"
                         "- Mínimo: 1 foto (frente relajado)\n"
                         "- Mejor: agrega 1 foto (perfil derecho)\n\n"
-                        "Empecemos con **frente relajado** (cuerpo completo, buena luz, cámara a 2–3m)."
+                        "Empecemos con **frente relajado** (cuerpo completo, buena luz, cámara a 2–3m). Voy a leer proporciones y caída en cámara."
                     )
                     return Response(
                         {
