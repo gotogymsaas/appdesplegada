@@ -4991,13 +4991,16 @@ def chat_n8n(request):
                 habit_done = request.data.get('lifestyle_habit_done') if isinstance(request.data, dict) else None
 
                 want_lifestyle = False
+                lifestyle_activation_mode = None  # payload | explicit | heuristic
                 if isinstance(lr, dict) or isinstance(habit_done, dict):
                     want_lifestyle = True
+                    lifestyle_activation_mode = 'payload'
                 else:
                     msg_low = str(message or '').lower()
                     # Activación explícita
                     if re.search(r"\b(estado\s+de\s+hoy|como\s+voy\s+hoy|mi\s+energ[ií]a\s+hoy|dhss|lifestyle)\b", msg_low):
                         want_lifestyle = True
+                        lifestyle_activation_mode = 'explicit'
 
                     # Activación intuitiva por auto-reporte + intención (entrenar hoy / sin quemarme)
                     if not want_lifestyle:
@@ -5012,6 +5015,35 @@ def chat_n8n(request):
                         signals = int(has_sleep) + int(has_stress) + int(has_move)
                         if (signals >= 2) and (wants_training or burnout) and todayish:
                             want_lifestyle = True
+                            lifestyle_activation_mode = 'heuristic'
+
+                # Rate limit: evitar interrumpir conversaciones con análisis automático muchas veces al día.
+                try:
+                    if want_lifestyle and lifestyle_activation_mode == 'heuristic':
+                        cs = getattr(user, 'coach_state', {}) or {}
+                        cs2 = dict(cs)
+                        key = 'lifestyle_auto_activations'
+                        counts = cs2.get(key) if isinstance(cs2.get(key), dict) else {}
+                        today_key = timezone.localdate().isoformat()
+                        cur = counts.get(today_key)
+                        try:
+                            cur_i = int(cur) if cur is not None else 0
+                        except Exception:
+                            cur_i = 0
+
+                        MAX_AUTO_PER_DAY = 2
+                        if cur_i >= MAX_AUTO_PER_DAY:
+                            want_lifestyle = False
+                            lifestyle_activation_mode = None
+                        else:
+                            counts2 = dict(counts)
+                            counts2[today_key] = cur_i + 1
+                            cs2[key] = counts2
+                            user.coach_state = cs2
+                            user.coach_state_updated_at = timezone.now()
+                            user.save(update_fields=['coach_state', 'coach_state_updated_at'])
+                except Exception:
+                    pass
 
                 # Registrar hábito como hecho (sin UI nueva)
                 try:

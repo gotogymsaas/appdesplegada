@@ -46,3 +46,55 @@ class ChatLifestyleActivationTests(TestCase):
         self.assertIn("Estado de hoy", out)
         self.assertIn("DHSS:", out)
         self.assertNotIn("RESPUESTA_N8N", out)
+
+    @patch("api.views.requests.post", return_value=_DummyN8nResp())
+    @override_settings(SECURE_SSL_REDIRECT=False)
+    def test_lifestyle_heuristic_activation_is_rate_limited_per_day(self, _mock_post):
+        msg = "Dormí 5 horas, caminé poco y estoy estresado. ¿Cómo debería entrenar hoy para avanzar sin quemarme?"
+
+        # 1ra vez: activa
+        r1 = self.client.post(
+            "/api/chat/",
+            {"message": msg, "sessionId": "", "attachment": "", "attachment_text": "", "username": "juan"},
+            format="json",
+        )
+        self.assertEqual(r1.status_code, 200)
+        out1 = (r1.json() or {}).get("output") or ""
+        self.assertIn("Estado de hoy", out1)
+
+        # 2da vez: activa
+        r2 = self.client.post(
+            "/api/chat/",
+            {"message": msg, "sessionId": "", "attachment": "", "attachment_text": "", "username": "juan"},
+            format="json",
+        )
+        self.assertEqual(r2.status_code, 200)
+        out2 = (r2.json() or {}).get("output") or ""
+        self.assertIn("Estado de hoy", out2)
+
+        # 3ra vez: NO debe activar (rate limit). En este caso, n8n responde "RESPUESTA_N8N".
+        r3 = self.client.post(
+            "/api/chat/",
+            {"message": msg, "sessionId": "", "attachment": "", "attachment_text": "", "username": "juan"},
+            format="json",
+        )
+        self.assertEqual(r3.status_code, 200)
+        out3 = (r3.json() or {}).get("output") or ""
+        self.assertNotIn("Estado de hoy", out3)
+        self.assertIn("RESPUESTA_N8N", out3)
+
+        # Activación explícita debe seguir funcionando aunque el límite se haya alcanzado
+        r4 = self.client.post(
+            "/api/chat/",
+            {
+                "message": "Estado de hoy: ¿cómo está mi energía?",
+                "sessionId": "",
+                "attachment": "",
+                "attachment_text": "",
+                "username": "juan",
+            },
+            format="json",
+        )
+        self.assertEqual(r4.status_code, 200)
+        out4 = (r4.json() or {}).get("output") or ""
+        self.assertIn("Estado de hoy", out4)
