@@ -2642,6 +2642,7 @@ async function processMessage(text, file, pendingId, extraPayload = null) {
               if (t === 'message' && a.payload && typeof a.payload === 'object') {
                 if (a.payload.skin_context_prompt) return true;
                 if (a.payload.skin_context_update) return true;
+                if (a.payload.skin_habits_request) return true;
               }
               return false;
             });
@@ -2670,13 +2671,16 @@ async function processMessage(text, file, pendingId, extraPayload = null) {
       // ignore
     }
 
-    // Cierre limpio: si llegó resultado de Vitalidad de la Piel, finalizar flujo y remover botones.
+    // Cierre limpio: solo finalizar cuando el backend marque el stage final.
     try {
-      if (skinFlow && skinFlow.active && data && typeof data === 'object' && data.qaf_skin_health) {
-        skinFlow.active = false;
-        skinFlow.step = 'idle';
-        try { localStorage.removeItem(SKIN_STATE_KEY); } catch (e) { /* ignore */ }
-        clearQuickActions();
+      if (skinFlow && skinFlow.active && data && typeof data === 'object') {
+        const stage = String(data.skin_flow_stage || '').trim().toLowerCase();
+        if (stage === 'completed') {
+          skinFlow.active = false;
+          skinFlow.step = 'idle';
+          try { localStorage.removeItem(SKIN_STATE_KEY); } catch (e) { /* ignore */ }
+          clearQuickActions();
+        }
       }
     } catch (e) {
       // ignore
@@ -3137,6 +3141,12 @@ function appendQuickActions(actions) {
       if (action.type === 'skin_cancel') {
         cancelSkinFlow();
         clearQuickActions();
+        // Notificar al backend para cerrar el modo y evitar re-enganche accidental.
+        try {
+          sendQuickMessage('Cancelar', { skin_cancel: true });
+        } catch (e) {
+          // ignore
+        }
         return;
       }
       if (action.type === 'muscle_cancel') {

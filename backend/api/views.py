@@ -4422,6 +4422,20 @@ def chat_n8n(request):
                 health_mode = str(cs.get('health_mode') or '').strip().lower()
                 health_mode_until = str(cs.get('health_mode_until') or '').strip()
 
+                # Cancelar: cierre limpio del modo (server-side)
+                try:
+                    if request.data.get('skin_cancel') is True:
+                        cs2 = dict(cs)
+                        cs2['health_mode'] = ''
+                        cs2['health_mode_until'] = ''
+                        cs2.pop('skin_pending_attachment', None)
+                        user.coach_state = cs2
+                        user.coach_state_updated_at = timezone.now()
+                        user.save(update_fields=['coach_state', 'coach_state_updated_at'])
+                        return Response({'output': '[VITALIDAD DE LA PIEL]\nListo. Cerré el proceso.', 'skin_flow_stage': 'completed'})
+                except Exception:
+                    pass
+
                 # 1) Si el usuario selecciona el modo, lo guardamos y pedimos foto.
                 if want_skin:
                     cs2 = dict(cs)
@@ -4486,6 +4500,74 @@ def chat_n8n(request):
                         mode_active = timezone.now() <= until_dt
                 except Exception:
                     mode_active = (health_mode == 'skin')
+
+                # Si el modo está activo y el usuario responde "sí" pero aún no hay foto, re-mostrar CTAs.
+                try:
+                    if mode_active and not attachment_url:
+                        is_yes = bool(re.fullmatch(r"(si|sí|ok|dale|listo|de\s*una|vamos|claro)", msg_low or ""))
+                        if is_yes:
+                            out = (
+                                "[VITALIDAD DE LA PIEL]\n"
+                                "Perfecto. Envíame **1 foto** del rostro (luz natural, sin filtros, sin contraluz)."
+                            )
+                            return Response(
+                                {
+                                    'output': out,
+                                    'skin_flow_stage': 'need_photo',
+                                    'quick_actions': [
+                                        {'label': 'Tomar foto', 'type': 'open_camera'},
+                                        {'label': 'Adjuntar foto', 'type': 'open_attach'},
+                                        {'label': 'Cancelar', 'type': 'skin_cancel'},
+                                    ],
+                                }
+                            )
+                except Exception:
+                    pass
+
+                # Si el usuario pide hábitos (post-análisis), devolver hábitos y cerrar.
+                try:
+                    if mode_active and isinstance(request.data.get('skin_habits_request'), bool) and request.data.get('skin_habits_request') is True:
+                        last = cs.get('skin_last_result') if isinstance(cs.get('skin_last_result'), dict) else None
+                        plan = (last or {}).get('recommendation_plan') if isinstance((last or {}).get('recommendation_plan'), dict) else {}
+                        prios = plan.get('priorities') if isinstance(plan.get('priorities'), list) else []
+                        acts = plan.get('actions') if isinstance(plan.get('actions'), list) else []
+                        prios = [str(x).strip() for x in prios if str(x).strip()]
+                        acts = [str(x).strip() for x in acts if str(x).strip()]
+
+                        out_lines = [
+                            "[VITALIDAD DE LA PIEL]",
+                            "**✅ Hábitos recomendados (hoy)**",
+                        ]
+                        if prios:
+                            out_lines.append("\n**🎯 En qué enfocarte**")
+                            for i, p in enumerate(prios[:3], start=1):
+                                out_lines.append(f"- Prioridad {i}: {p}")
+                        if acts:
+                            out_lines.append("\n**✅ Acciones simples**")
+                            for a in acts[:5]:
+                                out_lines.append(f"- {a}")
+                        out_lines.append("\nSi quieres medir progreso real, repite con la misma luz/encuadre 1 vez por semana.")
+
+                        # cerrar modo
+                        try:
+                            cs2 = dict(cs)
+                            cs2['health_mode'] = ''
+                            cs2['health_mode_until'] = ''
+                            cs2.pop('skin_pending_attachment', None)
+                            user.coach_state = cs2
+                            user.coach_state_updated_at = timezone.now()
+                            user.save(update_fields=['coach_state', 'coach_state_updated_at'])
+                        except Exception:
+                            pass
+
+                        return Response(
+                            {
+                                'output': "\n".join(out_lines).strip(),
+                                'skin_flow_stage': 'completed',
+                            }
+                        )
+                except Exception:
+                    pass
 
                 # 2.a) Si el modo está activo, permitir registrar contexto auto-reportado (sin foto todavía).
                 if mode_active and isinstance(request.data, dict):
@@ -4711,21 +4793,17 @@ def chat_n8n(request):
                     except Exception:
                         pass
 
-                    # Cerrar modo para no re-analizar cada imagen accidentalmente.
+                    # Guardar último resultado en coach_state para acciones post-análisis (hábitos)
                     try:
                         cs2 = dict(cs)
-                        cs2['health_mode'] = ''
-                        cs2['health_mode_until'] = ''
-                        # Limpiar pending attachment si existía
-                        try:
-                            cs2.pop('skin_pending_attachment', None)
-                        except Exception:
-                            pass
+                        cs2['skin_last_result'] = {'result': res, 'updated_at': timezone.now().isoformat()}
                         user.coach_state = cs2
                         user.coach_state_updated_at = timezone.now()
                         user.save(update_fields=['coach_state', 'coach_state_updated_at'])
                     except Exception:
                         pass
+
+                    # Mantener el modo activo para permitir CTA post-análisis (hábitos) y cerrar al finalizar.
 
                     qas = []
                     try:
@@ -4738,7 +4816,20 @@ def chat_n8n(request):
                     except Exception:
                         qas = []
 
-                    return Response({'output': text or 'Vitalidad de la Piel listo.', 'qaf_skin_health': res, 'quick_actions': qas})
+                    # Después del análisis: ofrecer CTA de hábitos y cancelar.
+                    qas2 = []
+                    try:
+                        qas2 = [
+                            {'label': '✅ Ver hábitos', 'type': 'message', 'text': 'Ver hábitos', 'payload': {'skin_habits_request': True}},
+                            {'label': 'Cancelar', 'type': 'skin_cancel'},
+                        ]
+                        # Si no fue accepted, prevalecen los CTAs de reintento.
+                        if qas:
+                            qas2 = qas
+                    except Exception:
+                        qas2 = qas
+
+                    return Response({'output': text or 'Vitalidad de la Piel listo.', 'qaf_skin_health': res, 'quick_actions': qas2, 'skin_flow_stage': 'analysis_done'})
         except Exception as ex:
             print(f"QAF skin health warning: {ex}")
 
@@ -6130,6 +6221,14 @@ def chat_n8n(request):
                 vision_parsed = qaf_context.get('vision')
         except Exception:
             vision_parsed = None
+
+        # Normalizar CTAs del frontend para Vitalidad de la Piel
+        try:
+            if isinstance(request.data, dict) and isinstance(request.data.get('skin_habits_request'), dict):
+                # (No esperado) mantener compat
+                pass
+        except Exception:
+            pass
 
         def _parse_vision_json(text: str):
             raw = (text or "").strip()
