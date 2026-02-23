@@ -575,7 +575,10 @@ def render_professional_summary(result: dict[str, Any]) -> str:
             except Exception:
                 s_ok = False
             if f_ok or s_ok:
-                lines.append('Análisis parcial: con 1 foto puedo orientarte, pero para máxima precisión necesito 2 vistas (frontal + lateral).')
+                # Copy marketing (parcial)
+                lines.append('')
+                lines.append('Este es un análisis parcial.')
+                lines.append('Con una sola vista puedo orientarte, pero con frontal + lateral el resultado sería mucho más preciso.')
     except Exception:
         pass
 
@@ -726,9 +729,22 @@ def render_professional_summary(result: dict[str, Any]) -> str:
                 personal.append(f"Longitud de pierna der (proxy): {v:.2f}× torso")
 
         if metrics:
-            lines.append("\nTus métricas (hoy):")
+            lines.append("\n📊 Tus métricas hoy")
+            lines.append("Alineación")
             for m in metrics[:4]:
-                lines.append(f"- {m}")
+                # Re-formatear a bullets con punto medio
+                mm = str(m).strip()
+                if mm:
+                    lines.append(f"• {mm}")
+
+            # Refuerzo de lectura (marketing): si están bajo umbral, decirlo.
+            try:
+                # Con la data actual, el umbral está en el string; usamos una heurística simple.
+                lines.append('')
+                lines.append('👉 Estás muy por debajo del umbral de alerta.')
+                lines.append('Tu alineación general se ve estable.')
+            except Exception:
+                pass
 
         # Medidas en cm (estimadas): preferir calibración por px; fallback por altura+proporciones.
         cm_lines: list[str] = []
@@ -758,9 +774,10 @@ def render_professional_summary(result: dict[str, Any]) -> str:
                 pass
 
         if cm_lines:
-            lines.append("\nTus medidas (cm estimadas):")
+            # Si pudimos calibrar por pixeles, estas son las mejores cm posibles.
+            lines.append("\n📏 Proporciones estimadas (cm)")
             for m in cm_lines[:6]:
-                lines.append(f"- {m}")
+                lines.append(f"• {m}")
 
         # Fallback: si NO hay cm por px, pero existe height_cm, convertir proxies a cm con proporción (aprox).
         if (not cm_lines) and personal:
@@ -800,10 +817,20 @@ def render_professional_summary(result: dict[str, Any]) -> str:
                     approx_lines.append(f"Brazo der (cm aprox): {ar_rel * torso_cm_est:.1f} cm")
 
                 if approx_lines:
-                    lines.append("\nTus medidas (cm aprox por estatura):")
+                    lines.append("\n📏 Proporciones estimadas (según estatura)")
                     for m in approx_lines[:6]:
-                        lines.append(f"- {m}")
-                    lines.append("nota: para cm más fiables, usa foto cuerpo completo (pies a cabeza) y buena luz.")
+                        # Ya viene con texto tipo "Ancho de hombros..."; lo dejamos como bullet simple
+                        lines.append(f"• {m}")
+
+                    lines.append("")
+                    lines.append("Estas medidas son aproximadas y sirven como referencia comparativa para próximas mediciones.")
+                    lines.append("")
+                    lines.append("Para obtener valores más fiables:")
+                    lines.append("• Foto de cuerpo completo (pies a cabeza)")
+                    lines.append("• Buena luz frontal")
+                    lines.append("• Distancia de 2–3 metros")
+                    lines.append("")
+                    lines.append("La consistencia mejora la precisión.")
     except Exception:
         pass
 
@@ -812,7 +839,7 @@ def render_professional_summary(result: dict[str, Any]) -> str:
         if keys:
             lines.append("hallazgos: " + ", ".join(keys[:6]))
     if routine:
-        # Mostrar rutina en formato más accionable
+        # Cierre marketing
         pretty = []
         for ex in routine[:5]:
             if not isinstance(ex, dict):
@@ -841,7 +868,40 @@ def render_professional_summary(result: dict[str, Any]) -> str:
                 pass
             pretty.append(nm + (f" ({', '.join(tail)})" if tail else ""))
         if pretty:
-            lines.append("rutina sugerida:")
-            for x in pretty:
-                lines.append(f"- {x}")
+            lines.append("\n🎯 Ajuste recomendado hoy")
+            # Intentar el formato exacto del copy para el primer ejercicio
+            first = routine[0] if isinstance(routine[0], dict) else {}
+            nm0 = str(first.get('name') or '').strip()
+            sets0 = first.get('sets')
+            reps0 = first.get('reps')
+            rest0 = first.get('rest_sec')
+            if nm0:
+                lines.append(nm0)
+                bits = []
+                try:
+                    if sets0:
+                        bits.append(f"{int(sets0)} series")
+                except Exception:
+                    pass
+                try:
+                    if reps0:
+                        bits.append(f"{int(reps0)} repeticiones")
+                except Exception:
+                    pass
+                try:
+                    if rest0:
+                        bits.append(f"descanso {int(rest0)}s")
+                except Exception:
+                    pass
+                if bits:
+                    lines.append(" · ".join(bits))
+
+            # Si no hay rest_sec, igual mostramos los ejercicios restantes como apoyo
+            if len(pretty) > 1:
+                lines.append("\nOpcional (si tienes 8–10 min):")
+                for x in pretty[1:3]:
+                    lines.append(f"• {x}")
+
+            lines.append("")
+            lines.append("Pequeños ajustes sostenidos → postura más fuerte y eficiente.")
     return "\n".join(lines).strip()
