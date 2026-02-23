@@ -288,12 +288,12 @@ def evaluate_skin_health(
     except Exception:
         s_uniformity = int(round(_clamp01(1.0 - (tone_uniformity / 0.40)) * 100.0))
 
-    # 2) Texture: buscamos microcontraste moderado. Suavizamos el ancho de tolerancia.
+    # 2) Texture: buscamos microcontraste moderado.
+    # Usar una caída exponencial evita "0%" por clamps agresivos.
     try:
-        sigma = 0.10
-        s_texture = int(round(_clamp01(1.0 - (abs(float(microcontrast) - 0.05) / float(sigma))) * 100.0))
+        s_texture = int(round(_clamp01(math.exp(-abs(float(microcontrast) - 0.05) / 0.08)) * 100.0))
     except Exception:
-        s_texture = int(round(_clamp01(1.0 - abs(microcontrast - 0.05) / 0.10) * 100.0))
+        s_texture = int(round(_clamp01(1.0 - abs(microcontrast - 0.05) / 0.12) * 100.0))
 
     # 3) Hydration visible: lower specular (oil) but not zero; target ~0.03..0.08
     s_hydration = int(round(_clamp01(1.0 - abs(specular_glow - 0.05) / 0.08) * 100.0))
@@ -304,9 +304,11 @@ def evaluate_skin_health(
         # under_eye_shadow closer to 1 => less shadow
         s_energy = int(round(_clamp01((float(s_energy) / 100.0) * 0.65 + _clamp01((under_eye_shadow - 0.75) / 0.30) * 0.35) * 100.0))
 
-    # redness: treat as warning if high; score peaks around mid.
-    # Suavizamos el rango para evitar 0% por variaciones de tono/iluminación.
-    s_redness = int(round(_clamp01(1.0 - abs(redness_signal - 0.52) / 0.26) * 100.0))
+    # redness: score máximo cerca de 0.52; caída exponencial para evitar 0% por ruido de iluminación.
+    try:
+        s_redness = int(round(_clamp01(math.exp(-abs(float(redness_signal) - 0.52) / 0.22)) * 100.0))
+    except Exception:
+        s_redness = int(round(_clamp01(1.0 - abs(redness_signal - 0.52) / 0.30) * 100.0))
 
     # Final Skin Health Score (quality-weighted)
     sub = {
@@ -317,6 +319,17 @@ def evaluate_skin_health(
         "redness_balance": s_redness,
         "contrast_clarity": int(round(contrast_clarity * 100.0)),
     }
+
+    # UX: si aceptamos la foto, evitar 0% duros por artefactos de la métrica.
+    # No altera el score principal de forma importante, solo evita lecturas "0%" confusas.
+    if decision == "accepted":
+        for k in ("hydration_visible", "uniformity", "facial_energy", "texture_quality", "redness_balance", "contrast_clarity"):
+            try:
+                v = int(sub.get(k) or 0)
+                if v <= 0:
+                    sub[k] = 1
+            except Exception:
+                continue
 
     # Score principal usa 4 sub-scores (como en el texto) + guardrail por calidad
     base_score = (

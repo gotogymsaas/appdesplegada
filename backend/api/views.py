@@ -3994,8 +3994,9 @@ def chat_n8n(request):
                         prompt = (
                             "Genera sugerencias y hábitos personalizados basándote SOLO en este resultado.\n"
                             "IMPORTANTE: ya hay análisis; NO pidas otra foto ni más datos.\n"
+                            "Responde SOLO en texto plano (sin HTML, sin <iframe>, sin markdown de iframe).\n"
                             "Formato: Mañana / Noche / Semanal. 5–8 bullets máximo.\n"
-                            "Evita diagnósticos, medicamentos o activos médicos y evita promesas.\n\n"
+                            "Evita diagnósticos, preguntas al final, medicamentos o activos médicos y evita promesas.\n\n"
                             f"Vitalidad Score: {score}%" + (f" | Confianza de captura: {conf_pct}%" if conf_pct is not None else "") + "\n"
                             f"Subscores: {last_res.get('sub_scores')}\n"
                             f"Scores extra: {scores_all}\n"
@@ -4032,6 +4033,34 @@ def chat_n8n(request):
                                 habits_text = data.strip()
                     except Exception:
                         habits_text = ""
+
+                    # Si viene HTML/iframe, extraer texto de srcdoc y limpiar tags.
+                    try:
+                        raw_out = str(habits_text or '').strip()
+                        if raw_out.lower().startswith('<iframe'):
+                            try:
+                                import html as _html
+                                m = re.search(r"\bsrcdoc=(\"|')(.*?)(\1)", raw_out, flags=re.IGNORECASE | re.DOTALL)
+                                if m:
+                                    srcdoc = _html.unescape(m.group(2))
+                                    srcdoc = re.sub(r"<\s*br\s*/?>", "\n", srcdoc, flags=re.IGNORECASE)
+                                    srcdoc = re.sub(r"<[^>]+>", "", srcdoc)
+                                    habits_text = (srcdoc or '').strip()
+                            except Exception:
+                                pass
+                    except Exception:
+                        pass
+
+                    # Evitar coletilla de pregunta final (n8n a veces la añade)
+                    try:
+                        lines = [ln.rstrip() for ln in str(habits_text or '').splitlines()]
+                        while lines and not lines[-1].strip():
+                            lines.pop()
+                        if lines and ('¿' in lines[-1] or lines[-1].strip().endswith('?')):
+                            lines.pop()
+                        habits_text = "\n".join(lines).strip()
+                    except Exception:
+                        pass
 
                     # Guardrail: si n8n intenta pedir una foto, lo consideramos respuesta genérica y caemos a fallback.
                     try:
