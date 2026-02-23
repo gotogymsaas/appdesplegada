@@ -130,6 +130,7 @@ def evaluate_muscle_measure(payload: dict[str, Any]) -> MuscleMeasureResult:
     poses = payload.get("poses") if isinstance(payload.get("poses"), dict) else {}
     baseline = payload.get("baseline") if isinstance(payload.get("baseline"), dict) else None
     focus = str(payload.get("focus") or "").strip().lower() or None
+    height_cm = _safe_float(payload.get("height_cm"))
 
     # Views soportadas (opcionales)
     allowed_views = ("front_relaxed", "side_right_relaxed", "back_relaxed", "front_flex")
@@ -180,6 +181,30 @@ def evaluate_muscle_measure(payload: dict[str, Any]) -> MuscleMeasureResult:
         s = _dist(mid_sh, mid_hip)
         return float(s) if s > 1e-6 else None
 
+    def _body_height_px(kp: dict[str, dict[str, float]]) -> float | None:
+        # Preferido: nose -> mid_ankle para aproximar altura visible
+        nose = _get_xy(kp, "nose")
+        la = _get_xy(kp, "left_ankle")
+        ra = _get_xy(kp, "right_ankle")
+        if nose and la and ra:
+            mid_a = ((la[0] + ra[0]) / 2.0, (la[1] + ra[1]) / 2.0)
+            h = _dist(nose, mid_a)
+            return float(h) if h > 1e-6 else None
+        # Fallback: torso * ratio antropométrico (muy aproximado)
+        torso = _scale_from_front(kp)
+        if torso and torso > 1e-6:
+            # torso (hombro->cadera) suele ser ~0.27..0.32 de la estatura.
+            return float(torso / 0.29)
+        return None
+
+    def _cm_per_px(kp: dict[str, dict[str, float]]) -> float | None:
+        if height_cm is None or height_cm <= 0:
+            return None
+        bh = _body_height_px(kp)
+        if not bh or bh <= 1e-6:
+            return None
+        return float(height_cm) / float(bh)
+
     # Métricas por vista (solo cuando estén disponibles)
     symmetry_score = None
     v_taper_score = None
@@ -203,9 +228,19 @@ def evaluate_muscle_measure(payload: dict[str, Any]) -> MuscleMeasureResult:
             front_view = cand
             break
 
+    # Mediciones lineales (px y cm estimados cuando hay estatura)
+    linear_px: dict[str, float] = {}
+    linear_cm: dict[str, float] = {}
+    cm_confidence = 0
+
     if front_view:
         kp = get_kp(front_view)
         scale = _scale_from_front(kp) or 1.0
+        cpp = _cm_per_px(kp)
+        if cpp is not None:
+            # confianza de cm depende de consistencia y keypoints (muy aproximado)
+            base_q = (sum(quality_scores) / max(1, len(quality_scores))) if quality_scores else 0.0
+            cm_confidence = int(round(_clamp01(float(base_q) * 0.7 + _clamp01(n_views / 4.0) * 0.3) * 100.0))
 
         ls = kp.get("left_shoulder")
         rs = kp.get("right_shoulder")
@@ -216,6 +251,12 @@ def evaluate_muscle_measure(payload: dict[str, Any]) -> MuscleMeasureResult:
         if ls and rs and lh and rh:
             shoulder_w = abs(float(ls["x"]) - float(rs["x"]))
             hip_w = abs(float(lh["x"]) - float(rh["x"]))
+
+            linear_px["shoulder_width"] = float(shoulder_w)
+            linear_px["hip_width"] = float(hip_w)
+            if cpp is not None:
+                linear_cm["shoulder_width"] = round(float(shoulder_w) * float(cpp), 1)
+                linear_cm["hip_width"] = round(float(hip_w) * float(cpp), 1)
             shoulder_level = abs(float(ls["y"]) - float(rs["y"])) / scale
             hip_level = abs(float(lh["y"]) - float(rh["y"])) / scale
 
@@ -245,6 +286,11 @@ def evaluate_muscle_measure(payload: dict[str, Any]) -> MuscleMeasureResult:
                 l_leg = _dist(lhip, lk_p) + _dist(lk_p, la_p)
                 r_leg = _dist(rhip, rk_p) + _dist(rk_p, ra_p)
                 leg_len = float((l_leg + r_leg) / 2.0)
+
+            if leg_len and leg_len > 1e-6:
+                linear_px["leg_length"] = float(leg_len)
+                if cpp is not None:
+                    linear_cm["leg_length"] = round(float(leg_len) * float(cpp), 1)
 
             if leg_len and leg_len > 1e-6 and ratio is not None:
                 upper_lower = (ratio / (leg_len / max(1e-6, scale)))
@@ -305,6 +351,8 @@ def evaluate_muscle_measure(payload: dict[str, Any]) -> MuscleMeasureResult:
             if s > 1e-6:
                 forward_head = abs(float(ear["x"]) - float(sh["x"])) / s
                 rounded = abs(float(sh["x"]) - float(hip["x"])) / s
+
+                linear_px["forward_head_ratio"] = float(forward_head)
                 # Ajustamos posture_score si estaba vacío
                 if posture_score is None:
                     posture_score = _score_from_delta(0.6 * forward_head + 0.4 * rounded, good_at=0.12, bad_at=0.35)
@@ -318,6 +366,8 @@ def evaluate_muscle_measure(payload: dict[str, Any]) -> MuscleMeasureResult:
     # 2.b) Brazos / bíceps (proxy) usando el ángulo de codo en "front_flex" si existe.
     if "front_flex" in views_in:
         kp = get_kp("front_flex")
+        # Longitud brazo (hombro->muñeca) como referencia para seguimiento
+        cpp = _cm_per_px(kp)
         # Un codo más flexionado (ángulo menor) sugiere mejor ejecución de la pose.
         lsh = _get_xy(kp, "left_shoulder")
         lel = _get_xy(kp, "left_elbow")
@@ -326,15 +376,22 @@ def evaluate_muscle_measure(payload: dict[str, Any]) -> MuscleMeasureResult:
         rel = _get_xy(kp, "right_elbow")
         rwr = _get_xy(kp, "right_wrist")
         angles = []
+        arm_lens = []
         for a, b, c in ((lsh, lel, lwr), (rsh, rel, rwr)):
             if a and b and c:
                 ang = _angle(a, b, c)
                 if ang is not None:
                     angles.append(float(ang))
+                arm_lens.append(_dist(a, c))
         if angles:
             ang_avg = sum(angles) / max(1, len(angles))
             # Heurística: 60° = buena flex, 150° = casi recto.
             arms_score = int(round(_clamp((150.0 - ang_avg) / (150.0 - 60.0), 0.0, 1.0) * 100.0))
+        if arm_lens:
+            arm_len = float(sum(arm_lens) / max(1, len(arm_lens)))
+            linear_px["arm_length"] = float(arm_len)
+            if cpp is not None:
+                linear_cm["arm_length"] = round(float(arm_len) * float(cpp), 1)
 
     # 3) Definición visual: MVP no fiable sin control de luz. Devolvemos score conservador basado en calidad.
     if quality_scores:
@@ -367,6 +424,8 @@ def evaluate_muscle_measure(payload: dict[str, Any]) -> MuscleMeasureResult:
     try:
         if isinstance(baseline, dict):
             bvars = baseline.get("variables") if isinstance(baseline.get("variables"), dict) else {}
+            blinear_cm = baseline.get("measurements") if isinstance(baseline.get("measurements"), dict) else {}
+            blinear_cm = blinear_cm.get("cm_est") if isinstance(blinear_cm.get("cm_est"), dict) else {}
             deltas = {}
             for key, cur in (
                 ("symmetry", symmetry_score),
@@ -384,6 +443,32 @@ def evaluate_muscle_measure(payload: dict[str, Any]) -> MuscleMeasureResult:
                     continue
             if deltas:
                 vs_last_week = {"available": True, "deltas": deltas}
+
+            # Deltas para cm estimados (si existen)
+            cm_deltas = {}
+            for k, cur_v in linear_cm.items():
+                try:
+                    prev_v = float(blinear_cm.get(k)) if blinear_cm.get(k) is not None else None
+                except Exception:
+                    prev_v = None
+                if prev_v is None:
+                    continue
+                try:
+                    cur_f = float(cur_v)
+                    delta = float(cur_f - float(prev_v))
+                    pct = (delta / float(prev_v) * 100.0) if abs(float(prev_v)) > 1e-6 else None
+                    cm_deltas[k] = {
+                        "prev": round(float(prev_v), 1),
+                        "now": round(float(cur_f), 1),
+                        "delta": round(float(delta), 1),
+                        "pct": round(float(pct), 2) if pct is not None else None,
+                    }
+                except Exception:
+                    continue
+            if cm_deltas:
+                if vs_last_week is None:
+                    vs_last_week = {"available": True, "deltas": {}}
+                vs_last_week["cm_deltas"] = cm_deltas
     except Exception:
         vs_last_week = None
 
@@ -412,6 +497,12 @@ def evaluate_muscle_measure(payload: dict[str, Any]) -> MuscleMeasureResult:
             "static_posture": _nz(posture_score),
             "definition": _nz(definition_score),
             "measurement_consistency": int(measurement_consistency),
+        },
+        "measurements": {
+            "px": {k: round(float(v), 4) for k, v in linear_px.items()},
+            "cm_est": {k: float(v) for k, v in linear_cm.items()},
+            "cm_confidence": int(cm_confidence),
+            "note": "cm_est son estimaciones basadas en estatura + encuadre. Úsalas como tendencia, no como cinta métrica.",
         },
         "muscles_recognized": [
             "hombros (proxy V-taper)",
@@ -442,6 +533,13 @@ def render_professional_summary(result: dict[str, Any]) -> str:
     vars_ = result.get("variables") if isinstance(result.get("variables"), dict) else {}
     vol = vars_.get("volume_by_group") if isinstance(vars_.get("volume_by_group"), dict) else {}
     focus = str(result.get("focus") or "").strip().lower() or None
+    meas = result.get("measurements") if isinstance(result.get("measurements"), dict) else {}
+    cm_est = meas.get("cm_est") if isinstance(meas.get("cm_est"), dict) else {}
+    cm_conf = None
+    try:
+        cm_conf = int(meas.get("cm_confidence")) if meas.get("cm_confidence") is not None else None
+    except Exception:
+        cm_conf = None
 
     confidence_score = None
     try:
@@ -504,6 +602,34 @@ def render_professional_summary(result: dict[str, Any]) -> str:
     lines.append(f"- Glúteos/cadera: {_g('glutes')}/100")
     lines.append(f"- Pierna: {_g('thigh')}/100")
 
+    # cm estimados (si existen)
+    try:
+        if cm_est:
+            lines.append("")
+            head = "Medidas en cm (estimadas)" + (f" — confiabilidad {cm_conf}/100" if cm_conf is not None else "") + ":"
+            lines.append(head)
+
+            def _cm_line(key: str, label: str) -> str | None:
+                v = cm_est.get(key)
+                if v is None:
+                    return None
+                try:
+                    return f"- {label}: {float(v):.1f} cm"
+                except Exception:
+                    return None
+
+            for ln in (
+                _cm_line("shoulder_width", "Ancho de hombros"),
+                _cm_line("hip_width", "Ancho de cadera"),
+                _cm_line("arm_length", "Largo de brazo (hombro→muñeca)"),
+                _cm_line("leg_length", "Largo de pierna (cadera→tobillo)"),
+            ):
+                if ln:
+                    lines.append(ln)
+            lines.append("Nota: úsalo como tendencia semanal, no como cinta métrica.")
+    except Exception:
+        pass
+
     # Comparación vs semana pasada
     try:
         prog = result.get("progress") if isinstance(result.get("progress"), dict) else {}
@@ -532,14 +658,46 @@ def render_professional_summary(result: dict[str, Any]) -> str:
                 lines.append("")
                 lines.append("Cambios vs tu semana pasada:")
                 lines.extend(parts[:4])
+
+            # cm deltas (si existieran)
+            try:
+                cm_d = vs.get("cm_deltas") if isinstance(vs.get("cm_deltas"), dict) else {}
+                if cm_d:
+                    lines.append("\nCambios en cm (estimados):")
+                    for k, row in list(cm_d.items())[:4]:
+                        if not isinstance(row, dict):
+                            continue
+                        label_map = {
+                            "shoulder_width": "Hombros",
+                            "hip_width": "Cadera",
+                            "arm_length": "Brazo",
+                            "leg_length": "Pierna",
+                        }
+                        lab = label_map.get(str(k), str(k))
+                        try:
+                            delta = float(row.get("delta") or 0.0)
+                            sign = "+" if delta >= 0 else ""
+                            pct = row.get("pct")
+                            if pct is not None:
+                                lines.append(f"- {lab}: {sign}{delta:.1f} cm ({sign}{float(pct):.2f}%)")
+                            else:
+                                lines.append(f"- {lab}: {sign}{delta:.1f} cm")
+                        except Exception:
+                            continue
+            except Exception:
+                pass
     except Exception:
         pass
 
     # Qué hacer esta semana (marketing + accionable)
     lines.append("")
     lines.append("Qué deberías hacer esta semana (para que el progreso se note y se mida mejor):")
-    lines.append("1) Repite la medición 1 vez/semana, misma luz/encuadre/ropa.")
-    lines.append("2) Entrena con progresión simple (más reps o más carga) en 2–3 ejercicios clave.")
+    lines.append("1) **Fotos de referencia (recomendado):** frente relajado + perfil derecho. Extra (mejor): espalda + frente flex suave.")
+    lines.append("2) **Mismo protocolo:** misma luz, misma distancia, misma altura de cámara, misma ropa/pose.")
+    lines.append("3) Si es selfie en espejo: usa temporizador y aléjate (2–3m). Evita taparte con el celular.")
+    lines.append("4) Si te toman la foto: cámara a la altura del pecho, centrado, sin gran angular.")
+    lines.append("5) Si vas a **centralizar el músculo** (enfoque): perfecto, pero no recortes los puntos clave (hombros/cadera/codos/rodillas) o baja la confiabilidad.")
+    lines.append("6) En entrenamiento: progresión simple (más reps o más carga) en 2–3 ejercicios clave.")
 
     # Ajuste por foco
     if focus in ("biceps", "bíceps", "bicep"):

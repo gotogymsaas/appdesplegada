@@ -279,11 +279,13 @@ function startMuscleFlow() {
 
   appendMessage(
     'Vamos a hacer una **Medición del progreso muscular** con fotos (comparación relativa, sin prometer cm exactos).\n\n' +
-      'Puedes enviar **mínimo 1** y **máximo 4** fotos:\n' +
-      '- Frente relajado (recomendado)\n' +
-      '- Perfil derecho (opcional)\n' +
-      '- Espalda (opcional)\n' +
-      '- Frente flex suave (opcional)\n\n' +
+      'Para que el seguimiento sea **real** semana a semana, vamos a usar **fotos de referencia**:\n' +
+      '- Recomendado: **frente relajado + perfil derecho**\n' +
+      '- Mejor (más precisión): agrega **espalda + frente flex suave**\n\n' +
+      'Importante:\n' +
+      '• Misma luz, misma distancia, misma altura de cámara\n' +
+      '• Si es selfie en espejo: temporizador y aléjate (2–3m)\n' +
+      '• Si quieres **centralizar un músculo** (ej. bíceps o glúteos): perfecto, pero no recortes hombros/cadera/codos/rodillas\n\n' +
       'Empecemos con **frente relajado** (cuerpo completo, buena luz, cámara a 2–3m).',
     'bot'
   );

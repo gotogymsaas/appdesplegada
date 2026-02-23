@@ -4059,7 +4059,13 @@ def chat_n8n(request):
                     poses = mm_req.get('poses') if isinstance(mm_req.get('poses'), dict) else {}
                     focus = mm_req.get('focus') if isinstance(mm_req.get('focus'), str) else None
 
-                    res = evaluate_muscle_measure({'poses': poses, 'baseline': baseline, 'focus': focus}).payload
+                    height_cm = None
+                    try:
+                        height_cm = float(getattr(user, 'height', None)) if getattr(user, 'height', None) is not None else None
+                    except Exception:
+                        height_cm = None
+
+                    res = evaluate_muscle_measure({'poses': poses, 'baseline': baseline, 'focus': focus, 'height_cm': height_cm}).payload
 
                     # UX: nombre amigable para saludo
                     try:
@@ -7700,10 +7706,17 @@ def qaf_muscle_measure(request):
 
     focus = payload.get('focus') if isinstance(payload.get('focus'), str) else None
 
+    height_cm = None
+    try:
+        height_cm = float(getattr(user, 'height', None)) if getattr(user, 'height', None) is not None else None
+    except Exception:
+        height_cm = None
+
     res = evaluate_muscle_measure({
         'poses': payload.get('poses') if isinstance(payload.get('poses'), dict) else {},
         'baseline': baseline if isinstance(baseline, dict) else None,
         'focus': focus,
+        'height_cm': height_cm,
         'locale': locale,
     }).payload
 
