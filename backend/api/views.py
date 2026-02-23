@@ -4428,28 +4428,31 @@ def chat_n8n(request):
                     user.coach_state_updated_at = timezone.now()
                     user.save(update_fields=['coach_state', 'coach_state_updated_at'])
 
-                    out = (
-                        "[VITALIDAD DE LA PIEL]\n"
-                        "**✅ Empecemos** (sin diagnósticos médicos).\n\n"
-                        "Para que el análisis sea confiable:\n"
-                        "- Luz natural, sin contraluz\n"
-                        "- Sin filtros\n"
-                        "- Rostro centrado\n\n"
-                        "Cuando estés listo, envía **1 foto**."
-                    )
-                    return Response(
-                        {
-                            'output': out,
-                            'quick_actions': [
-                                {'label': 'Añadir agua', 'type': 'message', 'text': 'Añadir agua', 'payload': {'skin_context_prompt': 'water'}},
-                                {'label': 'Añadir estrés', 'type': 'message', 'text': 'Añadir estrés', 'payload': {'skin_context_prompt': 'stress'}},
-                                {'label': 'Añadir sol', 'type': 'message', 'text': 'Añadir sol', 'payload': {'skin_context_prompt': 'sun'}},
-                                {'label': 'Añadir movimiento', 'type': 'message', 'text': 'Añadir movimiento', 'payload': {'skin_context_prompt': 'movement'}},
-                                {'label': 'Tomar foto', 'type': 'open_camera'},
-                                {'label': 'Adjuntar foto', 'type': 'open_attach'},
-                            ],
-                        }
-                    )
+                    # Si ya llegó una foto en esta misma petición, seguimos directo al análisis.
+                    # (Evita pedir adjuntar/confirmar de nuevo.)
+                    if not attachment_url:
+                        out = (
+                            "[VITALIDAD DE LA PIEL]\n"
+                            "**✅ Empecemos** (sin diagnósticos médicos).\n\n"
+                            "Para que el análisis sea confiable:\n"
+                            "- Luz natural, sin contraluz\n"
+                            "- Sin filtros\n"
+                            "- Rostro centrado\n\n"
+                            "Cuando estés listo, envía **1 foto**."
+                        )
+                        return Response(
+                            {
+                                'output': out,
+                                'quick_actions': [
+                                    {'label': 'Añadir agua', 'type': 'message', 'text': 'Añadir agua', 'payload': {'skin_context_prompt': 'water'}},
+                                    {'label': 'Añadir estrés', 'type': 'message', 'text': 'Añadir estrés', 'payload': {'skin_context_prompt': 'stress'}},
+                                    {'label': 'Añadir sol', 'type': 'message', 'text': 'Añadir sol', 'payload': {'skin_context_prompt': 'sun'}},
+                                    {'label': 'Añadir movimiento', 'type': 'message', 'text': 'Añadir movimiento', 'payload': {'skin_context_prompt': 'movement'}},
+                                    {'label': 'Tomar foto', 'type': 'open_camera'},
+                                    {'label': 'Adjuntar foto', 'type': 'open_attach'},
+                                ],
+                            }
+                        )
 
                 # 2) Si hay imagen y el modo salud=skin está activo, ejecutamos análisis.
                 mode_active = False
@@ -6218,13 +6221,13 @@ def chat_n8n(request):
                         "Detecté una imagen tipo salud (primer plano de piel/músculo/rostro).\n"
                         "¿Qué quieres hacer con esta foto?\n"
                         "- Comparar/medir músculo\n"
-                        "- Belleza/piel\n"
+                        "- Vitalidad de la Piel\n"
                         "Responde con una opción."
                     )
                     qa = quick_actions_out if isinstance(quick_actions_out, list) else []
                     qa.extend([
                         {'label': 'Medición del progreso muscular', 'type': 'message', 'text': 'Medición del progreso muscular'},
-                        {'label': 'Belleza / piel', 'type': 'message', 'text': 'Belleza / piel'},
+                        {'label': 'Vitalidad de la Piel', 'type': 'message', 'text': 'Vitalidad de la Piel'},
                     ])
                     quick_actions_out = qa[:6]
         except Exception:

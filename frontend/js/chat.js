@@ -653,6 +653,22 @@ async function estimateMusclePoseFromImageFile(file, opts = {}) {
   }
 }
 
+async function handleSkinCapture(file) {
+  if (!_isImageFile(file)) {
+    appendMessage('Para Vitalidad de la Piel necesito una imagen.', 'bot');
+    return;
+  }
+
+  const objectUrl = URL.createObjectURL(file);
+  appendMessage('Foto rostro', 'user', {
+    meta: { text: 'Foto rostro', hasFile: true },
+    attachment: { file, objectUrl },
+  });
+
+  // Nota: processMessage ya muestra "Analizando...".
+  await processMessage('Vitalidad de la Piel', file, null, null);
+}
+
 async function handleMuscleCapture(file, view) {
   if (!_isImageFile(file)) {
     appendMessage('Para medición muscular necesito una imagen.', 'bot');
@@ -2200,6 +2216,14 @@ if (fileInput) {
       return;
     }
 
+    // Guardrail: si Vitalidad de la Piel está activo, mandar 1 foto al backend y analizar.
+    if (file && skinFlow && skinFlow.active) {
+      setAttachmentPreview(null);
+      clearSelectedFiles();
+      handleSkinCapture(file);
+      return;
+    }
+
     if (file && ppFlow.active && ppFlow.captureTarget) {
       const view = ppFlow.captureTarget;
       setAttachmentPreview(null);
@@ -2262,6 +2286,14 @@ if (cameraInput) {
         const view = missing[0] || 'front_relaxed';
         await handleMuscleCapture(f, view);
       })();
+      return;
+    }
+
+    // Guardrail: igual que attach, si Vitalidad de la Piel está activo, mandar 1 foto al backend y analizar.
+    if (file && skinFlow && skinFlow.active) {
+      setAttachmentPreview(null);
+      clearSelectedFiles();
+      handleSkinCapture(file);
       return;
     }
 
