@@ -865,5 +865,41 @@ def render_professional_summary(result: dict[str, Any]) -> str:
         lines.append("- 5 min de respiración lenta")
         lines.append("- Rutina nocturna básica")
 
-    lines.append("\nSi hay ardor fuerte, lesión, sangrado o empeora de forma persistente, consulta a un profesional de salud.")
+    # Nota final contextual (coherente con lo que medimos; sin diagnóstico)
+    try:
+        scores_all = result.get('scores') if isinstance(result.get('scores'), dict) else {}
+        redness_balance = None
+        try:
+            if scores_all.get('redness_balance') is not None:
+                redness_balance = int(scores_all.get('redness_balance'))
+        except Exception:
+            redness_balance = None
+
+        patchiness = None
+        try:
+            patchiness = obs.get('patchiness')
+            if patchiness is not None:
+                patchiness = float(patchiness)
+        except Exception:
+            patchiness = None
+
+        note_bits: list[str] = []
+        if redness_balance is not None and redness_balance < 55:
+            note_bits.append("Si sientes **ardor o picazón** que no baja, pausa cambios y busca orientación profesional.")
+        if s_h is not None and s_h < 55:
+            note_bits.append("Si aparece **tirantez** o sensibilidad, prioriza suavidad (limpieza gentil + hidratación simple).")
+        if s_t is not None and s_t < 55:
+            note_bits.append("Si notas que la piel se ve más reactiva con cambios rápidos, vuelve a una rutina mínima por 3–5 días.")
+        if patchiness is not None and patchiness >= 0.07:
+            note_bits.append("Si ves zonas muy irregulares y se mantiene, repite la medición con la misma luz para confirmar tendencia.")
+
+        # Si nada “alerta” aparece, cerrar con seguimiento.
+        if not note_bits:
+            note_bits.append("Si algo se siente fuera de lo normal o el cambio empeora de forma persistente, busca orientación profesional.")
+
+        lines.append("\n**🧩 Nota final (coherente con tu lectura)**")
+        lines.append(f"- {note_bits[0]}")
+    except Exception:
+        lines.append("\n**🧩 Nota final**")
+        lines.append("- Si algo se siente fuera de lo normal o el cambio empeora de forma persistente, busca orientación profesional.")
     return "\n".join(lines).strip()
