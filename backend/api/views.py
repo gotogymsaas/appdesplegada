@@ -4033,6 +4033,7 @@ def chat_n8n(request):
                                 {'label': 'Adjuntar foto frente', 'type': 'muscle_capture', 'view': 'front_relaxed', 'source': 'attach'},
                                 {'label': 'Enfocar bíceps', 'type': 'message', 'text': 'Enfocar bíceps', 'payload': {'muscle_measure_request': {'focus': 'biceps'}}},
                                 {'label': 'Enfocar glúteos', 'type': 'message', 'text': 'Enfocar glúteos', 'payload': {'muscle_measure_request': {'focus': 'glutes'}}},
+                                {'label': 'Enfocar abdomen', 'type': 'message', 'text': 'Enfocar abdomen', 'payload': {'muscle_measure_request': {'focus': 'abs'}}},
                                 {'label': 'Cancelar', 'type': 'muscle_cancel'},
                             ],
                         }
@@ -4058,6 +4059,32 @@ def chat_n8n(request):
 
                     poses = mm_req.get('poses') if isinstance(mm_req.get('poses'), dict) else {}
                     focus = mm_req.get('focus') if isinstance(mm_req.get('focus'), str) else None
+
+                    # Si el usuario solo seleccionó un foco (sin fotos aún), guiar captura con copy específico.
+                    try:
+                        if (not poses) and focus:
+                            fx = str(focus).strip().lower()
+                            fx_label = 'abdomen' if fx in ('abs', 'abdomen') else ('bíceps' if fx in ('biceps', 'bíceps') else ('glúteos' if fx in ('glutes', 'gluteos', 'glúteos') else fx))
+                            guide = (
+                                f"[MEDICIÓN DEL PROGRESO MUSCULAR — Enfoque {fx_label.upper()}]\n"
+                                "Perfecto. Para que la medición sea consistente semana a semana:\n\n"
+                                "- Misma luz + misma distancia\n"
+                                "- Cámara a 2–3m, altura del pecho\n"
+                                "- No recortes hombros/cadera (si se recorta, baja la confiabilidad)\n\n"
+                                "Empecemos con **frente relajado**."
+                            )
+                            return Response(
+                                {
+                                    'output': guide,
+                                    'quick_actions': [
+                                        {'label': 'Tomar foto frente', 'type': 'muscle_capture', 'view': 'front_relaxed', 'source': 'camera'},
+                                        {'label': 'Adjuntar foto frente', 'type': 'muscle_capture', 'view': 'front_relaxed', 'source': 'attach'},
+                                        {'label': 'Cancelar', 'type': 'muscle_cancel'},
+                                    ],
+                                }
+                            )
+                    except Exception:
+                        pass
 
                     height_cm = None
                     try:
@@ -4103,6 +4130,7 @@ def chat_n8n(request):
                             qas = [
                                 {'label': 'Enfocar bíceps', 'type': 'message', 'text': 'Enfocar bíceps', 'payload': {'muscle_measure_request': {'poses': poses, 'focus': 'biceps'}}},
                                 {'label': 'Enfocar glúteos', 'type': 'message', 'text': 'Enfocar glúteos', 'payload': {'muscle_measure_request': {'poses': poses, 'focus': 'glutes'}}},
+                                {'label': 'Enfocar abdomen', 'type': 'message', 'text': 'Enfocar abdomen', 'payload': {'muscle_measure_request': {'poses': poses, 'focus': 'abs'}}},
                             ]
                     except Exception:
                         qas = []

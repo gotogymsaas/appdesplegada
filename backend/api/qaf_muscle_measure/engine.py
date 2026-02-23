@@ -739,6 +739,13 @@ def render_professional_summary(result: dict[str, Any]) -> str:
         lines.append("- 2 días/semana: hip thrust o puente pesado + RDL (bisagra) + zancada")
         lines.append("- 8–12 series efectivas/semana (sube 1–2 series si recuperas bien)")
         lines.append("- Pausa de 1s arriba en thrust para sentir activación")
+    elif focus in ("abs", "abdomen", "abdominales"):
+        lines.append("")
+        lines.append("Enfoque: Abdomen / marcación (beta)")
+        lines.append("- Prioriza **luz uniforme** (sin sombras duras) y abdomen visible")
+        lines.append("- Frente relajado es suficiente; si puedes, agrega frente flex suave")
+        lines.append("- Mantén encuadre estable: hombros y cadera deben verse (no recortes)")
+        lines.append("- Recuerda: esta métrica NO es % grasa; es una lectura visual para tendencia")
 
     # Insights del motor
     insights = result.get("insights")

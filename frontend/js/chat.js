@@ -2837,6 +2837,39 @@ function scheduleEditButtonUpdate() {
 
 function appendQuickActions(actions) {
   if (!Array.isArray(actions) || !actions.length) return;
+
+  // UX: no acumular bloques viejos de quick-actions (evita duplicados visuales)
+  try {
+    document.querySelectorAll('.quick-actions').forEach((el) => {
+      try { el.remove(); } catch (e) { /* ignore */ }
+    });
+  } catch (e) {
+    // ignore
+  }
+
+  // Deduplicar acciones (backend a veces reinyecta CTAs)
+  const seen = new Set();
+  const normalized = [];
+  for (const a of actions) {
+    if (!a || typeof a !== 'object') continue;
+    const t = String(a.type || '');
+    const v = String(a.view || '');
+    const l = String(a.label || '');
+    const txt = String(a.text || '');
+    let payloadKey = '';
+    try {
+      payloadKey = a.payload ? JSON.stringify(a.payload) : '';
+    } catch (e) {
+      payloadKey = '';
+    }
+    const key = `${t}|${v}|${l}|${txt}|${payloadKey}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    normalized.push(a);
+  }
+  actions = normalized;
+  if (!actions.length) return;
+
   const wrapper = document.createElement('div');
   wrapper.className = 'quick-actions';
   actions.forEach((action) => {
