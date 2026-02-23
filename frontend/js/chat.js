@@ -217,7 +217,7 @@ let shapeFlow = {
   },
 };
 
-// --- Exp-013 Postura & Proporción (pose-estimation en cliente; 2 obligatorias + 1 opcional) ---
+// --- Exp-013 Arquitectura Corporal (pose-estimation en cliente; 2 obligatorias + 1 opcional) ---
 let ppFlow = {
   active: false,
   step: 'idle',
@@ -400,8 +400,9 @@ function startPpFlow() {
   savePpState();
 
   appendMessage(
-    'Vamos a hacer **Postura & Proporción** (unificado) con fotos (proxy por keypoints, sin prometer cm reales).\n\n' +
-      'Necesito **2** fotos obligatorias y 1 opcional:\n' +
+    'Vamos a hacer **Arquitectura Corporal** (experiencia premium) con fotos (proxies por keypoints, sin prometer cm reales).\n\n' +
+      'Esto traduce tu alineación en decisiones simples que se sienten en la vida real: estabilidad, eficiencia y presencia.\n\n' +
+      'Necesito **2** fotos obligatorias y 1 opcional (recomendado):\n' +
       '- Frente relajado (obligatoria)\n' +
       '- Perfil derecho (obligatoria)\n' +
       '- Espalda (opcional recomendado)\n\n' +
@@ -424,7 +425,7 @@ function cancelPpFlow(opts = {}) {
     // ignore
   }
   if (!opts.silent && wasActive) {
-    appendMessage('Listo. Si quieres retomarlo, escribe: "Postura & Proporción".', 'bot');
+    appendMessage('Listo. Si quieres retomarlo, escribe: "Arquitectura Corporal".', 'bot');
   }
 }
 
@@ -766,7 +767,7 @@ async function handleShapeCapture(file, view) {
 
 async function handlePpCapture(file, view) {
   if (!_isImageFile(file)) {
-    appendMessage('Para Postura & Proporción necesito una imagen.', 'bot');
+    appendMessage('Para Arquitectura Corporal necesito una imagen.', 'bot');
     return;
   }
 
@@ -776,7 +777,7 @@ async function handlePpCapture(file, view) {
     attachment: { file, objectUrl },
   });
 
-  appendMessage('Analizando (pose estimation local)...', 'bot');
+  appendMessage('Analizando (calibración postural local)...', 'bot');
 
   let pose;
   try {
@@ -829,7 +830,7 @@ function sendPpAnalyze() {
   if (!(hasFront && hasSide)) {
     appendMessage('Haré un **cálculo parcial** con 1 foto. Para que sea más fiable, agrega también la otra vista (frente + perfil).', 'bot');
   }
-  sendQuickMessage('Postura & Proporción', {
+  sendQuickMessage('Arquitectura Corporal', {
     posture_proportion_request: {
       poses: poses,
       locale: 'es-CO',

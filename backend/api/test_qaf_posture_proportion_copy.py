@@ -22,7 +22,7 @@ def test_posture_proportion_renderer_premium_has_header_and_disclaimer():
         }
     )
 
-    assert "**Postura & Proporción (QAF)**" in text
+    assert "**Arquitectura Corporal (QAF)**" in text
     assert "no son medidas en cm" in text.lower()
     assert "Micro" in text
 

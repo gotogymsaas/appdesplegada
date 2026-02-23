@@ -23,7 +23,7 @@ class ChatPostureProportionTests(TestCase):
         resp = self.client.post(
             "/api/chat/",
             {
-                "message": "Postura & Proporción",
+                "message": "Arquitectura Corporal",
                 "sessionId": "",
                 "attachment": "",
                 "attachment_text": "",

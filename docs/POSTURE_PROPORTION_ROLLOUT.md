@@ -1,5 +1,5 @@
 ````markdown
-# Postura & Proporción (Exp-013) — Cómo probar en el celular
+# Arquitectura Corporal (Exp-013) — Cómo probar en el celular
 
 Este flujo usa el chat existente (botones + cámara) y calcula **pose estimation en el cliente** (MediaPipe Pose) para enviar solo **keypoints** al backend.
 
@@ -19,7 +19,7 @@ Este flujo usa el chat existente (botones + cámara) y calcula **pose estimation
 3) En el celular:
 - `http://<IP_DE_TU_PC>:5500/pages/auth/indexInicioDeSesion.html`
 
-4) Abre el chat y escribe **“Postura & Proporción”**.
+4) Abre el chat y escribe **“Arquitectura Corporal”**.
 
 5) Sigue el flujo (3 fotos):
 - Frente relajado

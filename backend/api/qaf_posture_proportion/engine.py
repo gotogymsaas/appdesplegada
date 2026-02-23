@@ -583,8 +583,8 @@ def render_professional_summary(result: dict[str, Any]) -> str:
         confidence_pct = None
 
     lines: list[str] = []
-    lines.append("**Postura & Proporción (QAF)**")
-    lines.append("(Asesoría visual por foto: proxies por keypoints 2D; **no son medidas en cm** y no es diagnóstico.)")
+    lines.append("**Arquitectura Corporal (QAF)**")
+    lines.append("(Asesoría visual premium por foto: proxies por keypoints 2D; **no son medidas en cm** y no es diagnóstico.)")
 
     if decision != "accepted":
         lines.append("\n**⚠️ Necesito 2 fotos para ser preciso**")
