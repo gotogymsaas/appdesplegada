@@ -3929,6 +3929,124 @@ def chat_n8n(request):
             except Exception:
                 pass
 
+            # Post-análisis: ver hábitos sugeridos (sin pedir foto de nuevo)
+            try:
+                if user and mode_active and isinstance(request.data, dict) and request.data.get('skin_habits_request') is True:
+                    last_blob = cs.get('skin_last_result') if isinstance(cs.get('skin_last_result'), dict) else None
+                    last_res = (last_blob or {}).get('result') if isinstance((last_blob or {}).get('result'), dict) else None
+
+                    if not isinstance(last_res, dict):
+                        # cerrar modo
+                        try:
+                            cs2 = dict(cs)
+                            cs2['health_mode'] = ''
+                            cs2['health_mode_until'] = ''
+                            cs2.pop('skin_pending_attachment', None)
+                            user.coach_state = cs2
+                            user.coach_state_updated_at = timezone.now()
+                            user.save(update_fields=['coach_state', 'coach_state_updated_at'])
+                        except Exception:
+                            pass
+
+                        return Response({'output': "**Vitalidad de la Piel**\nNo encontré un resultado reciente. Haz el análisis con 1 foto y luego toca ‘Ver hábitos sugeridos para la piel’.", 'skin_flow_stage': 'completed'})
+
+                    # Intentar hábitos vía n8n (más humanos), con fallback determinista.
+                    habits_text = ""
+                    try:
+                        score = last_res.get('skin_health_score')
+                        conf = last_res.get('confidence') if isinstance(last_res.get('confidence'), dict) else {}
+                        conf_pct = None
+                        try:
+                            if conf.get('score') is not None:
+                                conf_pct = int(round(float(conf.get('score')) * 100.0))
+                        except Exception:
+                            conf_pct = None
+
+                        plan = last_res.get('recommendation_plan') if isinstance(last_res.get('recommendation_plan'), dict) else {}
+                        prios = plan.get('priorities') if isinstance(plan.get('priorities'), list) else []
+                        acts = plan.get('actions') if isinstance(plan.get('actions'), list) else []
+                        ctx_sig = last_res.get('context_signals') if isinstance(last_res.get('context_signals'), dict) else {}
+                        scores_all = last_res.get('scores') if isinstance(last_res.get('scores'), dict) else {}
+
+                        prompt = (
+                            "Genera hábitos sugeridos para mantener/mejorar la piel basándote SOLO en este resultado (no inventes diagnósticos).\n"
+                            "Formato: Mañana / Noche / Semanal. 5–8 bullets máximo.\n"
+                            "Evita medicamentos, activos médicos o promesas.\n\n"
+                            f"Vitalidad Score: {score}%" + (f" | Confianza de captura: {conf_pct}%" if conf_pct is not None else "") + "\n"
+                            f"Subscores: {last_res.get('sub_scores')}\n"
+                            f"Scores extra: {scores_all}\n"
+                            f"Contexto: {ctx_sig}\n"
+                            f"Prioridades (motor): {prios}\n"
+                            f"Acciones (motor): {acts}\n"
+                        )
+
+                        n8n_payload = {
+                            "chatInput": prompt,
+                            "message": prompt,
+                            "sessionId": session_id,
+                            "username": (getattr(user, 'username', '') or ''),
+                            "auth_header": auth_header,
+                            "attachment": "",
+                            "attachment_text": "",
+                            "qaf": {"type": "exp-011_skin_habits", "result": last_res},
+                            "qaf_skin_health": last_res,
+                            "system_rules": {
+                                "module": "exp-011_skin_habits",
+                                "no_new_buttons": True,
+                                "no_medical": True,
+                            },
+                        }
+                        resp = requests.post(n8n_url, json=n8n_payload, timeout=45)
+                        if resp.status_code == 200:
+                            try:
+                                data = resp.json()
+                            except Exception:
+                                data = {"output": resp.text}
+                            if isinstance(data, dict) and isinstance(data.get('output'), str):
+                                habits_text = (data.get('output') or '').strip()
+                            elif isinstance(data, str):
+                                habits_text = data.strip()
+                    except Exception:
+                        habits_text = ""
+
+                    if not habits_text.strip():
+                        plan = last_res.get('recommendation_plan') if isinstance(last_res.get('recommendation_plan'), dict) else {}
+                        prios = plan.get('priorities') if isinstance(plan.get('priorities'), list) else []
+                        acts = plan.get('actions') if isinstance(plan.get('actions'), list) else []
+                        prios = [str(x).strip() for x in prios if str(x).strip()]
+                        acts = [str(x).strip() for x in acts if str(x).strip()]
+
+                        out_lines = [
+                            "**Vitalidad de la Piel**",
+                            "**✅ Hábitos sugeridos para la piel**",
+                        ]
+                        if prios:
+                            out_lines.append("\n**🎯 En qué enfocarte**")
+                            for i, p in enumerate(prios[:3], start=1):
+                                out_lines.append(f"- Prioridad {i}: {p}")
+                        if acts:
+                            out_lines.append("\n**✅ Acciones simples**")
+                            for a in acts[:5]:
+                                out_lines.append(f"- {a}")
+                        out_lines.append("\nSi quieres medir progreso real, repite con la misma luz/encuadre 1 vez por semana.")
+                        habits_text = "\n".join(out_lines).strip()
+
+                    # cerrar modo
+                    try:
+                        cs2 = dict(cs)
+                        cs2['health_mode'] = ''
+                        cs2['health_mode_until'] = ''
+                        cs2.pop('skin_pending_attachment', None)
+                        user.coach_state = cs2
+                        user.coach_state_updated_at = timezone.now()
+                        user.save(update_fields=['coach_state', 'coach_state_updated_at'])
+                    except Exception:
+                        pass
+
+                    return Response({'output': habits_text, 'skin_flow_stage': 'completed'})
+            except Exception:
+                pass
+
             # Si el usuario está en el modo (o lo pidió) y NO hay foto aún, devolver CTAs siempre.
             if user and (want_skin or mode_active) and not attachment_url:
                 # Activar modo si venía por intención
@@ -4097,8 +4215,8 @@ def chat_n8n(request):
                         ]
                     else:
                         qas = [
-                            {'label': '✅ Aceptar (ver hábitos)', 'type': 'message', 'text': 'Ver hábitos', 'payload': {'skin_habits_request': True}},
-                            {'label': 'Cancelar', 'type': 'skin_cancel'},
+                            {'label': 'Ver hábitos sugeridos para la piel', 'type': 'message', 'text': 'Ver hábitos sugeridos para la piel', 'payload': {'skin_habits_request': True}},
+                            {'label': 'Finalizar', 'type': 'skin_cancel'},
                         ]
                 except Exception:
                     qas = [
@@ -4816,7 +4934,8 @@ def chat_n8n(request):
                 try:
                     if mode_active and isinstance(request.data.get('skin_habits_request'), bool) and request.data.get('skin_habits_request') is True:
                         last = cs.get('skin_last_result') if isinstance(cs.get('skin_last_result'), dict) else None
-                        plan = (last or {}).get('recommendation_plan') if isinstance((last or {}).get('recommendation_plan'), dict) else {}
+                        last_res = (last or {}).get('result') if isinstance((last or {}).get('result'), dict) else {}
+                        plan = last_res.get('recommendation_plan') if isinstance(last_res.get('recommendation_plan'), dict) else {}
                         prios = plan.get('priorities') if isinstance(plan.get('priorities'), list) else []
                         acts = plan.get('actions') if isinstance(plan.get('actions'), list) else []
                         prios = [str(x).strip() for x in prios if str(x).strip()]
@@ -4824,7 +4943,7 @@ def chat_n8n(request):
 
                         out_lines = [
                             "**Vitalidad de la Piel**",
-                            "**✅ Hábitos recomendados (hoy)**",
+                            "**✅ Hábitos sugeridos para la piel**",
                         ]
                         if prios:
                             out_lines.append("\n**🎯 En qué enfocarte**")
@@ -5111,8 +5230,8 @@ def chat_n8n(request):
                     qas2 = []
                     try:
                         qas2 = [
-                            {'label': '✅ Ver hábitos', 'type': 'message', 'text': 'Ver hábitos', 'payload': {'skin_habits_request': True}},
-                            {'label': 'Cancelar', 'type': 'skin_cancel'},
+                            {'label': 'Ver hábitos sugeridos para la piel', 'type': 'message', 'text': 'Ver hábitos sugeridos para la piel', 'payload': {'skin_habits_request': True}},
+                            {'label': 'Finalizar', 'type': 'skin_cancel'},
                         ]
                         # Si no fue accepted, prevalecen los CTAs de reintento.
                         if qas:
