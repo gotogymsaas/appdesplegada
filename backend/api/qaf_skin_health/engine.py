@@ -642,9 +642,9 @@ def render_professional_summary(result: dict[str, Any]) -> str:
     lines.append("\n**✅ Listo**")
     if score is not None:
         if confidence_pct is not None:
-            lines.append(f"- Vitalidad Score™: {score}/100 · Confianza: {confidence_pct}%")
+            lines.append(f"- Vitalidad Score™: {score}% · Confianza: {confidence_pct}%")
         else:
-            lines.append(f"- Vitalidad Score™: {score}/100")
+            lines.append(f"- Vitalidad Score™: {score}%")
 
     # Mostrar TODAS las variables clave (wow) en formato escaneable.
     try:
@@ -664,17 +664,17 @@ def render_professional_summary(result: dict[str, Any]) -> str:
 
         lines.append("\n**📌 Lectura visual (0–100)**")
         if s_h is not None:
-            lines.append(f"- Hidratación visible: {s_h}/100")
+            lines.append(f"- Hidratación visible: {s_h}%")
         if s_u is not None:
-            lines.append(f"- Uniformidad de tono: {s_u}/100")
+            lines.append(f"- Uniformidad de tono: {s_u}%")
         if s_e is not None:
-            lines.append(f"- Energía facial: {s_e}/100")
+            lines.append(f"- Energía facial: {s_e}%")
         if s_t is not None:
-            lines.append(f"- Textura (micro‑detalle): {s_t}/100")
+            lines.append(f"- Textura (micro‑detalle): {s_t}%")
         if redness_balance is not None:
-            lines.append(f"- Balance de rojez (proxy): {redness_balance}/100")
+            lines.append(f"- Balance de rojez (proxy): {redness_balance}%")
         if contrast_clarity is not None:
-            lines.append(f"- Claridad/contraste (proxy): {contrast_clarity}/100")
+            lines.append(f"- Claridad/contraste (proxy): {contrast_clarity}%")
     except Exception:
         pass
 
@@ -692,27 +692,27 @@ def render_professional_summary(result: dict[str, Any]) -> str:
         parts = []
         if q_score is not None:
             try:
-                parts.append(f"Calidad: {int(round(float(q_score) * 100.0))}/100")
+                parts.append(f"Calidad: {int(round(float(q_score) * 100.0))}%")
             except Exception:
                 pass
         if q_focus is not None:
             try:
-                parts.append(f"Enfoque: {int(round(float(q_focus) * 100.0))}/100")
+                parts.append(f"Enfoque: {int(round(float(q_focus) * 100.0))}%")
             except Exception:
                 pass
         if q_exposure is not None:
             try:
-                parts.append(f"Luz: {int(round(float(q_exposure) * 100.0))}/100")
+                parts.append(f"Luz: {int(round(float(q_exposure) * 100.0))}%")
             except Exception:
                 pass
         if q_dynamic is not None:
             try:
-                parts.append(f"Rango: {int(round(float(q_dynamic) * 100.0))}/100")
+                parts.append(f"Rango: {int(round(float(q_dynamic) * 100.0))}%")
             except Exception:
                 pass
         if q_saturation is not None:
             try:
-                parts.append(f"Color: {int(round(float(q_saturation) * 100.0))}/100")
+                parts.append(f"Color: {int(round(float(q_saturation) * 100.0))}%")
             except Exception:
                 pass
         if parts:
@@ -724,47 +724,80 @@ def render_professional_summary(result: dict[str, Any]) -> str:
     # IA contextual (si hay señales)
     try:
         ctx_parts: list[str] = []
+        ctx_insights: list[str] = []
+
+        def _fmt_minutes_as_hm(minutes: float) -> str:
+            m = int(round(float(minutes)))
+            h = max(0, m) // 60
+            mm = max(0, m) % 60
+            return f"{h}h {mm:02d}m"
         sm = ctx_sig.get('sleep_minutes')
         if sm is not None:
             try:
-                ctx_parts.append(f"Sueño: {int(float(sm))} min")
+                sm_i = float(sm)
+                ctx_parts.append(f"Sueño: {_fmt_minutes_as_hm(sm_i)}")
+                if sm_i < 420:
+                    deficit = int(round(420 - sm_i))
+                    ctx_insights.append(f"Sueño bajo hoy (déficit aprox: {_fmt_minutes_as_hm(deficit)}).")
+                elif sm_i >= 480:
+                    ctx_insights.append("Sueño sólido hoy (buena base para que la piel se vea más estable).")
             except Exception:
                 pass
         st = ctx_sig.get('stress_1_5')
         if st is not None:
             try:
-                ctx_parts.append(f"Estrés (1–5): {float(st):.1f}")
+                st_f = float(st)
+                ctx_parts.append(f"Estrés (1–5): {st_f:.1f}")
+                if st_f >= 4.0:
+                    ctx_insights.append("Estrés alto: suele reflejarse como menos energía visible y más ‘carga’ en el rostro.")
+                elif st_f <= 2.0:
+                    ctx_insights.append("Estrés bajo: buen punto para sostener uniformidad y claridad.")
             except Exception:
                 pass
         steps = ctx_sig.get('steps')
         if steps is not None:
             try:
-                ctx_parts.append(f"Pasos: {int(float(steps))}")
+                steps_i = int(float(steps))
+                ctx_parts.append(f"Pasos: {steps_i}")
+                if steps_i < 5000:
+                    ctx_insights.append("Movimiento bajo: subirlo un poco mejora circulación y ‘energía’ visual en tendencia.")
             except Exception:
                 pass
         mv = ctx_sig.get('movement_1_5')
         if mv is not None:
             try:
-                ctx_parts.append(f"Movimiento (1–5): {float(mv):.1f}")
+                mv_f = float(mv)
+                ctx_parts.append(f"Movimiento (1–5): {mv_f:.1f}")
+                if mv_f <= 2.0:
+                    ctx_insights.append("Movimiento bajo: una caminata corta + respiración lenta suele cambiar tu ‘vitalidad’ en el día.")
             except Exception:
                 pass
         wl = ctx_sig.get('water_liters')
         if wl is not None:
             try:
-                ctx_parts.append(f"Agua: {float(wl):.1f} L")
+                wl_f = float(wl)
+                ctx_parts.append(f"Agua: {wl_f:.1f} L")
+                if wl_f < 1.5:
+                    ctx_insights.append("Agua baja: hoy tu piel tiende a verse menos ‘elástica’ y con menos brillo saludable.")
             except Exception:
                 pass
         sunm = ctx_sig.get('sun_minutes')
         if sunm is not None:
             try:
-                ctx_parts.append(f"Sol: {int(float(sunm))} min")
+                sun_i = int(float(sunm))
+                ctx_parts.append(f"Sol: {sun_i} min")
+                if sun_i >= 20:
+                    ctx_insights.append("Si hubo sol directo: protector solar + reaplicar mantiene uniformidad en tendencia.")
             except Exception:
                 pass
 
         if ctx_parts:
             lines.append("\n**🧠 IA contextual (tu piel refleja tu sistema)**")
             lines.append("- " + " · ".join(ctx_parts))
-            lines.append("- Si ajustamos 1–2 hábitos hoy, normalmente la piel lo refleja en tendencia (no es diagnóstico).")
+            if ctx_insights:
+                # Máximo 2 para mantenerlo escaneable
+                lines.append("- Correlación visible: " + " ".join(ctx_insights[:2]))
+            lines.append("- Si ajustas 1–2 hábitos hoy, normalmente la piel lo refleja en tendencia (no es diagnóstico).")
     except Exception:
         pass
 
