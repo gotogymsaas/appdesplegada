@@ -26,6 +26,7 @@ def test_posture_proportion_renderer_premium_has_header_and_disclaimer():
     assert "no son medidas en cm" in text.lower()
     assert "Lectura ejecutiva" in text
     assert "Micro" in text
+    assert "%" in text
 
 
 def test_posture_proportion_renderer_needs_photos_message():

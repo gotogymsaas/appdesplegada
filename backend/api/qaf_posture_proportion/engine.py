@@ -639,10 +639,15 @@ def render_professional_summary(result: dict[str, Any]) -> str:
     # Índices (con contexto)
     try:
         lines.append("\n**📌 Índices (0–100)**")
-        lines.append(f"- Eficiencia postural: {int(vars_.get('postural_efficiency_score') or 0)}")
-        lines.append(f"- Postura (alineación): {int(vars_.get('posture_score') or 0)}")
-        lines.append(f"- Proporción (proxy): {int(vars_.get('proportion_score') or 0)}")
-        lines.append(f"- Índice unificado (ASI): {int(vars_.get('alignment_silhouette_index') or 0)}")
+        # Mostrar en formato porcentaje (score 0..100 => % de estabilidad/limpieza, no “% corporal”).
+        eff = int(vars_.get('postural_efficiency_score') or 0)
+        post = int(vars_.get('posture_score') or 0)
+        prop = int(vars_.get('proportion_score') or 0)
+        asi = int(vars_.get('alignment_silhouette_index') or 0)
+        lines.append(f"- Eficiencia postural: {eff}%")
+        lines.append(f"- Postura (alineación): {post}%")
+        lines.append(f"- Proporción (proxy): {prop}%")
+        lines.append(f"- Índice unificado (ASI): {asi}%")
     except Exception:
         pass
 
@@ -667,9 +672,14 @@ def render_professional_summary(result: dict[str, Any]) -> str:
                 tail = f" ({note})" if note else ""
                 lines.append(f"- PoseLine (cadera): {pose_line.get('pelvis_tilt_deg')}°{tail}")
             if sym.get("axis_asymmetry_pct") is not None:
-                lines.append(f"- Asimetría de eje (proxy): {int(sym.get('axis_asymmetry_pct'))}%")
+                ax = int(sym.get('axis_asymmetry_pct'))
+                # Interpretación simple (marketing, no clínica)
+                ax_tag = "baja" if ax <= 12 else ("media" if ax <= 25 else "alta")
+                lines.append(f"- Asimetría de eje (proxy): {ax}% ({ax_tag})")
             if sym.get("load_distribution_pct") is not None:
-                lines.append(f"- Distribución de carga (proxy): {int(sym.get('load_distribution_pct'))}%")
+                ld = int(sym.get('load_distribution_pct'))
+                ld_tag = "estable" if ld <= 18 else ("mejorable" if ld <= 35 else "irregular")
+                lines.append(f"- Distribución de carga (proxy): {ld}% ({ld_tag})")
             if sym.get("hip_stability") is not None:
                 lines.append(f"- Estabilidad de cadera: {int(sym.get('hip_stability'))}/100")
     except Exception:
@@ -727,6 +737,62 @@ def render_professional_summary(result: dict[str, Any]) -> str:
             lines.append(f"\n**📈 Cambio vs última medición**: {sign}{d} puntos (ASI)")
         except Exception:
             pass
+
+    # Sugerencias extra (más valor): deterministas por patrones/scores.
+    lines.append("\n**✅ Sugerencias personalizadas (más impacto, sin complicarte)**")
+
+    try:
+        eff = int(vars_.get('postural_efficiency_score') or 0)
+        post = int(vars_.get('posture_score') or 0)
+        sym = vars_.get("symmetry_monitor") if isinstance(vars_.get("symmetry_monitor"), dict) else {}
+        load_pct = sym.get('load_distribution_pct')
+        axis_pct = sym.get('axis_asymmetry_pct')
+    except Exception:
+        eff = 0
+        post = 0
+        load_pct = None
+        axis_pct = None
+
+    suggestions: list[str] = []
+    if isinstance(patterns, list) and 'forward_head' in patterns:
+        suggestions.append("Hoy, prioriza 3–5 pausas de 20s: barbilla atrás + cuello largo (sin levantar mentón).")
+        suggestions.append("En computadora: sube pantalla a la altura de ojos; el eje mejora más por entorno que por fuerza.")
+    if isinstance(patterns, list) and 'rounded_shoulders' in patterns:
+        suggestions.append("En calentamiento: 2 series de apertura torácica + retracción escapular suave (sin arquear lumbar).")
+        suggestions.append("En press/pecho: baja 10–15% la carga 1 semana y gana control de escápula; sube eficiencia sin dolor.")
+    if isinstance(patterns, list) and ('pelvis_imbalance' in patterns or 'base_axis' in patterns):
+        suggestions.append("Antes de entrenar: 60s de respiración nasal + costillas abajo; eso estabiliza pelvis en segundos.")
+        suggestions.append("En sentadillas: piensa ‘trípode del pie’ (dedo gordo + dedo pequeño + talón) para repartir carga.")
+    if load_pct is not None:
+        try:
+            if int(load_pct) >= 35:
+                suggestions.append("En estático (foto): reparte peso 50/50 y desbloquea rodillas; el eje se limpia de inmediato.")
+        except Exception:
+            pass
+    if axis_pct is not None:
+        try:
+            if int(axis_pct) >= 25:
+                suggestions.append("Esta semana, agrega 1 ejercicio unilateral (zancada o remo unilateral) con tempo lento: corrige asimetría con elegancia.")
+        except Exception:
+            pass
+
+    if post and post < 70:
+        suggestions.append("Para fotos comparables: mismo encuadre, misma distancia (2–3m), misma luz. Esa consistencia vale más que una ‘mejor pose’. ")
+    if eff and eff >= 85:
+        suggestions.append("Tu base está fuerte: el upgrade ahora es ‘pulido fino’ (menos corrección, más consistencia).")
+
+    # Guardrail: siempre entregar suficientes bullets
+    base = [
+        "En caminata: imagina una cuerda que te ‘crece’ desde la coronilla; te da presencia sin rigidez.",
+        "En el gym: termina cada sesión con 1 minuto de ‘eje limpio’ (de pie, respiración nasal, hombros bajos).",
+        "Si una prenda ‘tira’, prueba primero 30s de eje (mentón atrás + hombros abajo) antes de ajustar talla.",
+    ]
+    for x in base:
+        if x not in suggestions:
+            suggestions.append(x)
+
+    for s in suggestions[:9]:
+        lines.append(f"- {s}")
 
     # Cierre (luxury): cómo medir + qué esperar
     lines.append("\n**📍 Seguimiento (lujo = consistencia)**")
