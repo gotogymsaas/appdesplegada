@@ -540,7 +540,7 @@ def render_professional_summary(result: dict[str, Any]) -> str:
 
     lines: list[str] = []
     lines.append("**Alta Costura Inteligente (beta)**")
-    lines.append("(Proporciones ópticas por foto; **no son medidas en cm**.)")
+    lines.append("(Asesoría visual tipo diseñador: proporciones ópticas por foto; **no son medidas en cm**.)")
 
     if decision != 'accepted':
         lines.append("\n**⚠️ Necesito una foto mejor para medir**")
@@ -554,6 +554,8 @@ def render_professional_summary(result: dict[str, Any]) -> str:
         lines.append(f"\n**✅ Listo** · Confianza de captura: {confidence_pct}%")
     else:
         lines.append("\n**✅ Listo**")
+
+    lines.append("\nGracias por compartir tus fotos. Voy a traducir tus proporciones en decisiones de alta costura (cortes, largos y estructura).")
 
     # Mapa (wow, escaneable)
     try:
@@ -578,6 +580,13 @@ def render_professional_summary(result: dict[str, Any]) -> str:
         lines.append(f"- Verticalidad (torso/pierna): {int(vars_.get('torso_leg_balance') or 0)}")
         if vars_.get('profile_stack') is not None:
             lines.append(f"- Perfil (stacking): {int(vars_.get('profile_stack') or 0)}")
+
+        lines.append("\n**🪡 Cómo leer tus índices (alta costura)**")
+        lines.append("- Presencia global: qué tan ‘editorial’ se ve tu línea completa (caída + balance + lectura en cámara).")
+        lines.append("- Alineación: limpieza del eje (hombros/pelvis/cabeza) → mejora cómo ‘cae’ cualquier prenda.")
+        lines.append("- V‑taper (proxy): arquitectura hombro–cintura → define qué tan bien se sostiene una sastrería estructurada.")
+        lines.append("- Verticalidad: torso vs pierna (óptico) → decide tiro, largos de chaqueta y dónde ubicar la cintura visual.")
+        lines.append("- Perfil: línea cuello‑torso → decide escotes, solapas y cuellos para estilizar la parte superior.")
     except Exception:
         pass
 

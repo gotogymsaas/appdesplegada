@@ -4797,6 +4797,132 @@ def chat_n8n(request):
             if user and isinstance(request.data, dict):
                 sp_req = request.data.get('shape_presence_request')
 
+                # Post-análisis: pedir lista de prendas sugeridas (via Quantum Coach / n8n)
+                try:
+                    if request.data.get('couture_garments_request') is True:
+                        cs_local = getattr(user, 'coach_state', {}) or {}
+                        last_blob = cs_local.get('couture_last_result') if isinstance(cs_local.get('couture_last_result'), dict) else None
+                        last_res = (last_blob or {}).get('result') if isinstance((last_blob or {}).get('result'), dict) else None
+
+                        # freshness: si es viejo, pedir repetir análisis
+                        try:
+                            updated_at = str((last_blob or {}).get('updated_at') or '').strip()
+                            if updated_at:
+                                dt = datetime.fromisoformat(updated_at)
+                                if dt.tzinfo is None:
+                                    dt = dt.replace(tzinfo=timezone.get_current_timezone())
+                                if timezone.now() - dt > timedelta(hours=6):
+                                    last_res = None
+                        except Exception:
+                            pass
+
+                        if not isinstance(last_res, dict):
+                            return Response({'output': "**Alta Costura Inteligente**\nPrimero haz el análisis con 1–2 fotos y luego toca ‘Ver prendas sugeridas’.", 'quick_actions': []})
+
+                        garments_text = ""
+                        try:
+                            couture = last_res.get('couture') if isinstance(last_res.get('couture'), dict) else {}
+                            plan = last_res.get('couture_plan') if isinstance(last_res.get('couture_plan'), dict) else {}
+                            vars_ = last_res.get('variables') if isinstance(last_res.get('variables'), dict) else {}
+
+                            prompt = (
+                                "Eres un asesor de moda premium (alta costura).\n"
+                                "Con base en este análisis de proporciones ópticas, genera una LISTA de prendas sugeridas que le queden bien.\n"
+                                "IMPORTANTE: no pidas fotos ni más datos; ya existe análisis.\n"
+                                "Responde SOLO en texto plano (sin HTML, sin <iframe>).\n"
+                                "Formato: 8–12 bullets máximo. Incluye: prenda + corte + largo/tiro + tela/estructura.\n"
+                                "Evita: diagnósticos, promesas, preguntas al final.\n\n"
+                                f"Variables: {vars_}\n"
+                                f"Plan: {plan}\n"
+                                f"Couture: {couture}\n"
+                            )
+
+                            n8n_payload = {
+                                'chatInput': prompt,
+                                'message': prompt,
+                                'sessionId': session_id,
+                                'username': (getattr(user, 'username', '') or ''),
+                                'auth_header': auth_header,
+                                'attachment': '',
+                                'attachment_text': '',
+                                'qaf': {'type': 'exp-012_couture_garments', 'result': last_res},
+                                'system_rules': {
+                                    'module': 'exp-012_couture_garments',
+                                    'no_new_buttons': True,
+                                    'no_medical': True,
+                                },
+                            }
+                            resp = requests.post(n8n_url, json=n8n_payload, timeout=45)
+                            if resp.status_code == 200:
+                                try:
+                                    data = resp.json()
+                                except Exception:
+                                    data = {'output': resp.text}
+                                if isinstance(data, dict) and isinstance(data.get('output'), str):
+                                    garments_text = (data.get('output') or '').strip()
+                                elif isinstance(data, str):
+                                    garments_text = data.strip()
+                        except Exception:
+                            garments_text = ""
+
+                        # Guardrails: no pedir foto / no iframe
+                        try:
+                            low = str(garments_text or '').lower()
+                            if low.startswith('<iframe'):
+                                try:
+                                    import html as _html
+                                    m = re.search(r"\bsrcdoc=(\"|')(.*?)(\1)", garments_text, flags=re.IGNORECASE | re.DOTALL)
+                                    if m:
+                                        srcdoc = _html.unescape(m.group(2))
+                                        srcdoc = re.sub(r"<\s*br\s*/?>", "\n", srcdoc, flags=re.IGNORECASE)
+                                        srcdoc = re.sub(r"<[^>]+>", "", srcdoc)
+                                        garments_text = (srcdoc or '').strip() or garments_text
+                                except Exception:
+                                    pass
+                            if re.search(r"\b(env[ií]a|adjunta|adjuntar)\b.*\bfoto\b", low):
+                                garments_text = ""
+                        except Exception:
+                            pass
+
+                        if not (garments_text or '').strip():
+                            # Fallback determinista
+                            vars_ = last_res.get('variables') if isinstance(last_res.get('variables'), dict) else {}
+                            couture = last_res.get('couture') if isinstance(last_res.get('couture'), dict) else {}
+                            proxies = couture.get('proxies') if isinstance(couture.get('proxies'), dict) else {}
+                            tl = proxies.get('torso_leg_ratio')
+                            vt = int(vars_.get('silhouette_v_taper') or 0)
+                            prof = int(vars_.get('profile_stack') or 0)
+
+                            out = [
+                                "**Alta Costura Inteligente**",
+                                "De acuerdo a tu análisis, estas son prendas sugeridas para elevar tu presencia:",
+                                "",
+                            ]
+                            if tl is not None:
+                                try:
+                                    tlf = float(tl)
+                                    if tlf >= 0.66:
+                                        out.append("- Pantalón tiro medio‑alto, pierna recta, tela con caída (lana fría / sarga fina).")
+                                        out.append("- Chaqueta corta‑media con cintura visual alta (1 botón o cruzada corta).")
+                                    elif tlf <= 0.52:
+                                        out.append("- Pantalón tiro medio y línea limpia, evita ultra‑alto; caída recta.")
+                                        out.append("- Chaqueta largo medio para equilibrar verticalidad (sin cortar torso).")
+                                except Exception:
+                                    pass
+                            if vt >= 75:
+                                out.append("- Blazer estructurado suave en hombro + solapa limpia (quiet luxury).")
+                            else:
+                                out.append("- Chaqueta con estructura ligera en hombro + entalle sutil para arquitectura.")
+                            if prof and prof < 70:
+                                out.append("- Camisa/cuello: escote en V o cuello abierto + solapa en punta para estilizar la línea superior.")
+                            out.append("- Paleta recomendada para foto: monocromo o 2 tonos con contraste controlado.")
+                            out.append("- Fit: evita exceso de tela en cintura/cadera; costuras alineadas y caída continua.")
+                            garments_text = "\n".join(out).strip()
+
+                        return Response({'output': garments_text, 'quick_actions': [{'label': 'Finalizar', 'type': 'shape_cancel'}]})
+                except Exception:
+                    pass
+
                 # Iniciar flujo por intención explícita
                 msg_low = str(message or '').strip().lower()
                 want_sp = bool(
@@ -4846,6 +4972,16 @@ def chat_n8n(request):
                     res = evaluate_shape_presence({'poses': poses, 'baseline': baseline}).payload
                     text = render_professional_summary(res)
 
+                    # Guardar último resultado para botón de prendas sugeridas
+                    try:
+                        cs2 = dict(getattr(user, 'coach_state', {}) or {})
+                        cs2['couture_last_result'] = {'result': res, 'updated_at': timezone.now().isoformat()}
+                        user.coach_state = cs2
+                        user.coach_state_updated_at = timezone.now()
+                        user.save(update_fields=['coach_state', 'coach_state_updated_at'])
+                    except Exception:
+                        pass
+
                     # Persistir por semana
                     try:
                         ws2 = dict(weekly_state)
@@ -4866,6 +5002,11 @@ def chat_n8n(request):
                                 {'label': 'Repetir frente', 'type': 'shape_capture', 'view': 'front_relaxed', 'source': 'camera'},
                                 {'label': 'Adjuntar frente', 'type': 'shape_capture', 'view': 'front_relaxed', 'source': 'attach'},
                                 {'label': 'Cancelar', 'type': 'shape_cancel'},
+                            ]
+                        else:
+                            qas = [
+                                {'label': 'Ver prendas sugeridas', 'type': 'message', 'text': 'Ver prendas sugeridas', 'payload': {'couture_garments_request': True}},
+                                {'label': 'Finalizar', 'type': 'shape_cancel'},
                             ]
                     except Exception:
                         qas = []
