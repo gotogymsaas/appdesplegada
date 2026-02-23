@@ -56,7 +56,7 @@ El backend pide a Vision que responda **solo JSON** con estas claves (compatible
 
 **Acciones:**
 - No se ejecuta calorías.
-- Se agrega bloque `[ENTRENAMIENTO / IMAGEN]` con guía de captura (frontal/lateral).
+- Se agrega bloque **Entrenamiento / Imagen** con guía de captura (frontal/lateral).
 - Se agregan quick-actions: `posture_start`, `pp_start`, `shape_start`, `open_camera`, `open_attach`.
 - Guardrail UX: se suprimen check-ins semanales/metabólico para no mezclar contexto.
 
@@ -65,7 +65,7 @@ El backend pide a Vision que responda **solo JSON** con estas claves (compatible
 
 **Acciones:**
 - No se ejecuta calorías.
-- Se agrega bloque `[SALUD / IMAGEN]` que pide intención mínima:
+- Se agrega bloque **Salud / Imagen** que pide intención mínima:
   - “Comparar/medir músculo”
   - “Belleza/piel”
 - Se agregan quick-actions de texto (message) con esas opciones.
@@ -95,4 +95,4 @@ El backend pide a Vision que responda **solo JSON** con estas claves (compatible
 ## Tests
 - Test de regresión del router: [backend/api/test_chat_vision_router.py](backend/api/test_chat_vision_router.py)
   - Verifica que `route=training` **no** dispara `[CALORÍAS ESTIMADAS]`.
-  - Verifica que se agrega `[ENTRENAMIENTO / IMAGEN]`.
+  - Verifica que se agrega **Entrenamiento / Imagen**.

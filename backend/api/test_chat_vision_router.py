@@ -62,5 +62,5 @@ class ChatVisionRouterTests(TestCase):
         at = sent.get("attachment_text") or ""
         self.assertIn("[DESCRIPCIÓN DE IMAGEN]", at)
         self.assertIn("route: training", at)
-        self.assertIn("[ENTRENAMIENTO / IMAGEN]", at)
+        self.assertIn("**Entrenamiento / Imagen**", at)
         self.assertNotIn("[CALORÍAS ESTIMADAS]", at)

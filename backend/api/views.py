@@ -4697,7 +4697,7 @@ def chat_n8n(request):
                     # Si aún no hay foto, pedirla con CTAs claros.
                     if not attachment_url:
                         out = (
-                            "[VITALIDAD DE LA PIEL]\n"
+                            "**Vitalidad de la Piel**\n"
                             "**✅ Empecemos** (sin diagnósticos médicos).\n\n"
                             "Para que el análisis sea confiable:\n"
                             "- Luz natural, sin contraluz\n"
@@ -4801,7 +4801,7 @@ def chat_n8n(request):
                     if prompt in ('water', 'stress', 'sun', 'movement'):
                         if prompt == 'water':
                             out = (
-                                "[VITALIDAD DE LA PIEL]\n"
+                                "**Vitalidad de la Piel**\n"
                                 "**💧 Agua (auto‑reporte)**\n"
                                 "Elige lo que aplique hoy (esto mejora la lectura contextual)."
                             )
@@ -4820,7 +4820,7 @@ def chat_n8n(request):
 
                         if prompt == 'stress':
                             out = (
-                                "[VITALIDAD DE LA PIEL]\n"
+                                "**Vitalidad de la Piel**\n"
                                 "**🧠 Estrés (1–5)**\n"
                                 "1 = bajo · 5 = alto"
                             )
@@ -4833,7 +4833,7 @@ def chat_n8n(request):
 
                         if prompt == 'movement':
                             out = (
-                                "[VITALIDAD DE LA PIEL]\n"
+                                "**Vitalidad de la Piel**\n"
                                 "**🚶 Movimiento (1–5)**\n"
                                 "1 = muy bajo · 5 = excelente"
                             )
@@ -4846,7 +4846,7 @@ def chat_n8n(request):
 
                         if prompt == 'sun':
                             out = (
-                                "[VITALIDAD DE LA PIEL]\n"
+                                "**Vitalidad de la Piel**\n"
                                 "**☀️ Exposición al sol (minutos)**\n"
                                 "Estimado hoy (solo para contexto)."
                             )
@@ -4868,7 +4868,7 @@ def chat_n8n(request):
                     if prompt == 'photo':
                         return Response(
                             {
-                                'output': "[VITALIDAD DE LA PIEL]\nPerfecto. Ahora envía **1 foto** (luz natural, sin filtros, rostro centrado).",
+                                'output': "**Vitalidad de la Piel**\nPerfecto. Ahora envía **1 foto** (luz natural, sin filtros, rostro centrado).",
                                 'quick_actions': [
                                     {'label': 'Tomar foto', 'type': 'open_camera'},
                                     {'label': 'Adjuntar foto', 'type': 'open_attach'},
@@ -4914,7 +4914,7 @@ def chat_n8n(request):
 
                             return Response(
                                 {
-                                    'output': "[VITALIDAD DE LA PIEL]\nListo. Ya lo integro a tu lectura de hoy. Ahora envía **1 foto**.",
+                                    'output': "**Vitalidad de la Piel**\nListo. Ya lo integro a tu lectura de hoy. Ahora envía **1 foto**.",
                                     'quick_actions': [
                                         {'label': 'Tomar foto', 'type': 'open_camera'},
                                         {'label': 'Adjuntar foto', 'type': 'open_attach'},
@@ -4932,6 +4932,7 @@ def chat_n8n(request):
                     try:
                         container_name, blob_name = _extract_blob_ref_from_url(str(attachment_url))
                         if container_name == _chat_attachment_container() and blob_name:
+                            blob_name = _resolve_blob_name(container_name, blob_name) or blob_name
                             safe_username = user.username.replace('/', '_')
                             if blob_name.startswith(f"{safe_username}/"):
                                 max_bytes = int(os.getenv('CHAT_VISION_MAX_BYTES', str(4 * 1024 * 1024)) or (4 * 1024 * 1024))
@@ -6603,7 +6604,7 @@ def chat_n8n(request):
 
                     if prefer_skin:
                         attachment_text = ((attachment_text or '').strip() + "\n\n" if (attachment_text or '').strip() else "") + (
-                            "[VITALIDAD DE LA PIEL]\n"
+                            "**Vitalidad de la Piel**\n"
                             "Ya tengo tu foto. Para mantener esta experiencia limpia, sigo con **Vitalidad de la Piel**.\n\n"
                             "¿Listo para el análisis?"
                         )
@@ -6615,7 +6616,7 @@ def chat_n8n(request):
                         quick_actions_out = qa[:6]
                     else:
                         attachment_text = ((attachment_text or '').strip() + "\n\n" if (attachment_text or '').strip() else "") + (
-                            "[SALUD / IMAGEN]\n"
+                            "**Salud / Imagen**\n"
                             "Detecté una imagen tipo salud (primer plano de piel/músculo/rostro).\n"
                             "¿Qué quieres hacer con esta foto?\n"
                             "- Medición del progreso muscular\n"
@@ -6643,7 +6644,7 @@ def chat_n8n(request):
                         pass
 
                     attachment_text = ((attachment_text or '').strip() + "\n\n" if (attachment_text or '').strip() else "") + (
-                        "[ENTRENAMIENTO / IMAGEN]\n"
+                        "**Entrenamiento / Imagen**\n"
                         "Puedo ayudarte con técnica/postura, pero necesito 2 fotos: frontal y lateral (cuerpo completo, buena luz, cámara a la altura del pecho, 2–3m).\n"
                         "Si solo es una selfie o una foto casual, también puedo responder como Quantum Coach.\n\n"
                         "Si tu objetivo es **comparar progreso muscular** semana a semana, también lo podemos hacer con fotos (sin prometer cm exactos)."
@@ -8608,6 +8609,7 @@ def qaf_skin_health(request):
     try:
         container_name, blob_name = _extract_blob_ref_from_url(str(attachment_url))
         if container_name == _chat_attachment_container() and blob_name:
+            blob_name = _resolve_blob_name(container_name, blob_name) or blob_name
             safe_username = user.username.replace('/', '_')
             if blob_name.startswith(f"{safe_username}/"):
                 max_bytes = int(os.getenv('CHAT_VISION_MAX_BYTES', str(4 * 1024 * 1024)) or (4 * 1024 * 1024))
