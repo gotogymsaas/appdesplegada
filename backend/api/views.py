@@ -4182,12 +4182,23 @@ def chat_n8n(request):
                                 {'label': 'Cancelar', 'type': 'muscle_cancel'},
                             ]
                         else:
-                            # CTAs suaves (sin UI nueva)
-                            qas = [
-                                {'label': 'Enfocar bíceps', 'type': 'message', 'text': 'Enfocar bíceps', 'payload': {'muscle_measure_request': {'poses': poses, 'focus': 'biceps'}}},
-                                {'label': 'Enfocar glúteos', 'type': 'message', 'text': 'Enfocar glúteos', 'payload': {'muscle_measure_request': {'poses': poses, 'focus': 'glutes'}}},
-                                {'label': 'Enfocar abdomen', 'type': 'message', 'text': 'Enfocar abdomen', 'payload': {'muscle_measure_request': {'poses': poses, 'focus': 'abs'}}},
-                            ]
+                            fx = str(focus or '').strip().lower()
+                            has_flex = bool(isinstance(poses.get('front_flex'), dict) and isinstance(poses.get('front_flex').get('keypoints'), list) and len(poses.get('front_flex').get('keypoints')))
+
+                            if fx in ('biceps', 'bíceps', 'bicep') and not has_flex:
+                                # Para bíceps necesitamos flex. Ofrecerlo directo.
+                                qas = [
+                                    {'label': 'Tomar frente flex suave', 'type': 'muscle_capture', 'view': 'front_flex', 'source': 'camera'},
+                                    {'label': 'Adjuntar frente flex suave', 'type': 'muscle_capture', 'view': 'front_flex', 'source': 'attach'},
+                                    {'label': 'Cancelar', 'type': 'muscle_cancel'},
+                                ]
+                            else:
+                                # CTAs de foco (sin UI nueva)
+                                qas = [
+                                    {'label': 'Enfocar bíceps', 'type': 'message', 'text': 'Enfocar bíceps', 'payload': {'muscle_measure_request': {'poses': poses, 'focus': 'biceps'}}},
+                                    {'label': 'Enfocar glúteos', 'type': 'message', 'text': 'Enfocar glúteos', 'payload': {'muscle_measure_request': {'poses': poses, 'focus': 'glutes'}}},
+                                    {'label': 'Enfocar abdomen', 'type': 'message', 'text': 'Enfocar abdomen', 'payload': {'muscle_measure_request': {'poses': poses, 'focus': 'abs'}}},
+                                ]
                     except Exception:
                         qas = []
 

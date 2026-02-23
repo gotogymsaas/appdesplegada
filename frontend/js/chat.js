@@ -129,6 +129,7 @@ let muscleFlow = {
   active: false,
   step: 'idle',
   captureTarget: null, // view_id
+  focus: null,
   poses: {
     front_relaxed: null,
     side_right_relaxed: null,
@@ -268,6 +269,7 @@ function startMuscleFlow() {
     active: true,
     step: 'need_front',
     captureTarget: null,
+    focus: null,
     poses: {
       front_relaxed: null,
       side_right_relaxed: null,
@@ -777,10 +779,32 @@ function sendMuscleAnalyze() {
     appendMessage('Primero necesito al menos 1 foto (frente relajado).', 'bot');
     return;
   }
-  sendQuickMessage('Medición del progreso muscular', {
+
+  const focus = (muscleFlow && muscleFlow.focus) ? String(muscleFlow.focus) : '';
+  const focusLow = focus.trim().toLowerCase();
+  const wantBiceps = focusLow === 'biceps' || focusLow === 'bíceps' || focusLow === 'bicep';
+  const hasFlex = poses.front_flex && Array.isArray(poses.front_flex.keypoints) && poses.front_flex.keypoints.length;
+
+  if (wantBiceps && !hasFlex) {
+    appendMessage(
+      'Para medir **bíceps** de verdad necesito la foto **Frente flex suave** (esa pose activa el indicador del brazo).\n\n' +
+        '¿La tomamos y luego analizamos?',
+      'bot'
+    );
+    appendQuickActions([
+      { label: 'Tomar frente flex suave', type: 'muscle_capture', view: 'front_flex', source: 'camera' },
+      { label: 'Adjuntar frente flex suave', type: 'muscle_capture', view: 'front_flex', source: 'attach' },
+      { label: 'Analizar sin flex', type: 'muscle_analyze' },
+      { label: 'Cancelar', type: 'muscle_cancel' },
+    ]);
+    return;
+  }
+
+  sendQuickMessage('Analizar ahora', {
     muscle_measure_request: {
       poses: poses,
       locale: 'es-CO',
+      focus: focusLow || null,
     },
   });
 }
@@ -3091,6 +3115,16 @@ function appendQuickActions(actions) {
         return;
       }
       if (action.type === 'message' && action.text) {
+        // Si es un CTA de enfoque muscular, persistirlo en el flujo.
+        try {
+          const fx = action.payload && action.payload.muscle_measure_request && action.payload.muscle_measure_request.focus;
+          if (fx && muscleFlow && muscleFlow.active) {
+            muscleFlow.focus = String(fx);
+            saveMuscleState();
+          }
+        } catch (e) {
+          // ignore
+        }
         sendQuickMessage(action.text, action.payload || null);
         return;
       }

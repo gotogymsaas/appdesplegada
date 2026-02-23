@@ -364,7 +364,9 @@ def evaluate_muscle_measure(payload: dict[str, Any]) -> MuscleMeasureResult:
                     actions.append("Haz 2×10 chin-tucks + estiramiento de pectoral 2 min/día.")
 
     # 2.b) Brazos / bíceps (proxy) usando el ángulo de codo en "front_flex" si existe.
+    has_front_flex = False
     if "front_flex" in views_in:
+        has_front_flex = True
         kp = get_kp("front_flex")
         # Longitud brazo (hombro->muñeca) como referencia para seguimiento
         cpp = _cm_per_px(kp)
@@ -517,6 +519,13 @@ def evaluate_muscle_measure(payload: dict[str, Any]) -> MuscleMeasureResult:
             "definition": _nz(definition_score),
             "measurement_consistency": int(measurement_consistency),
         },
+        "coverage": {
+            "arms": bool(has_front_flex),
+            "glutes": bool(front_view is not None),
+            "back": bool(front_view is not None),
+            "thigh": bool(front_view is not None),
+            "definition_beta": True,
+        },
         "measurements": {
             "px": {k: round(float(v), 4) for k, v in linear_px.items()},
             "cm_est": {k: float(v) for k, v in linear_cm.items()},
@@ -552,6 +561,7 @@ def render_professional_summary(result: dict[str, Any]) -> str:
     vars_ = result.get("variables") if isinstance(result.get("variables"), dict) else {}
     vol = vars_.get("volume_by_group") if isinstance(vars_.get("volume_by_group"), dict) else {}
     focus = str(result.get("focus") or "").strip().lower() or None
+    cov = result.get('coverage') if isinstance(result.get('coverage'), dict) else {}
     meas = result.get("measurements") if isinstance(result.get("measurements"), dict) else {}
     cm_est = meas.get("cm_est") if isinstance(meas.get("cm_est"), dict) else {}
     cm_conf = None
@@ -624,7 +634,18 @@ def render_professional_summary(result: dict[str, Any]) -> str:
 
     lines.append("")
     lines.append("Proxies por grupo (0–100):")
-    lines.append(f"- Brazos/bíceps (pose flex): {_g('arms')}/100")
+    try:
+        arms_measured = bool(cov.get('arms'))
+    except Exception:
+        arms_measured = False
+    if arms_measured:
+        lines.append(f"- Brazos/bíceps (pose flex): {_g('arms')}/100")
+    else:
+        # No mostrar 0/100 si no hay vista flex
+        if focus in ("biceps", "bíceps", "bicep"):
+            lines.append("- Bíceps: pendiente (para medirlo necesito la foto **Frente flex suave**) ")
+        else:
+            lines.append("- Brazos/bíceps: pendiente (agrega **Frente flex suave** para medirlo)")
     lines.append(f"- Espalda: {_g('back')}/100")
     lines.append(f"- Glúteos/cadera: {_g('glutes')}/100")
     lines.append(f"- Pierna: {_g('thigh')}/100")
