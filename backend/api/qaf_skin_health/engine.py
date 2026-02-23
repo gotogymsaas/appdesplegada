@@ -281,11 +281,19 @@ def evaluate_skin_health(
 
     # Normalize observations to 0..100 sub-scores (higher is "healthier")
     # Nota: son proxies, no clínica.
-    # 1) Uniformity: lower tone std => better
-    s_uniformity = int(round(_clamp01(1.0 - (tone_uniformity / 0.28)) * 100.0))
+    # 1) Uniformity: lower tone std => better.
+    # Antes era un clamp lineal muy agresivo que llevaba a 0% fácil. Ahora usamos una caída exponencial suave.
+    try:
+        s_uniformity = int(round(_clamp01(math.exp(-float(tone_uniformity) / 0.20)) * 100.0))
+    except Exception:
+        s_uniformity = int(round(_clamp01(1.0 - (tone_uniformity / 0.40)) * 100.0))
 
-    # 2) Texture: we want moderate microcontrast + not too high entropy. We'll penalize extremes.
-    s_texture = int(round(_clamp01(1.0 - abs(microcontrast - 0.05) / 0.07) * 100.0))
+    # 2) Texture: buscamos microcontraste moderado. Suavizamos el ancho de tolerancia.
+    try:
+        sigma = 0.10
+        s_texture = int(round(_clamp01(1.0 - (abs(float(microcontrast) - 0.05) / float(sigma))) * 100.0))
+    except Exception:
+        s_texture = int(round(_clamp01(1.0 - abs(microcontrast - 0.05) / 0.10) * 100.0))
 
     # 3) Hydration visible: lower specular (oil) but not zero; target ~0.03..0.08
     s_hydration = int(round(_clamp01(1.0 - abs(specular_glow - 0.05) / 0.08) * 100.0))
@@ -297,7 +305,8 @@ def evaluate_skin_health(
         s_energy = int(round(_clamp01((float(s_energy) / 100.0) * 0.65 + _clamp01((under_eye_shadow - 0.75) / 0.30) * 0.35) * 100.0))
 
     # redness: treat as warning if high; score peaks around mid.
-    s_redness = int(round(_clamp01(1.0 - abs(redness_signal - 0.52) / 0.18) * 100.0))
+    # Suavizamos el rango para evitar 0% por variaciones de tono/iluminación.
+    s_redness = int(round(_clamp01(1.0 - abs(redness_signal - 0.52) / 0.26) * 100.0))
 
     # Final Skin Health Score (quality-weighted)
     sub = {
@@ -464,7 +473,8 @@ def evaluate_skin_health(
             if sun_min is not None and sun_min > 20:
                 need_sun = _clamp01((float(sun_min) - 20.0) / 60.0)
 
-            # Priorización (siempre entregamos 3, pero ordenamos por necesidad)
+            # Priorización: seleccionar top-3 por necesidad.
+            # Importante: NO forzamos siempre las mismas 3, para evitar respuestas genéricas.
             candidates = [
                 ('hidratación', need_hyd),
                 ('sueño', need_sleep),
@@ -472,45 +482,49 @@ def evaluate_skin_health(
                 ('protección solar', need_sun),
                 ('movimiento diario', need_movement),
             ]
-            # Mantener las 3 “core” aunque todo esté bien, pero ordenadas.
-            core = {c[0] for c in candidates[:3]}
             sorted_all = sorted(candidates, key=lambda t: float(t[1]), reverse=True)
-            # Garantizar presencia de 3 core
-            ordered: list[str] = []
-            for name, _w in sorted_all:
-                if name in core and name not in ordered:
-                    ordered.append(name)
-            for name, _w in sorted_all:
-                if len(ordered) >= 3:
-                    break
-                if name not in ordered:
-                    ordered.append(name)
+            ordered = [name for name, _w in sorted_all if name]
             ordered = ordered[:3]
+
+            # Si todo está muy bajo, damos una guía “mantenimiento” pero no repetitiva.
+            try:
+                top_w = float(sorted_all[0][1]) if sorted_all else 0.0
+            except Exception:
+                top_w = 0.0
+            if top_w < 0.18:
+                ordered = ['protección solar', 'hidratación', 'sueño']
 
             # Acciones simples (sin activos médicos)
             actions_simple: list[str] = []
-            # 1) Agua
-            if ('hidratación' in ordered) or (need_hyd >= 0.45):
-                actions_simple.append('+500ml de agua hoy')
-            # 2) Respiración (estrés/inflamación visible)
-            if ('reducción de inflamación visible' in ordered) or (stress_1_5 is not None and stress_1_5 >= 3.5) or (need_infl >= 0.45):
-                actions_simple.append('5 min de respiración lenta (inhala 4, exhala 6)')
-            # 3) Rutina nocturna
-            if ('sueño' in ordered) or (need_sleep >= 0.45):
-                actions_simple.append('Rutina nocturna básica: 30 min sin pantallas + dormir 30 min antes')
+            for p in ordered:
+                if p == 'hidratación' and '+500ml de agua hoy' not in actions_simple:
+                    actions_simple.append('+500ml de agua hoy')
+                elif p == 'sueño' and 'Rutina nocturna básica: 30 min sin pantallas + dormir 30 min antes' not in actions_simple:
+                    actions_simple.append('Rutina nocturna básica: 30 min sin pantallas + dormir 30 min antes')
+                elif p == 'reducción de inflamación visible':
+                    # Preferir respiración si hay estrés/señal de inflamación; si no, cuidado gentil.
+                    if (stress_1_5 is not None and stress_1_5 >= 3.2) or (need_infl >= 0.45):
+                        actions_simple.append('5 min de respiración lenta (inhala 4, exhala 6)')
+                    else:
+                        actions_simple.append('Rutina mínima hoy: limpieza gentil + hidratación simple (sin frotar fuerte)')
+                elif p == 'protección solar':
+                    actions_simple.append('Si vas a salir: protector solar y reaplicar si hay sol directo')
+                elif p == 'movimiento diario':
+                    actions_simple.append('Caminata suave 10–15 min (mejora circulación y “energía” en tendencia)')
 
-            # Si alguna acción falta, rellenar hasta 3 sin inventar tratamientos
-            if len(actions_simple) < 3:
-                fillers = [
-                    'Lávate la cara con limpiador suave (sin frotar fuerte)',
-                    'Hidrata con una crema simple (sin perfume si tu piel es sensible)',
-                    'Protección solar de día si vas a salir al sol',
-                ]
-                for f in fillers:
-                    if len(actions_simple) >= 3:
-                        break
-                    if f not in actions_simple:
-                        actions_simple.append(f)
+            # Guardrail: si por alguna razón quedaron <3, completar con alternativas seguras.
+            fillers = [
+                'Rutina mínima hoy: limpieza gentil + hidratación simple (sin frotar fuerte)',
+                '5 min de respiración lenta (inhala 4, exhala 6)',
+                'Si vas a salir: protector solar y reaplicar si hay sol directo',
+                '+500ml de agua hoy',
+                'Rutina nocturna básica: 30 min sin pantallas + dormir 30 min antes',
+            ]
+            for f in fillers:
+                if len(actions_simple) >= 3:
+                    break
+                if f not in actions_simple:
+                    actions_simple.append(f)
 
             payload_out['recommendation_plan'] = {
                 'priorities': ordered,
@@ -626,7 +640,7 @@ def render_professional_summary(result: dict[str, Any]) -> str:
     filter_suspected = bool(q.get('filter_suspected'))
 
     lines: list[str] = [hello]
-    lines.append("**🔹 Vitalidad de la Piel (beta)**")
+    lines.append("**🔹 Vitalidad de la Piel (Skin Health · beta)**")
     lines.append("(Lectura visual de tendencia; **no es diagnóstico médico**.)")
 
     if decision != 'accepted':
@@ -884,8 +898,10 @@ def render_professional_summary(result: dict[str, Any]) -> str:
             patchiness = None
 
         note_bits: list[str] = []
-        if redness_balance is not None and redness_balance < 55:
-            note_bits.append("Si sientes **ardor o picazón** que no baja, pausa cambios y busca orientación profesional.")
+        if redness_balance is not None and redness_balance < 40:
+            note_bits.append("Veo una señal alta de **rojez/irritación** (proxy). Si sientes **ardor o picazón** que no baja, pausa cambios y busca orientación profesional.")
+        elif redness_balance is not None and redness_balance < 55:
+            note_bits.append("Hay una señal moderada de **rojez** (proxy). Hoy prioriza rutina gentil; si hay ardor/picazón persistente, busca orientación profesional.")
         if s_h is not None and s_h < 55:
             note_bits.append("Si aparece **tirantez** o sensibilidad, prioriza suavidad (limpieza gentil + hidratación simple).")
         if s_t is not None and s_t < 55:
@@ -898,7 +914,8 @@ def render_professional_summary(result: dict[str, Any]) -> str:
             note_bits.append("Si algo se siente fuera de lo normal o el cambio empeora de forma persistente, busca orientación profesional.")
 
         lines.append("\n**🧩 Nota final (coherente con tu lectura)**")
-        lines.append(f"- {note_bits[0]}")
+        for b in note_bits[:2]:
+            lines.append(f"- {b}")
     except Exception:
         lines.append("\n**🧩 Nota final**")
         lines.append("- Si algo se siente fuera de lo normal o el cambio empeora de forma persistente, busca orientación profesional.")
