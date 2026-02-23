@@ -3327,6 +3327,15 @@ function appendQafFollowUps(followUps, qafContext) {
 
 async function sendQuickMessage(text, extraPayload = null) {
   if (!text) return;
+  try {
+    const low = String(text || '').toLowerCase();
+    if ((low.includes('vitalidad') && (low.includes('piel') || low.includes('peil'))) || low.includes('skin health') || low.includes('skincare')) {
+      skinFlow = { active: true, step: 'active' };
+      saveSkinState();
+    }
+  } catch (e) {
+    // ignore
+  }
   appendMessage(text, 'user');
   await processMessage(text, null, null, extraPayload);
 }

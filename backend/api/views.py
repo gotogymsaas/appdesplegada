@@ -4405,7 +4405,10 @@ def chat_n8n(request):
                 want_skin = False
                 try:
                     # Activación intuitiva (sin ser demasiado amplia)
-                    if re.search(r"\b(vitalidad\s+de\s+la\s+piel|vitalidad\s+piel|piel|skin\s*health|skincare|rutina\s+de\s+piel|cara|rostro|ojeras|manchas)\b", msg_low):
+                    if re.search(r"\b(vitalidad\s+de\s+la\s+pi?e?l|vitalidad\s+pi?e?l|pi?e?l|skin\s*health|skincare|rutina\s+de\s+pi?e?l|cara|rostro|ojeras|manchas)\b", msg_low):
+                        want_skin = True
+                    # Tolerancia a typo común ("peil")
+                    if ("vitalidad" in msg_low) and ("piel" in msg_low or "peil" in msg_low):
                         want_skin = True
                     # Casos comunes (tildes/variantes)
                     if any(k in msg_low for k in ("acne", "acné", "irritación", "irritacion", "reseca", "resequedad", "grasa", "brillo")):
@@ -4428,8 +4431,30 @@ def chat_n8n(request):
                     user.coach_state_updated_at = timezone.now()
                     user.save(update_fields=['coach_state', 'coach_state_updated_at'])
 
-                    # Si ya llegó una foto en esta misma petición, seguimos directo al análisis.
-                    # (Evita pedir adjuntar/confirmar de nuevo.)
+                    # Reflejar el modo en variables locales (evita depender del cs viejo)
+                    health_mode = 'skin'
+                    health_mode_until = str(cs2.get('health_mode_until') or '').strip()
+
+                    # Si el usuario ya había enviado una foto y quedó "pendiente" por el router de Vision,
+                    # reutilizarla para analizar sin pedir que la adjunte de nuevo.
+                    if not attachment_url:
+                        try:
+                            pending = cs.get('skin_pending_attachment') if isinstance(cs.get('skin_pending_attachment'), dict) else None
+                            if isinstance(pending, dict):
+                                pending_url = str(pending.get('attachment_url') or '').strip()
+                                pending_until = str(pending.get('until') or '').strip()
+                                ok = False
+                                if pending_url and pending_until:
+                                    until_dt = datetime.fromisoformat(pending_until)
+                                    if until_dt.tzinfo is None:
+                                        until_dt = until_dt.replace(tzinfo=timezone.get_current_timezone())
+                                    ok = timezone.now() <= until_dt
+                                if ok and pending_url:
+                                    attachment_url = pending_url
+                        except Exception:
+                            pass
+
+                    # Si aún no hay foto, pedirla con CTAs claros.
                     if not attachment_url:
                         out = (
                             "[VITALIDAD DE LA PIEL]\n"
@@ -4444,12 +4469,9 @@ def chat_n8n(request):
                             {
                                 'output': out,
                                 'quick_actions': [
-                                    {'label': 'Añadir agua', 'type': 'message', 'text': 'Añadir agua', 'payload': {'skin_context_prompt': 'water'}},
-                                    {'label': 'Añadir estrés', 'type': 'message', 'text': 'Añadir estrés', 'payload': {'skin_context_prompt': 'stress'}},
-                                    {'label': 'Añadir sol', 'type': 'message', 'text': 'Añadir sol', 'payload': {'skin_context_prompt': 'sun'}},
-                                    {'label': 'Añadir movimiento', 'type': 'message', 'text': 'Añadir movimiento', 'payload': {'skin_context_prompt': 'movement'}},
                                     {'label': 'Tomar foto', 'type': 'open_camera'},
                                     {'label': 'Adjuntar foto', 'type': 'open_attach'},
+                                    {'label': 'Cancelar', 'type': 'skin_cancel'},
                                 ],
                             }
                         )
@@ -4483,6 +4505,7 @@ def chat_n8n(request):
                                         {'label': '+500ml', 'type': 'message', 'text': '+500ml', 'payload': {'skin_context_update': {'water_delta_liters': 0.5}}},
                                         {'label': '+750ml', 'type': 'message', 'text': '+750ml', 'payload': {'skin_context_update': {'water_delta_liters': 0.75}}},
                                         {'label': 'Listo (enviar foto)', 'type': 'message', 'text': 'Listo (enviar foto)', 'payload': {'skin_context_prompt': 'photo'}},
+                                        {'label': 'Cancelar', 'type': 'skin_cancel'},
                                     ],
                                 }
                             )
@@ -4497,6 +4520,7 @@ def chat_n8n(request):
                             for i in (1, 2, 3, 4, 5):
                                 qas.append({'label': str(i), 'type': 'message', 'text': str(i), 'payload': {'skin_context_update': {'stress_1_5': i}}})
                             qas.append({'label': 'Listo (enviar foto)', 'type': 'message', 'text': 'Listo (enviar foto)', 'payload': {'skin_context_prompt': 'photo'}})
+                            qas.append({'label': 'Cancelar', 'type': 'skin_cancel'})
                             return Response({'output': out, 'quick_actions': qas})
 
                         if prompt == 'movement':
@@ -4509,6 +4533,7 @@ def chat_n8n(request):
                             for i in (1, 2, 3, 4, 5):
                                 qas.append({'label': str(i), 'type': 'message', 'text': str(i), 'payload': {'skin_context_update': {'movement_1_5': i}}})
                             qas.append({'label': 'Listo (enviar foto)', 'type': 'message', 'text': 'Listo (enviar foto)', 'payload': {'skin_context_prompt': 'photo'}})
+                            qas.append({'label': 'Cancelar', 'type': 'skin_cancel'})
                             return Response({'output': out, 'quick_actions': qas})
 
                         if prompt == 'sun':
@@ -4526,6 +4551,7 @@ def chat_n8n(request):
                                         {'label': '20', 'type': 'message', 'text': '20', 'payload': {'skin_context_update': {'sun_minutes': 20}}},
                                         {'label': '40+', 'type': 'message', 'text': '40+', 'payload': {'skin_context_update': {'sun_minutes': 40}}},
                                         {'label': 'Listo (enviar foto)', 'type': 'message', 'text': 'Listo (enviar foto)', 'payload': {'skin_context_prompt': 'photo'}},
+                                        {'label': 'Cancelar', 'type': 'skin_cancel'},
                                     ],
                                 }
                             )
@@ -4538,6 +4564,7 @@ def chat_n8n(request):
                                 'quick_actions': [
                                     {'label': 'Tomar foto', 'type': 'open_camera'},
                                     {'label': 'Adjuntar foto', 'type': 'open_attach'},
+                                    {'label': 'Cancelar', 'type': 'skin_cancel'},
                                 ],
                             }
                         )
@@ -4581,9 +4608,9 @@ def chat_n8n(request):
                                 {
                                     'output': "[VITALIDAD DE LA PIEL]\nListo. Ya lo integro a tu lectura de hoy. Ahora envía **1 foto**.",
                                     'quick_actions': [
-                                        {'label': 'Añadir más contexto', 'type': 'message', 'text': 'Añadir más contexto', 'payload': {'skin_context_prompt': 'water'}},
                                         {'label': 'Tomar foto', 'type': 'open_camera'},
                                         {'label': 'Adjuntar foto', 'type': 'open_attach'},
+                                        {'label': 'Cancelar', 'type': 'skin_cancel'},
                                     ],
                                 }
                             )
@@ -4689,6 +4716,11 @@ def chat_n8n(request):
                         cs2 = dict(cs)
                         cs2['health_mode'] = ''
                         cs2['health_mode_until'] = ''
+                        # Limpiar pending attachment si existía
+                        try:
+                            cs2.pop('skin_pending_attachment', None)
+                        except Exception:
+                            pass
                         user.coach_state = cs2
                         user.coach_state_updated_at = timezone.now()
                         user.save(update_fields=['coach_state', 'coach_state_updated_at'])
@@ -4701,11 +4733,12 @@ def chat_n8n(request):
                             qas = [
                                 {'label': 'Tomar foto', 'type': 'open_camera'},
                                 {'label': 'Adjuntar foto', 'type': 'open_attach'},
+                                {'label': 'Cancelar', 'type': 'skin_cancel'},
                             ]
                     except Exception:
                         qas = []
 
-                    return Response({'output': text or 'Skin Health listo.', 'qaf_skin_health': res, 'quick_actions': qas})
+                    return Response({'output': text or 'Vitalidad de la Piel listo.', 'qaf_skin_health': res, 'quick_actions': qas})
         except Exception as ex:
             print(f"QAF skin health warning: {ex}")
 
@@ -6216,20 +6249,60 @@ def chat_n8n(request):
             if attachment_url and isinstance(vision_parsed, dict):
                 vr = str(vision_parsed.get('route') or '').strip().lower()
                 if vr in ('health', 'salud'):
-                    attachment_text = ((attachment_text or '').strip() + "\n\n" if (attachment_text or '').strip() else "") + (
-                        "[SALUD / IMAGEN]\n"
-                        "Detecté una imagen tipo salud (primer plano de piel/músculo/rostro).\n"
-                        "¿Qué quieres hacer con esta foto?\n"
-                        "- Comparar/medir músculo\n"
-                        "- Vitalidad de la Piel\n"
-                        "Responde con una opción."
-                    )
-                    qa = quick_actions_out if isinstance(quick_actions_out, list) else []
-                    qa.extend([
-                        {'label': 'Medición del progreso muscular', 'type': 'message', 'text': 'Medición del progreso muscular'},
-                        {'label': 'Vitalidad de la Piel', 'type': 'message', 'text': 'Vitalidad de la Piel'},
-                    ])
-                    quick_actions_out = qa[:6]
+                    msg_low2 = str(message or '').strip().lower()
+                    cs_local = getattr(user, 'coach_state', {}) or {}
+                    prefer_skin = False
+                    try:
+                        if str(cs_local.get('health_mode') or '').strip().lower() == 'skin':
+                            prefer_skin = True
+                        if re.search(r"\b(vitalidad\s+de\s+la\s+pi?e?l|vitalidad\s+pi?e?l|pi?e?l|skincare|skin\s*health)\b", msg_low2):
+                            prefer_skin = True
+                        if ("vitalidad" in msg_low2) and ("piel" in msg_low2 or "peil" in msg_low2):
+                            prefer_skin = True
+                    except Exception:
+                        prefer_skin = False
+
+                    # Guardar attachment como pendiente para que el usuario pueda elegir Vitalidad sin re-adjuntar.
+                    try:
+                        if user:
+                            cs2 = dict(cs_local)
+                            cs2['skin_pending_attachment'] = {
+                                'attachment_url': str(attachment_url),
+                                'until': (timezone.now() + timedelta(minutes=10)).isoformat(),
+                            }
+                            user.coach_state = cs2
+                            user.coach_state_updated_at = timezone.now()
+                            user.save(update_fields=['coach_state', 'coach_state_updated_at'])
+                    except Exception:
+                        pass
+
+                    if prefer_skin:
+                        attachment_text = ((attachment_text or '').strip() + "\n\n" if (attachment_text or '').strip() else "") + (
+                            "[VITALIDAD DE LA PIEL]\n"
+                            "Ya tengo tu foto. Para mantener esta experiencia limpia, sigo con **Vitalidad de la Piel**.\n\n"
+                            "¿Listo para el análisis?"
+                        )
+                        qa = quick_actions_out if isinstance(quick_actions_out, list) else []
+                        qa.extend([
+                            {'label': 'Vitalidad de la Piel', 'type': 'message', 'text': 'Vitalidad de la Piel'},
+                            {'label': 'Cancelar', 'type': 'skin_cancel'},
+                        ])
+                        quick_actions_out = qa[:6]
+                    else:
+                        attachment_text = ((attachment_text or '').strip() + "\n\n" if (attachment_text or '').strip() else "") + (
+                            "[SALUD / IMAGEN]\n"
+                            "Detecté una imagen tipo salud (primer plano de piel/músculo/rostro).\n"
+                            "¿Qué quieres hacer con esta foto?\n"
+                            "- Medición del progreso muscular\n"
+                            "- Vitalidad de la Piel\n"
+                            "Responde con una opción."
+                        )
+                        qa = quick_actions_out if isinstance(quick_actions_out, list) else []
+                        qa.extend([
+                            {'label': 'Medición del progreso muscular', 'type': 'message', 'text': 'Medición del progreso muscular'},
+                            {'label': 'Vitalidad de la Piel', 'type': 'message', 'text': 'Vitalidad de la Piel'},
+                        ])
+                        quick_actions_out = qa[:6]
         except Exception:
             pass
 

@@ -626,39 +626,100 @@ def render_professional_summary(result: dict[str, Any]) -> str:
     filter_suspected = bool(q.get('filter_suspected'))
 
     lines: list[str] = [hello]
-    lines.append("**🔹 Skin Health (beta)**")
-    lines.append("(Análisis visual de tendencia; **no es diagnóstico médico**.)")
+    lines.append("**🔹 Vitalidad de la Piel (beta)**")
+    lines.append("(Lectura visual de tendencia; **no es diagnóstico médico**.)")
 
     if decision != 'accepted':
-        lines.append("\n**⚠️ No pude analizar con confianza**")
-        lines.append("Para que el resultado sea confiable:")
-        lines.append("- Luz natural (sin contraluz) y sin filtros")
-        lines.append("- Rostro centrado, sin zoom extremo")
-        lines.append("- Sin maquillaje pesado si quieres tendencia real")
+        lines.append("\n**⚠️ Esta foto no funciona para un análisis confiable**")
+        lines.append("No te voy a inventar resultados: con esta captura el sistema no puede medir tendencia con precisión.")
+        lines.append("\n**📷 Cómo tomarla para que sí mida**")
+        lines.append("- Luz natural de frente (sin contraluz)")
+        lines.append("- Sin filtros y sin modo belleza")
+        lines.append("- Rostro centrado (sin zoom extremo)")
+        lines.append("- Si puedes: misma hora/luz cada semana (eso crea progreso real)")
         return "\n".join(lines).strip()
 
     lines.append("\n**✅ Listo**")
     if score is not None:
         if confidence_pct is not None:
-            lines.append(f"- Skin Health Score™: {score}/100 · Confianza: {confidence_pct}%")
+            lines.append(f"- Vitalidad Score™: {score}/100 · Confianza: {confidence_pct}%")
         else:
-            lines.append(f"- Skin Health Score™: {score}/100")
+            lines.append(f"- Vitalidad Score™: {score}/100")
 
-    if any(v is not None for v in (s_h, s_u, s_e, s_t)):
-        parts = []
+    # Mostrar TODAS las variables clave (wow) en formato escaneable.
+    try:
+        scores_all = result.get('scores') if isinstance(result.get('scores'), dict) else {}
+        redness_balance = None
+        contrast_clarity = None
+        try:
+            if scores_all.get('redness_balance') is not None:
+                redness_balance = int(scores_all.get('redness_balance'))
+        except Exception:
+            redness_balance = None
+        try:
+            if scores_all.get('contrast_clarity') is not None:
+                contrast_clarity = int(scores_all.get('contrast_clarity'))
+        except Exception:
+            contrast_clarity = None
+
+        lines.append("\n**📌 Lectura visual (0–100)**")
         if s_h is not None:
-            parts.append(f"Hidratación: {s_h}/100")
+            lines.append(f"- Hidratación visible: {s_h}/100")
         if s_u is not None:
-            parts.append(f"Uniformidad: {s_u}/100")
+            lines.append(f"- Uniformidad de tono: {s_u}/100")
         if s_e is not None:
-            parts.append(f"Energía: {s_e}/100")
+            lines.append(f"- Energía facial: {s_e}/100")
         if s_t is not None:
-            parts.append(f"Textura: {s_t}/100")
-        if parts:
-            lines.append("- " + " · ".join(parts))
+            lines.append(f"- Textura (micro‑detalle): {s_t}/100")
+        if redness_balance is not None:
+            lines.append(f"- Balance de rojez (proxy): {redness_balance}/100")
+        if contrast_clarity is not None:
+            lines.append(f"- Claridad/contraste (proxy): {contrast_clarity}/100")
+    except Exception:
+        pass
 
     if filter_suspected:
         lines.append("- Nota: detecté indicios de filtro/edición; puede distorsionar la tendencia.")
+
+    # Calidad de captura (para transparencia)
+    try:
+        q_score = q.get('score')
+        q_focus = q.get('q_focus')
+        q_exposure = q.get('q_exposure')
+        q_dynamic = q.get('q_dynamic')
+        q_saturation = q.get('q_saturation')
+
+        parts = []
+        if q_score is not None:
+            try:
+                parts.append(f"Calidad: {int(round(float(q_score) * 100.0))}/100")
+            except Exception:
+                pass
+        if q_focus is not None:
+            try:
+                parts.append(f"Enfoque: {int(round(float(q_focus) * 100.0))}/100")
+            except Exception:
+                pass
+        if q_exposure is not None:
+            try:
+                parts.append(f"Luz: {int(round(float(q_exposure) * 100.0))}/100")
+            except Exception:
+                pass
+        if q_dynamic is not None:
+            try:
+                parts.append(f"Rango: {int(round(float(q_dynamic) * 100.0))}/100")
+            except Exception:
+                pass
+        if q_saturation is not None:
+            try:
+                parts.append(f"Color: {int(round(float(q_saturation) * 100.0))}/100")
+            except Exception:
+                pass
+        if parts:
+            lines.append("\n**📷 Calidad de captura (transparencia)**")
+            lines.append("- " + " · ".join(parts[:5]))
+    except Exception:
+        pass
 
     # IA contextual (si hay señales)
     try:
