@@ -362,7 +362,7 @@ def render_professional_summary(result: dict[str, Any]) -> str:
 
     lines: list[str] = []
 
-    lines.append("Estado de hoy — Lifestyle Intelligence")
+    lines.append("Estado de hoy — Tu sistema")
 
     # DHSS
     band = str(dhss.get('band') or '').strip()
@@ -381,13 +381,19 @@ def render_professional_summary(result: dict[str, Any]) -> str:
                 "Estado" 
             )
             lines.append(f"DHSS: {score_i}/100 — {label}")
-            lines.append("(DHSS = qué tan listo estás hoy para exigir tu cuerpo sin quemarte)")
+            lines.append("DHSS = qué tan listo estás hoy para exigir tu cuerpo sin quemarte.")
 
     # Confianza
     if conf.get('score') is not None:
         try:
             pct = round(float(conf.get('score')) * 100.0, 0)
-            lines.append(f"Confianza del dato: {pct:.0f}%")
+            # No hacerlo protagonista: solo una nota corta.
+            if pct >= 70:
+                lines.append("Precisión: alta")
+            elif pct >= 45:
+                lines.append("Precisión: media")
+            else:
+                lines.append("Precisión: baja (me faltan algunos datos)")
         except Exception:
             pass
 
@@ -421,7 +427,7 @@ def render_professional_summary(result: dict[str, Any]) -> str:
     except Exception:
         pass
     if quick:
-        lines.append("\n📌 Lo que veo hoy")
+        lines.append("\n📌 Tu foto del día (rápida)")
         lines.append("• " + " · ".join(quick[:3]))
 
     # Patrones (máx 2)
@@ -431,29 +437,35 @@ def render_professional_summary(result: dict[str, Any]) -> str:
             if isinstance(p, dict) and p.get('message'):
                 msgs.append(str(p.get('message')))
         if msgs:
-            lines.append("\n🔎 Patrones")
+            lines.append("\n🔎 Lo importante")
             for m in msgs:
                 lines.append(f"• {m}")
 
     # Recomendación de entrenamiento hoy (determinista por banda)
-    lines.append("\n🎯 Recomendación de entrenamiento (hoy)")
+    lines.append("\n🎯 Qué te conviene hoy")
     if band in ('recovery', 'fatigue'):
-        lines.append("Hoy gana la consistencia, no la intensidad: haz una sesión suave para bajar estrés y cuidar recuperación.")
-        lines.append("Opciones: caminata 20–30 min o movilidad/estiramiento 8–12 min.")
+        lines.append("Hoy gana la consistencia, no la intensidad. Tu cuerpo te pide bajar carga y recuperar.")
+        lines.append("Hazlo simple (elige 1):")
+        lines.append("• Caminata suave 20–30 min")
+        lines.append("• Movilidad + estiramiento 8–12 min")
     elif band == 'moderate':
-        lines.append("Puedes entrenar, pero sin ir al límite: intensidad moderada y técnica perfecta.")
-        lines.append("Opciones: fuerza moderada (RPE 6–7) o cardio zona 2 25–40 min.")
+        lines.append("Puedes entrenar, pero sin ir al límite. Calidad > ego.")
+        lines.append("Hazlo simple (elige 1):")
+        lines.append("• Fuerza moderada (RPE 6–7)")
+        lines.append("• Cardio zona 2 25–40 min")
     else:
         lines.append("Buen día para progresar: puedes empujar un poco más si tu técnica y energía se sienten estables.")
-        lines.append("Opciones: fuerza con progresión o intervalos cortos si estás acostumbrado.")
+        lines.append("Hazlo simple (elige 1):")
+        lines.append("• Fuerza con progresión")
+        lines.append("• Intervalos cortos (si ya estás acostumbrado)")
 
     # Micro-hábitos
     if micro:
         names = [str(x.get('label')) for x in micro if isinstance(x, dict) and x.get('label')]
         if names:
-            lines.append("\n✅ Micro-hábitos (elige 1–3)")
+            lines.append("\n✅ Micro-hábitos (1–3 hoy, sin excusas)")
             for n in names[:3]:
                 lines.append(f"• {n}")
 
-    lines.append("\nSi quieres, dime qué vas a hacer hoy (fuerza, cardio o descanso) y te lo dejo en una rutina de 10–30 min lista para ejecutar.")
+    lines.append("\nResponde con una opción y te lo dejo listo:\nA) caminata\nB) movilidad\nC) fuerza moderada\nD) cardio zona 2")
     return "\n".join(lines).strip()
