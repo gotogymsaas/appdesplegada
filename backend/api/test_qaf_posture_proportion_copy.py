@@ -24,6 +24,7 @@ def test_posture_proportion_renderer_premium_has_header_and_disclaimer():
 
     assert "**Arquitectura Corporal (QAF)**" in text
     assert "no son medidas en cm" in text.lower()
+    assert "Lectura ejecutiva" in text
     assert "Micro" in text
 
 

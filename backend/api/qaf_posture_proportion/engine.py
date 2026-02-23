@@ -48,11 +48,14 @@ def _dist(a: tuple[float, float], b: tuple[float, float]) -> float:
     return float((dx * dx + dy * dy) ** 0.5)
 
 
-def _angle_deg(a: tuple[float, float], b: tuple[float, float]) -> float:
-    """Ángulo (grados) de la línea a->b vs eje X (horizontal)."""
-    dx = float(b[0]) - float(a[0])
+def _tilt_deg(a: tuple[float, float], b: tuple[float, float]) -> float:
+    """Inclinación (grados) vs horizontal, en rango ~[-90..90].
+
+    Nota: en imagen, Y crece hacia abajo. Usamos |dx| para evitar saltos a ~180°.
+    """
+    dx = abs(float(b[0]) - float(a[0]))
     dy = float(b[1]) - float(a[1])
-    return float(math.degrees(math.atan2(dy, dx)))
+    return float(math.degrees(math.atan2(dy, max(1e-9, dx))))
 
 
 def _pct01_to_100(x01: float) -> int:
@@ -207,6 +210,8 @@ def evaluate_posture_proportion(payload: dict[str, Any]) -> PostureProportionRes
     # --- Proxies Exp-013+ (robustez) ---
     shoulder_tilt_deg = None
     pelvis_tilt_deg = None
+    shoulder_tilt_note = None
+    pelvis_tilt_note = None
     axis_asymmetry_pct = None
     load_distribution_pct = None
     hip_stability_score = None
@@ -240,9 +245,18 @@ def evaluate_posture_proportion(payload: dict[str, Any]) -> PostureProportionRes
 
             # PoseLine Coach (proxy 2D): inclinación hombros (grados)
             try:
-                shoulder_tilt_deg = float(_angle_deg((float(ls["x"]), float(ls["y"])), (float(rs["x"]), float(rs["y"]))))
+                raw = float(_tilt_deg((float(ls["x"]), float(ls["y"])), (float(rs["x"]), float(rs["y"]))))
+                shoulder_tilt_deg = float(raw)
+                # Nota humana: y+ es abajo → si rs.y > ls.y entonces hombro derecho está más bajo.
+                if raw > 0.35:
+                    shoulder_tilt_note = "derecho más bajo"
+                elif raw < -0.35:
+                    shoulder_tilt_note = "derecho más alto"
+                else:
+                    shoulder_tilt_note = "nivelado"
             except Exception:
                 shoulder_tilt_deg = None
+                shoulder_tilt_note = None
 
         if lh and rh:
             pelvis_level = abs(float(lh["y"]) - float(rh["y"])) / scale
@@ -250,9 +264,17 @@ def evaluate_posture_proportion(payload: dict[str, Any]) -> PostureProportionRes
 
             # PoseLine Coach (proxy 2D): inclinación cadera (grados)
             try:
-                pelvis_tilt_deg = float(_angle_deg((float(lh["x"]), float(lh["y"])), (float(rh["x"]), float(rh["y"]))))
+                raw = float(_tilt_deg((float(lh["x"]), float(lh["y"])), (float(rh["x"]), float(rh["y"]))))
+                pelvis_tilt_deg = float(raw)
+                if raw > 0.35:
+                    pelvis_tilt_note = "derecha más baja"
+                elif raw < -0.35:
+                    pelvis_tilt_note = "derecha más alta"
+                else:
+                    pelvis_tilt_note = "nivelada"
             except Exception:
                 pelvis_tilt_deg = None
+                pelvis_tilt_note = None
 
         # Base axis (rodilla→tobillo) proxy: diferencias de x entre rodilla y tobillo por lado
         lk = kp.get("left_knee")
@@ -533,6 +555,8 @@ def evaluate_posture_proportion(payload: dict[str, Any]) -> PostureProportionRes
             "pose_line": {
                 "shoulder_tilt_deg": round(float(shoulder_tilt_deg), 2) if shoulder_tilt_deg is not None else None,
                 "pelvis_tilt_deg": round(float(pelvis_tilt_deg), 2) if pelvis_tilt_deg is not None else None,
+                "shoulder_note": shoulder_tilt_note,
+                "pelvis_note": pelvis_tilt_note,
             },
             "metricfit_alignment_proxy": {
                 "note": metricfit_alignment_note,
@@ -584,7 +608,7 @@ def render_professional_summary(result: dict[str, Any]) -> str:
 
     lines: list[str] = []
     lines.append("**Arquitectura Corporal (QAF)**")
-    lines.append("(Asesoría visual premium por foto: proxies por keypoints 2D; **no son medidas en cm** y no es diagnóstico.)")
+    lines.append("(Lectura premium por foto: proxies por keypoints 2D; **no son medidas en cm** y no es diagnóstico.)")
 
     if decision != "accepted":
         lines.append("\n**⚠️ Necesito 2 fotos para ser preciso**")
@@ -598,12 +622,21 @@ def render_professional_summary(result: dict[str, Any]) -> str:
     else:
         lines.append("\n**✅ Listo**")
 
-    # Headline
+    # Resumen ejecutivo (lujo): 1 idea + 1 consecuencia + 1 objetivo
     insights = result.get("insights")
-    if isinstance(insights, list) and insights:
-        lines.append("\n" + str(insights[0]).strip())
+    headline = ""
+    if isinstance(insights, list) and insights and str(insights[0]).strip():
+        headline = str(insights[0]).strip()
+    elif isinstance(patterns, list) and patterns:
+        headline = "Detecté señales que bajan la limpieza del eje y la presencia en cámara."
+    else:
+        headline = "Tu base se ve estable. Vamos a consolidarla con micro‑ajustes finos."
 
-    # Índices
+    lines.append("\n**🧭 Lectura ejecutiva**")
+    lines.append(f"- {headline}")
+    lines.append("- Objetivo: una línea más limpia (eje) + caída más eficiente (sin tensión innecesaria).")
+
+    # Índices (con contexto)
     try:
         lines.append("\n**📌 Índices (0–100)**")
         lines.append(f"- Eficiencia postural: {int(vars_.get('postural_efficiency_score') or 0)}")
@@ -612,6 +645,10 @@ def render_professional_summary(result: dict[str, Any]) -> str:
         lines.append(f"- Índice unificado (ASI): {int(vars_.get('alignment_silhouette_index') or 0)}")
     except Exception:
         pass
+
+    lines.append("\n**🪡 Cómo leer esto (sin tecnicismos)**")
+    lines.append("- *Eficiencia postural*: qué tan fácil se sostiene tu eje sin compensaciones.")
+    lines.append("- *ASI*: mezcla postura+proxy para seguimiento semanal (tu ‘número único’).")
 
     # PoseLine + Simetría
     try:
@@ -622,9 +659,13 @@ def render_professional_summary(result: dict[str, Any]) -> str:
         if has_any:
             lines.append("\n**🧭 Señales (proxies por foto)**")
             if pose_line.get("shoulder_tilt_deg") is not None:
-                lines.append(f"- PoseLine (hombros): {pose_line.get('shoulder_tilt_deg')}°")
+                note = str(pose_line.get('shoulder_note') or '').strip()
+                tail = f" ({note})" if note else ""
+                lines.append(f"- PoseLine (hombros): {pose_line.get('shoulder_tilt_deg')}°{tail}")
             if pose_line.get("pelvis_tilt_deg") is not None:
-                lines.append(f"- PoseLine (cadera): {pose_line.get('pelvis_tilt_deg')}°")
+                note = str(pose_line.get('pelvis_note') or '').strip()
+                tail = f" ({note})" if note else ""
+                lines.append(f"- PoseLine (cadera): {pose_line.get('pelvis_tilt_deg')}°{tail}")
             if sym.get("axis_asymmetry_pct") is not None:
                 lines.append(f"- Asimetría de eje (proxy): {int(sym.get('axis_asymmetry_pct'))}%")
             if sym.get("load_distribution_pct") is not None:
@@ -633,6 +674,15 @@ def render_professional_summary(result: dict[str, Any]) -> str:
                 lines.append(f"- Estabilidad de cadera: {int(sym.get('hip_stability'))}/100")
     except Exception:
         pass
+
+    # Prioridad 80/20
+    lines.append("\n**🎯 Prioridad 80/20 (esta semana)**")
+    if isinstance(patterns, list) and ('forward_head' in patterns or 'rounded_shoulders' in patterns):
+        lines.append("- Eje cervical + apertura torácica: limpia presencia y mejora la caída de cualquier prenda.")
+    elif isinstance(patterns, list) and ('pelvis_imbalance' in patterns or 'base_axis' in patterns):
+        lines.append("- Base y pelvis: estabilidad primero, luego simetría (eso sube tu eficiencia global).")
+    else:
+        lines.append("- Consolidación: mantener eje limpio y estabilidad sin sobrecorregir.")
 
     # Micro-ajustes (Balance Correction Plan)
     lines.append("\n**🎯 Micro‑ajustes (hoy, 2 minutos)**")
@@ -654,6 +704,9 @@ def render_professional_summary(result: dict[str, Any]) -> str:
         if focus:
             lines.append("\n**📅 Ajuste semanal (3 sesiones)**")
             lines.append(f"- Enfoque: {', '.join(focus[:3])}")
+            note = str(weekly.get('note') or '').strip()
+            if note:
+                lines.append(f"- Nota: {note}")
 
     # Fit proxy (MetricFit)
     try:
@@ -675,10 +728,9 @@ def render_professional_summary(result: dict[str, Any]) -> str:
         except Exception:
             pass
 
-    # Cierre
-    if isinstance(patterns, list) and patterns:
-        lines.append("\nSi quieres un cambio visible, repite las fotos con la misma luz/encuadre 1 vez por semana.")
-    else:
-        lines.append("\nTu base se ve estable. Mantén consistencia (mismo encuadre) para medir progreso real semana a semana.")
+    # Cierre (luxury): cómo medir + qué esperar
+    lines.append("\n**📍 Seguimiento (lujo = consistencia)**")
+    lines.append("- Repite las fotos con la misma luz/encuadre 1 vez por semana.")
+    lines.append("- Señal de éxito: menos tensión en cuello/hombros y eje más ‘limpio’ en cámara.")
 
     return "\n".join(lines).strip()
