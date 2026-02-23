@@ -511,7 +511,11 @@ def evaluate_posture(payload: dict[str, Any]) -> PostureResult:
             ],
         },
         "follow_up_questions": follow_up_questions,
-        "meta": {"algorithm": "exp-006_posture_corrective_v0", "as_of": str(date.today())},
+        "meta": {
+            "algorithm": "exp-006_posture_corrective_v0",
+            "as_of": str(date.today()),
+            "height_cm": height_cm,
+        },
     }
     return PostureResult(payload=payload_out)
 
@@ -539,15 +543,15 @@ def render_professional_summary(result: dict[str, Any]) -> str:
     lines: list[str] = []
     decision = str(result.get('decision') or '').strip() or 'unknown'
 
-    if vs_last and (hist_count is None or hist_count >= 2):
+    # Encabezado: evitar “Tu progreso” si el análisis es parcial.
+    if decision != 'accepted':
+        lines.append("Corrección de postura — Tu resumen")
+    elif vs_last and (hist_count is None or hist_count >= 2):
         lines.append("Corrección de postura — Tu progreso")
-    elif hist_count == 1 and decision == 'accepted':
+    elif hist_count == 1:
         lines.append("Corrección de postura — Punto de partida")
     else:
         lines.append("Corrección de postura — Tu resumen")
-
-    if decision != 'accepted':
-        lines.append(f"estado: {decision}")
     if conf.get("score") is not None:
         try:
             pct = round(float(conf.get('score')) * 100.0, 0)
@@ -555,7 +559,7 @@ def render_professional_summary(result: dict[str, Any]) -> str:
         except Exception:
             pass
 
-    # Aviso profesional: parcialidad
+    # Aviso profesional: parcialidad (sin tecnicismos)
     try:
         if decision != 'accepted':
             conf_block = result.get('confidence') if isinstance(result.get('confidence'), dict) else {}
@@ -571,12 +575,12 @@ def render_professional_summary(result: dict[str, Any]) -> str:
             except Exception:
                 s_ok = False
             if f_ok or s_ok:
-                lines.append('nota: resultado parcial; no es 100% fiable sin la segunda vista (frontal + lateral).')
+                lines.append('Análisis parcial: con 1 foto puedo orientarte, pero para máxima precisión necesito 2 vistas (frontal + lateral).')
     except Exception:
         pass
 
     if vs_last:
-        lines.append("\n📈 Tu evolución vs la última medición:")
+        evo_lines: list[str] = []
         shown = 0
         for item in vs_last:
             if not isinstance(item, dict):
@@ -615,14 +619,17 @@ def render_professional_summary(result: dict[str, Any]) -> str:
 
             mag = abs(delta)
             # Unidades: normalmente son "proxy"; mostramos magnitud acotada.
-            lines.append(f"{emoji} {label}: {verb} ({arrow} {mag:.2f})")
+            evo_lines.append(f"{emoji} {label}: {verb} ({arrow} {mag:.2f})")
             shown += 1
             if shown >= 4:
                 break
 
-        if hist_count is not None and hist_count >= 3:
-            lines.append("\n🔎 Lo importante")
-            lines.append("Pequeñas correcciones sostenidas → cambios visibles.")
+        if evo_lines:
+            lines.append("\n📈 Tu evolución vs la última medición:")
+            lines.extend(evo_lines)
+            if hist_count is not None and hist_count >= 3:
+                lines.append("\n🔎 Lo importante")
+                lines.append("Pequeñas correcciones sostenidas → cambios visibles.")
 
     if (not vs_last) and hist_count == 1 and decision == 'accepted':
         lines.append("\n📈 Próximo paso")
@@ -719,16 +726,11 @@ def render_professional_summary(result: dict[str, Any]) -> str:
                 personal.append(f"Longitud de pierna der (proxy): {v:.2f}× torso")
 
         if metrics:
-            lines.append("métricas (aprox):")
+            lines.append("\nTus métricas (hoy):")
             for m in metrics[:4]:
                 lines.append(f"- {m}")
 
-        if personal:
-            lines.append("medidas personales (proxy):")
-            for m in personal[:6]:
-                lines.append(f"- {m}")
-
-        # Medidas en cm (estimadas) si hubo calibración por altura
+        # Medidas en cm (estimadas): preferir calibración por px; fallback por altura+proporciones.
         cm_lines: list[str] = []
         swc = _sig('shoulder_width_cm')
         if swc and swc.get('value') is not None:
@@ -756,9 +758,52 @@ def render_professional_summary(result: dict[str, Any]) -> str:
                 pass
 
         if cm_lines:
-            lines.append("medidas en cm (estimadas):")
+            lines.append("\nTus medidas (cm estimadas):")
             for m in cm_lines[:6]:
                 lines.append(f"- {m}")
+
+        # Fallback: si NO hay cm por px, pero existe height_cm, convertir proxies a cm con proporción (aprox).
+        if (not cm_lines) and personal:
+            height_cm = None
+            try:
+                meta = result.get('meta') if isinstance(result.get('meta'), dict) else {}
+                height_cm = float(meta.get('height_cm')) if meta.get('height_cm') is not None else None
+            except Exception:
+                height_cm = None
+
+            if height_cm and 80.0 <= float(height_cm) <= 260.0:
+                # Aproximación: hombro→cadera suele estar ~30–35% de la estatura.
+                torso_cm_est = float(height_cm) * 0.32
+
+                def _rel_sig(name: str) -> float | None:
+                    s = _sig(name)
+                    if not s or s.get('value') is None:
+                        return None
+                    try:
+                        return float(s.get('value'))
+                    except Exception:
+                        return None
+
+                sw_rel = _rel_sig('shoulder_width')
+                hw_rel = _rel_sig('hip_width')
+                al_rel = _rel_sig('arm_length_left')
+                ar_rel = _rel_sig('arm_length_right')
+
+                approx_lines: list[str] = []
+                if sw_rel is not None:
+                    approx_lines.append(f"Ancho de hombros (cm aprox): {sw_rel * torso_cm_est:.1f} cm")
+                if hw_rel is not None:
+                    approx_lines.append(f"Ancho de cadera (cm aprox): {hw_rel * torso_cm_est:.1f} cm")
+                if al_rel is not None:
+                    approx_lines.append(f"Brazo izq (cm aprox): {al_rel * torso_cm_est:.1f} cm")
+                if ar_rel is not None:
+                    approx_lines.append(f"Brazo der (cm aprox): {ar_rel * torso_cm_est:.1f} cm")
+
+                if approx_lines:
+                    lines.append("\nTus medidas (cm aprox por estatura):")
+                    for m in approx_lines[:6]:
+                        lines.append(f"- {m}")
+                    lines.append("nota: para cm más fiables, usa foto cuerpo completo (pies a cabeza) y buena luz.")
     except Exception:
         pass
 

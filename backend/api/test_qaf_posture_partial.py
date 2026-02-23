@@ -30,9 +30,9 @@ class QafPosturePartialTests(SimpleTestCase):
         self.assertEqual(res.get("decision"), "needs_confirmation")
 
         text = render_professional_summary(res)
-        self.assertIn("resultado parcial", (text or "").lower())
+        self.assertIn("análisis parcial", (text or "").lower())
 
-    def test_posture_partial_includes_personal_proxy_measures(self):
+    def test_posture_partial_includes_cm_approx_from_height(self):
         payload = {
             "poses": {
                 "front": {
@@ -50,14 +50,14 @@ class QafPosturePartialTests(SimpleTestCase):
                 },
                 "side": None,
             },
-            "user_context": {"injury_recent": False, "pain_neck": False, "pain_low_back": False, "level": "beginner"},
+            "user_context": {"height_cm": 175, "injury_recent": False, "pain_neck": False, "pain_low_back": False, "level": "beginner"},
             "locale": "es-CO",
         }
 
         res = evaluate_posture(payload).payload
         text = render_professional_summary(res) or ""
-        self.assertIn("medidas personales", text.lower())
-        self.assertTrue(("hombros" in text.lower()) or ("cadera" in text.lower()) or ("pierna" in text.lower()))
+        self.assertTrue(("cm aprox" in text.lower()) or ("cm estimad" in text.lower()))
+        self.assertTrue(("hombros" in text.lower()) or ("cadera" in text.lower()) or ("brazo" in text.lower()))
 
     def test_posture_height_calibration_adds_cm_estimates_when_full_body(self):
         payload = {
