@@ -661,6 +661,7 @@ def render_professional_summary(result: dict[str, Any]) -> str:
     try:
         prog = result.get("progress") if isinstance(result.get("progress"), dict) else {}
         vs = prog.get("vs_last_week") if isinstance(prog.get("vs_last_week"), dict) else None
+        baseline_source = str(prog.get('baseline_source') or '').strip().lower() or None
         if vs and isinstance(vs.get("deltas"), dict):
             deltas = vs.get("deltas")
             def _fmt_delta(k: str, label: str) -> str | None:
@@ -683,7 +684,10 @@ def render_professional_summary(result: dict[str, Any]) -> str:
             parts = [p for p in parts if p]
             if parts:
                 lines.append("")
-                lines.append("Cambios vs tu semana pasada:")
+                if baseline_source == 'last_same_focus':
+                    lines.append("Cambios vs tu última medición (mismo enfoque):")
+                else:
+                    lines.append("Cambios vs tu semana pasada:")
                 lines.extend(parts[:4])
 
             # cm deltas (si existieran)

@@ -4046,6 +4046,7 @@ def chat_n8n(request):
                     weekly_state = getattr(user, 'coach_weekly_state', {}) or {}
 
                     baseline = None
+                    baseline_source = None
                     try:
                         mm = weekly_state.get('muscle_measure') if isinstance(weekly_state.get('muscle_measure'), dict) else {}
                         prev_keys = [k for k in mm.keys() if isinstance(k, str) and k != week_id_now]
@@ -4054,11 +4055,28 @@ def chat_n8n(request):
                             prev_row = mm.get(prev_key)
                             if isinstance(prev_row, dict) and isinstance(prev_row.get('result'), dict):
                                 baseline = prev_row.get('result')
+                                baseline_source = 'last_week'
                     except Exception:
                         baseline = None
+                        baseline_source = None
 
                     poses = mm_req.get('poses') if isinstance(mm_req.get('poses'), dict) else {}
                     focus = mm_req.get('focus') if isinstance(mm_req.get('focus'), str) else None
+
+                    # Memoria suave: última medición por enfoque (permite comparar incluso dentro de la misma semana)
+                    try:
+                        fx = str(focus or '').strip().lower() or None
+                        if fx:
+                            fx_key = 'abs' if fx in ('abs', 'abdomen', 'abdominales') else ('biceps' if fx in ('biceps', 'bíceps', 'bicep') else ('glutes' if fx in ('glutes', 'gluteos', 'glúteos') else fx))
+                            cs0 = getattr(user, 'coach_state', {}) or {}
+                            mem0 = cs0.get('muscle_measure_memory') if isinstance(cs0.get('muscle_measure_memory'), dict) else {}
+                            last_by_focus = mem0.get('last_by_focus') if isinstance(mem0.get('last_by_focus'), dict) else {}
+                            row = last_by_focus.get(fx_key) if isinstance(last_by_focus.get(fx_key), dict) else None
+                            if isinstance(row, dict) and isinstance(row.get('result'), dict):
+                                baseline = row.get('result')
+                                baseline_source = 'last_same_focus'
+                    except Exception:
+                        pass
 
                     # Si el usuario solo seleccionó un foco (sin fotos aún), guiar captura con copy específico.
                     try:
@@ -4094,6 +4112,14 @@ def chat_n8n(request):
 
                     res = evaluate_muscle_measure({'poses': poses, 'baseline': baseline, 'focus': focus, 'height_cm': height_cm}).payload
 
+                    # marcar fuente del baseline para copy
+                    try:
+                        if isinstance(res, dict) and baseline_source:
+                            prog0 = res.get('progress') if isinstance(res.get('progress'), dict) else {}
+                            res = {**res, 'progress': {**prog0, 'baseline_source': baseline_source}}
+                    except Exception:
+                        pass
+
                     # UX: nombre amigable para saludo
                     try:
                         display = (getattr(user, 'full_name', '') or '').strip() or (getattr(user, 'username', '') or '').strip()
@@ -4113,6 +4139,36 @@ def chat_n8n(request):
                         user.coach_weekly_state = ws2
                         user.coach_weekly_updated_at = timezone.now()
                         user.save(update_fields=['coach_weekly_state', 'coach_weekly_updated_at'])
+                    except Exception:
+                        pass
+
+                    # Memoria suave (coach_state): última medición global + por enfoque
+                    try:
+                        if isinstance(res, dict) and res.get('decision') == 'accepted':
+                            cs0 = getattr(user, 'coach_state', {}) or {}
+                            cs2 = dict(cs0)
+                            mem0 = cs2.get('muscle_measure_memory') if isinstance(cs2.get('muscle_measure_memory'), dict) else {}
+                            mem2 = dict(mem0)
+                            last_by_focus = mem2.get('last_by_focus') if isinstance(mem2.get('last_by_focus'), dict) else {}
+                            last_by_focus2 = dict(last_by_focus)
+
+                            fx = str(focus or '').strip().lower() or 'general'
+                            fx_key = 'abs' if fx in ('abs', 'abdomen', 'abdominales') else ('biceps' if fx in ('biceps', 'bíceps', 'bicep') else ('glutes' if fx in ('glutes', 'gluteos', 'glúteos') else fx))
+                            last_by_focus2[fx_key] = {'result': res, 'updated_at': timezone.now().isoformat(), 'focus': fx_key}
+
+                            # Mantener un set pequeño de focos
+                            for k in list(last_by_focus2.keys()):
+                                if str(k) not in ('general', 'biceps', 'glutes', 'abs'):
+                                    last_by_focus2.pop(k, None)
+
+                            mem2['last_by_focus'] = last_by_focus2
+                            mem2['last'] = {'result': res, 'updated_at': timezone.now().isoformat(), 'focus': fx_key}
+                            cs2['muscle_measure_memory'] = mem2
+                            cs2['muscle_measure_last'] = {'result': res, 'updated_at': timezone.now().isoformat(), 'focus': fx_key}
+
+                            user.coach_state = cs2
+                            user.coach_state_updated_at = timezone.now()
+                            user.save(update_fields=['coach_state', 'coach_state_updated_at'])
                     except Exception:
                         pass
 
