@@ -5216,12 +5216,31 @@ def chat_n8n(request):
                         r"me\s+dio\s+pereza|"
                         r"procrastin\w*|"
                         r"posterg\w*|pospon\w*|"
+                        r"me\s+cuesta\s+arrancar|me\s+cuesta\s+empezar|"
+                        r"no\s+arranco|no\s+empiezo|"
+                        r"sin\s+[aá]nimo|desmotiv\w*|"
                         r"estoy\s+agotad\w*|"
                         r"estoy\s+cansad\w*"
                         r")\b",
                         msg_low,
                     ):
                         want_motivation = True
+
+                    # Activación por intención implícita: pide un plan corto (minutos) para volver a la constancia.
+                    # Esto captura frases tipo "dame un plan de 10 minutos para volver a la constancia".
+                    if not want_motivation:
+                        try:
+                            asks_short_plan = bool(re.search(r"\b(plan|rutina|ses[ií]on)\b", msg_low)) and bool(
+                                re.search(r"\b(\d{1,2})\s*(min|minutos)\b", msg_low)
+                            )
+                            mentions_consistency = bool(re.search(r"\b(constancia|h[aá]bito|rutina|racha|volver\s+a\s+la\s+constancia)\b", msg_low))
+                            mentions_struggle = bool(
+                                re.search(r"\b(no\s+tengo\s+ganas|sin\s+ganas|procrastin\w*|desmotiv\w*|sin\s+[aá]nimo|me\s+cuesta\s+arrancar|me\s+cuesta\s+empezar)\b", msg_low)
+                            )
+                            if asks_short_plan and mentions_consistency and mentions_struggle:
+                                want_motivation = True
+                        except Exception:
+                            pass
 
                 # Rate limit (heurístico): máximo 1 activación por ventana de 8 horas (3/día).
                 # La activación explícita (payload o frases tipo "Necesito motivación") siempre pasa.
