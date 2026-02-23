@@ -1337,7 +1337,7 @@ function shouldShowOnboarding(username) {
 
 function getOnboardingMessage(day, hasDevice) {
   if (day === 1) {
-    return `Soy tu Quantum Coach.\nMi función es acompañarte a ordenar tu energía, tu alimentación, tu entrenamiento y tus decisiones con coherencia.\n\nPuedes usarme cuando:\n– necesites claridad en una decisión,\n– quieras ajustar tu rutina de ejercicio,\n– revisar tu alimentación,\n– o simplemente entender mejor tu momento actual.\n\nNo te empujo. Te ayudo a ver con mayor claridad.\n¿Te gustaría empezar revisando tu estado actual?`;
+    return `Soy tu Quantum Coach.\nMi función es acompañarte a ordenar tu energía, tu alimentación, tu entrenamiento y tus decisiones con coherencia.\n\nAquí tienes **13 experiencias** (servicios) que se activan con botones o por texto.\nEmpieza por una y yo organizo el resto.\n\n¿Quieres comenzar con tu estado de hoy o con una medición corporal por fotos?`;
   }
   if (day === 2) {
     if (!hasDevice) {
@@ -1346,7 +1346,7 @@ function getOnboardingMessage(day, hasDevice) {
     return `Ya tengo tus datos de actividad recientes.\nPodemos usarlos para ajustar tu entrenamiento o revisar tu recuperación.\n\n¿Prefieres revisar tu rendimiento o tu descanso?`;
   }
   if (day === 3) {
-    return `Los lunes realizamos una revisión profunda de tu sistema con el análisis QAF.\nSi en algún momento necesitas claridad estratégica o entender mejor tu estado general, puedes pedirme un análisis completo.\n\nEstoy aquí para ayudarte a ver más allá de lo evidente.\n¿Quieres que revisemos tu estado actual?`;
+    return `Los lunes realizamos una revisión profunda de tu sistema con el análisis QAF.\nSi en algún momento necesitas claridad estratégica o entender mejor tu estado general, puedes pedirme un análisis completo.\n\nHoy puedes: activar el **Motor de Cognición QAF**, revisar tu **Arquitectura Corporal**, o ajustar tu **plan**.\n¿Qué priorizamos?`;
   }
   return '';
 }
@@ -1894,13 +1894,49 @@ function buildQuickActions(context) {
     });
   }
 
-  // 2) Vitalidad de la Piel (Exp-011)
-  actions.push({ label: 'Alta Costura Inteligente', type: 'shape_start' });
+  // Servicios (catálogo)
+  actions.push({ label: 'Servicios GoToGym (13)', type: 'services_menu', page: 'core' });
 
-  // 3) Vitalidad de la Piel (Exp-011)
-  actions.push({ label: 'Vitalidad de la Piel', type: 'skin_start' });
+  // Tercer botón: impulsar una experiencia “ancla” (arquitectura corporal) sin quitar acceso al catálogo.
+  actions.push({ label: 'Arquitectura Corporal', type: 'pp_start' });
 
   return actions.slice(0, 3);
+}
+
+function showServicesMenu(page = 'core') {
+  // Guardrail UX: si un flujo está activo, no mostrar menú.
+  try {
+    if ((postureFlow && postureFlow.active) || (muscleFlow && muscleFlow.active) || (shapeFlow && shapeFlow.active) || (ppFlow && ppFlow.active) || (skinFlow && skinFlow.active)) {
+      return;
+    }
+  } catch (e) {
+    // ignore
+  }
+
+  const title = '**Servicios GoToGym**\nElige una experiencia y yo me encargo del resto.';
+  try { appendMessage(title, 'bot'); } catch (e) { /* ignore */ }
+
+  if (page === 'more') {
+    appendQuickActions([
+      { label: 'Menú semanal', type: 'message', text: 'Menú semanal', payload: { meal_plan_request: { variety: 'normal', meals_per_day: 3 } } },
+      { label: 'Perfil metabólico', type: 'message', text: 'Perfil metabólico' },
+      { label: 'Tendencia 6 semanas', type: 'message', text: 'Tendencia 6 semanas', payload: { body_trend_request: {} } },
+      { label: 'Evolución entrenamiento', type: 'message', text: 'Evolución de entrenamiento', payload: { progression_request: {} } },
+      { label: 'Motivación', type: 'message', text: 'Motivación', payload: { motivation_request: { preferences: { pressure: 'suave' } } } },
+      { label: '◀ Volver', type: 'services_menu', page: 'core' },
+    ]);
+    return;
+  }
+
+  // core
+  appendQuickActions([
+    { label: 'Arquitectura Corporal', type: 'pp_start' },
+    { label: 'Alta Costura Inteligente', type: 'shape_start' },
+    { label: 'Vitalidad de la Piel', type: 'skin_start' },
+    { label: 'Corrección de postura', type: 'posture_start' },
+    { label: 'Progreso muscular', type: 'muscle_start' },
+    { label: 'Más ▶', type: 'services_menu', page: 'more' },
+  ]);
 }
 
 async function fetchCoachContext() {
@@ -3161,6 +3197,10 @@ function appendQuickActions(actions) {
         startPpFlow();
         return;
       }
+      if (action.type === 'services_menu') {
+        try { showServicesMenu(action.page || 'core'); } catch (e) { /* ignore */ }
+        return;
+      }
       if (action.type === 'posture_cancel') {
         cancelPostureFlow();
         return;
@@ -3395,8 +3435,10 @@ async function sendQuickMessage(text, extraPayload = null) {
 
   appendMessage(getTimeGreeting(name), 'bot');
 
+  let onboardingDay = 0;
   if (shouldShowOnboarding(user?.username || 'anon')) {
     const day = getOnboardingDay(user?.username || 'anon');
+    onboardingDay = day;
     const onboardingText = getOnboardingMessage(day, hasDevice);
     if (onboardingText) appendMessage(onboardingText, 'bot');
   } else {
@@ -3406,7 +3448,23 @@ async function sendQuickMessage(text, extraPayload = null) {
   const contextual = getContextualPrompt(context);
   if (contextual) appendMessage(contextual, 'bot');
 
-  appendQuickActions(buildQuickActions(context || {}));
+  // Onboarding: mostrar un set curado de botones (hasta 6) para vender servicios.
+  if (onboardingDay && onboardingDay <= 3) {
+    const base = buildQuickActions(context || {});
+    const curated = [];
+    // Mantener el botón contextual primero
+    if (Array.isArray(base) && base.length) curated.push(base[0]);
+    curated.push(
+      { label: 'Arquitectura Corporal', type: 'pp_start' },
+      { label: 'Alta Costura Inteligente', type: 'shape_start' },
+      { label: 'Vitalidad de la Piel', type: 'skin_start' },
+      { label: 'Progreso muscular', type: 'muscle_start' },
+      { label: 'Más servicios', type: 'services_menu', page: 'core' },
+    );
+    appendQuickActions(curated.slice(0, 6));
+  } else {
+    appendQuickActions(buildQuickActions(context || {}));
+  }
 
   try { scheduleEditButtonUpdate(); } catch (e) { /* ignore */ }
 })();
