@@ -948,11 +948,21 @@ async function handlePostureCapture(file, view) {
           '¿La repetimos?',
         'bot'
       );
-      appendQuickActions([
+      const actions = [
         { label: view === 'front' ? 'Tomar foto frontal' : 'Tomar foto lateral', type: 'posture_capture', view, source: 'camera' },
         { label: view === 'front' ? 'Adjuntar foto frontal' : 'Adjuntar foto lateral', type: 'posture_capture', view, source: 'attach' },
-        { label: 'Cancelar', type: 'posture_cancel' },
-      ]);
+      ];
+      // Si falló la lateral pero ya tenemos frontal, ofrecer análisis parcial (caso real: no hay más fotos).
+      try {
+        const hasFront = !!(postureFlow && postureFlow.poses && postureFlow.poses.front);
+        if (view === 'side' && hasFront) {
+          actions.push({ label: 'Analizar parcial', type: 'posture_analyze_partial' });
+        }
+      } catch (e) {
+        // ignore
+      }
+      actions.push({ label: 'Cancelar', type: 'posture_cancel' });
+      appendQuickActions(actions);
       return;
     }
   } catch (e) {
@@ -2308,7 +2318,21 @@ async function processMessage(text, file, pendingId, extraPayload = null) {
     // Quick actions (botones con estilo existente)
     try {
       if (data && typeof data === 'object' && Array.isArray(data.quick_actions) && data.quick_actions.length) {
-        appendQuickActions(data.quick_actions);
+        // Guardrail UX: si el flujo de postura está activo, no mezclar botones de otros módulos.
+        try {
+          if (postureFlow && postureFlow.active) {
+            const filtered = (data.quick_actions || []).filter((a) => {
+              if (!a || typeof a !== 'object') return false;
+              const t = String(a.type || '').trim();
+              return t.startsWith('posture_');
+            });
+            if (filtered.length) appendQuickActions(filtered);
+          } else {
+            appendQuickActions(data.quick_actions);
+          }
+        } catch (e) {
+          appendQuickActions(data.quick_actions);
+        }
       }
     } catch (e) {
       // ignore
