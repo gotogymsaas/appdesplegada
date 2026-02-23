@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import date
+import math
 from typing import Any
 
 
@@ -45,6 +46,17 @@ def _dist(a: tuple[float, float], b: tuple[float, float]) -> float:
     dx = float(a[0]) - float(b[0])
     dy = float(a[1]) - float(b[1])
     return float((dx * dx + dy * dy) ** 0.5)
+
+
+def _angle_deg(a: tuple[float, float], b: tuple[float, float]) -> float:
+    """Ángulo (grados) de la línea a->b vs eje X (horizontal)."""
+    dx = float(b[0]) - float(a[0])
+    dy = float(b[1]) - float(a[1])
+    return float(math.degrees(math.atan2(dy, dx)))
+
+
+def _pct01_to_100(x01: float) -> int:
+    return int(round(_clamp01(float(x01)) * 100.0))
 
 
 def _mid(kp: dict[str, dict[str, float]], a: str, b: str) -> tuple[tuple[float, float] | None, float]:
@@ -192,6 +204,15 @@ def evaluate_posture_proportion(payload: dict[str, Any]) -> PostureProportionRes
     forward_head_score = None
     rounded_shoulders_score = None
 
+    # --- Proxies Exp-013+ (robustez) ---
+    shoulder_tilt_deg = None
+    pelvis_tilt_deg = None
+    axis_asymmetry_pct = None
+    load_distribution_pct = None
+    hip_stability_score = None
+    postural_efficiency_score = None
+    metricfit_alignment_note = None
+
     # --- P-score (proporción proxy) ---
     v_taper_score = None
     torso_leg_score = None
@@ -217,9 +238,21 @@ def evaluate_posture_proportion(payload: dict[str, Any]) -> PostureProportionRes
             shoulder_level = abs(float(ls["y"]) - float(rs["y"])) / scale
             shoulder_level_score = _score_from_delta(float(shoulder_level), good_at=0.03, bad_at=0.12)
 
+            # PoseLine Coach (proxy 2D): inclinación hombros (grados)
+            try:
+                shoulder_tilt_deg = float(_angle_deg((float(ls["x"]), float(ls["y"])), (float(rs["x"]), float(rs["y"]))))
+            except Exception:
+                shoulder_tilt_deg = None
+
         if lh and rh:
             pelvis_level = abs(float(lh["y"]) - float(rh["y"])) / scale
             pelvis_level_score = _score_from_delta(float(pelvis_level), good_at=0.03, bad_at=0.12)
+
+            # PoseLine Coach (proxy 2D): inclinación cadera (grados)
+            try:
+                pelvis_tilt_deg = float(_angle_deg((float(lh["x"]), float(lh["y"])), (float(rh["x"]), float(rh["y"]))))
+            except Exception:
+                pelvis_tilt_deg = None
 
         # Base axis (rodilla→tobillo) proxy: diferencias de x entre rodilla y tobillo por lado
         lk = kp.get("left_knee")
@@ -229,6 +262,49 @@ def evaluate_posture_proportion(payload: dict[str, Any]) -> PostureProportionRes
             r = abs(float(rk["x"]) - float(ra["x"]))
             base_axis = float(0.5 * (l + r))
             base_axis_score = _score_from_delta(base_axis, good_at=0.03, bad_at=0.12)
+
+        # Symmetry Monitor (proxy 2D): asimetría de eje normalizada
+        # - No es un % clínico; es un proxy (0..100) basado en deltas normalizadas por escala.
+        try:
+            parts = []
+            if ls and rs:
+                parts.append(abs(float(ls["y"]) - float(rs["y"])) / scale)
+            if lh and rh:
+                parts.append(abs(float(lh["y"]) - float(rh["y"])) / scale)
+            if lk and rk and la and ra:
+                parts.append(0.5 * (abs(float(lk["x"]) - float(la["x"])) + abs(float(rk["x"]) - float(ra["x"]))))
+            # Mapear a 0..1 con rangos similares a nuestros umbrales.
+            if parts:
+                # 0.03 ~ limpio; 0.12 ~ fuerte
+                mean_delta = float(sum(parts) / max(1, len(parts)))
+                axis_asymmetry_pct = int(round(_clamp01((mean_delta - 0.01) / (0.14 - 0.01)) * 100.0))
+        except Exception:
+            axis_asymmetry_pct = None
+
+        # Load Distribution Visual (proxy 2D): desplazamiento del centro de pelvis vs centro de tobillos
+        try:
+            mid_hip, _ = _mid(kp, "left_hip", "right_hip")
+            mid_ank, _ = _mid(kp, "left_ankle", "right_ankle")
+            if mid_hip and mid_ank:
+                x_off = abs(float(mid_hip[0]) - float(mid_ank[0])) / max(1e-6, scale)
+                # 0.02..0.12 aprox
+                load_distribution_pct = int(round(_clamp01((x_off - 0.01) / (0.14 - 0.01)) * 100.0))
+        except Exception:
+            load_distribution_pct = None
+
+        # Hip Stability Index (proxy 2D): mezcla de nivel de pelvis + centro de masa (muy simple)
+        try:
+            deltas = []
+            if pelvis_level_score is not None:
+                # Convertimos score a "inestabilidad" 0..1
+                deltas.append((100.0 - float(pelvis_level_score)) / 100.0)
+            if load_distribution_pct is not None:
+                deltas.append(float(load_distribution_pct) / 100.0)
+            if deltas:
+                instab = float(sum(deltas) / max(1, len(deltas)))
+                hip_stability_score = int(round(100.0 * (1.0 - _clamp01(instab))))
+        except Exception:
+            hip_stability_score = None
 
         # Proportion proxies
         if ls and rs and lh and rh:
@@ -283,6 +359,15 @@ def evaluate_posture_proportion(payload: dict[str, Any]) -> PostureProportionRes
                 forward_head_score = _score_from_delta(float(forward_head), good_at=0.12, bad_at=0.35)
                 rounded_shoulders_score = _score_from_delta(float(rounded), good_at=0.10, bad_at=0.30)
 
+                # MetricFit Alignment Proxy (heurística): cuello adelantado / hombro adelantado suele “romper” cuello/solapa.
+                try:
+                    if forward_head_score is not None and forward_head_score < 75:
+                        metricfit_alignment_note = "En camisas/blazers, el cuello puede verse ‘tirante’ por el eje (cabeza adelantada), no por talla."
+                    elif rounded_shoulders_score is not None and rounded_shoulders_score < 75:
+                        metricfit_alignment_note = "Si notas tirantez en pecho/solapa, primero limpia hombros (apertura) antes de culpar la talla."
+                except Exception:
+                    metricfit_alignment_note = None
+
     # BACK metrics (opcional): simetría hombros/pelvis como corroboración
     back_symmetry_score = None
     if "back_relaxed" in views_in:
@@ -314,6 +399,15 @@ def evaluate_posture_proportion(payload: dict[str, Any]) -> PostureProportionRes
     # Unificado
     # 55% postura, 45% proporción (proxy)
     asi = int(round(0.55 * float(posture_score) + 0.45 * float(proportion_score)))
+
+    # Postural Efficiency Score (nuevo): premia postura + estabilidad (cadera) y penaliza asimetría
+    try:
+        hip_s = float(hip_stability_score if hip_stability_score is not None else posture_score)
+        asym_pen = float(axis_asymmetry_pct if axis_asymmetry_pct is not None else 0.0)
+        # 0..100
+        postural_efficiency_score = int(round(_clamp01((0.55 * (posture_score / 100.0)) + (0.25 * (hip_s / 100.0)) + (0.20 * (1.0 - (asym_pen / 100.0)))) * 100.0))
+    except Exception:
+        postural_efficiency_score = None
 
     # Baseline delta opcional
     baseline_delta = None
@@ -430,6 +524,19 @@ def evaluate_posture_proportion(payload: dict[str, Any]) -> PostureProportionRes
             "posture_score": int(posture_score),
             "proportion_score": int(proportion_score),
             "alignment_silhouette_index": int(asi),
+            "postural_efficiency_score": int(postural_efficiency_score or 0),
+            "symmetry_monitor": {
+                "axis_asymmetry_pct": int(axis_asymmetry_pct) if axis_asymmetry_pct is not None else None,
+                "load_distribution_pct": int(load_distribution_pct) if load_distribution_pct is not None else None,
+                "hip_stability": int(hip_stability_score) if hip_stability_score is not None else None,
+            },
+            "pose_line": {
+                "shoulder_tilt_deg": round(float(shoulder_tilt_deg), 2) if shoulder_tilt_deg is not None else None,
+                "pelvis_tilt_deg": round(float(pelvis_tilt_deg), 2) if pelvis_tilt_deg is not None else None,
+            },
+            "metricfit_alignment_proxy": {
+                "note": metricfit_alignment_note,
+            },
             "posture_components": {
                 "shoulder_level": _nz(shoulder_level_score),
                 "pelvis_level": _nz(pelvis_level_score),
@@ -450,7 +557,7 @@ def evaluate_posture_proportion(payload: dict[str, Any]) -> PostureProportionRes
         "insights": insights[:3] if insights else ["Análisis listo. Si quieres más precisión, repite las fotos con la misma luz y encuadre."],
         "recommended_actions": ["Haz las 2 correcciones ahora y repite una foto rápida para ver el cambio."],
         "follow_up_questions": follow_up_questions,
-        "meta": {"algorithm": "exp-013_posture_proportion_v0", "as_of": str(date.today())},
+        "meta": {"algorithm": "exp-013_posture_proportion_v1", "as_of": str(date.today())},
     }
 
     if baseline_delta is not None:
@@ -463,48 +570,115 @@ def render_professional_summary(result: dict[str, Any]) -> str:
     if not isinstance(result, dict):
         return ""
 
-    lines: list[str] = []
-    lines.append(f"decision: {result.get('decision')}")
-
+    decision = str(result.get("decision") or "").strip().lower()
     conf = result.get("confidence") if isinstance(result.get("confidence"), dict) else {}
-    if conf.get("score") is not None:
-        try:
-            lines.append(f"confidence: {round(float(conf.get('score')), 3)}")
-        except Exception:
-            pass
-
     vars_ = result.get("variables") if isinstance(result.get("variables"), dict) else {}
+    patterns = result.get("patterns") if isinstance(result.get("patterns"), list) else []
+
+    confidence_pct = None
     try:
-        lines.append(f"posture_score: {int(vars_.get('posture_score') or 0)}/100")
-        lines.append(f"proportion_score: {int(vars_.get('proportion_score') or 0)}/100")
-        lines.append(f"alignment_silhouette_index: {int(vars_.get('alignment_silhouette_index') or 0)}/100")
+        if conf.get("score") is not None:
+            confidence_pct = int(round(float(conf.get("score")) * 100.0))
+    except Exception:
+        confidence_pct = None
+
+    lines: list[str] = []
+    lines.append("**Postura & Proporción (QAF)**")
+    lines.append("(Asesoría visual por foto: proxies por keypoints 2D; **no son medidas en cm** y no es diagnóstico.)")
+
+    if decision != "accepted":
+        lines.append("\n**⚠️ Necesito 2 fotos para ser preciso**")
+        lines.append("- Frente relajado (cuerpo completo)")
+        lines.append("- Perfil derecho (cuerpo completo)")
+        lines.append("- Buena luz, sin contraluz; cámara a 2–3m y altura del pecho")
+        return "\n".join(lines).strip()
+
+    if confidence_pct is not None:
+        lines.append(f"\n**✅ Listo** · Confianza de captura: {confidence_pct}%")
+    else:
+        lines.append("\n**✅ Listo**")
+
+    # Headline
+    insights = result.get("insights")
+    if isinstance(insights, list) and insights:
+        lines.append("\n" + str(insights[0]).strip())
+
+    # Índices
+    try:
+        lines.append("\n**📌 Índices (0–100)**")
+        lines.append(f"- Eficiencia postural: {int(vars_.get('postural_efficiency_score') or 0)}")
+        lines.append(f"- Postura (alineación): {int(vars_.get('posture_score') or 0)}")
+        lines.append(f"- Proporción (proxy): {int(vars_.get('proportion_score') or 0)}")
+        lines.append(f"- Índice unificado (ASI): {int(vars_.get('alignment_silhouette_index') or 0)}")
     except Exception:
         pass
 
+    # PoseLine + Simetría
+    try:
+        pose_line = vars_.get("pose_line") if isinstance(vars_.get("pose_line"), dict) else {}
+        sym = vars_.get("symmetry_monitor") if isinstance(vars_.get("symmetry_monitor"), dict) else {}
+
+        has_any = any(v is not None for v in [pose_line.get("shoulder_tilt_deg"), pose_line.get("pelvis_tilt_deg"), sym.get("axis_asymmetry_pct"), sym.get("load_distribution_pct")])
+        if has_any:
+            lines.append("\n**🧭 Señales (proxies por foto)**")
+            if pose_line.get("shoulder_tilt_deg") is not None:
+                lines.append(f"- PoseLine (hombros): {pose_line.get('shoulder_tilt_deg')}°")
+            if pose_line.get("pelvis_tilt_deg") is not None:
+                lines.append(f"- PoseLine (cadera): {pose_line.get('pelvis_tilt_deg')}°")
+            if sym.get("axis_asymmetry_pct") is not None:
+                lines.append(f"- Asimetría de eje (proxy): {int(sym.get('axis_asymmetry_pct'))}%")
+            if sym.get("load_distribution_pct") is not None:
+                lines.append(f"- Distribución de carga (proxy): {int(sym.get('load_distribution_pct'))}%")
+            if sym.get("hip_stability") is not None:
+                lines.append(f"- Estabilidad de cadera: {int(sym.get('hip_stability'))}/100")
+    except Exception:
+        pass
+
+    # Micro-ajustes (Balance Correction Plan)
+    lines.append("\n**🎯 Micro‑ajustes (hoy, 2 minutos)**")
+    imm = result.get("immediate_corrections")
+    if isinstance(imm, list) and imm:
+        for ex in imm[:2]:
+            if not isinstance(ex, dict):
+                continue
+            title = str(ex.get("title") or "").strip()
+            cue = str(ex.get("cue") or "").strip()
+            sec = int(ex.get("duration_sec") or 0)
+            if title and cue and sec:
+                lines.append(f"- {title}: {sec}s · {cue}")
+
+    weekly = result.get("weekly_adjustment") if isinstance(result.get("weekly_adjustment"), dict) else {}
+    if weekly:
+        focus = weekly.get("focus") if isinstance(weekly.get("focus"), list) else []
+        focus = [str(x).strip() for x in focus if str(x).strip()]
+        if focus:
+            lines.append("\n**📅 Ajuste semanal (3 sesiones)**")
+            lines.append(f"- Enfoque: {', '.join(focus[:3])}")
+
+    # Fit proxy (MetricFit)
+    try:
+        mf = vars_.get("metricfit_alignment_proxy") if isinstance(vars_.get("metricfit_alignment_proxy"), dict) else {}
+        note = str(mf.get("note") or "").strip()
+        if note:
+            lines.append("\n**🧵 Fit (proxy tipo atelier)**")
+            lines.append(f"- {note}")
+    except Exception:
+        pass
+
+    # Tendencia vs baseline
     delta = result.get("baseline_delta") if isinstance(result.get("baseline_delta"), dict) else {}
     if delta.get("alignment_silhouette_index") is not None:
         try:
             d = int(delta.get("alignment_silhouette_index") or 0)
             sign = "+" if d >= 0 else ""
-            lines.append(f"cambio vs baseline (ASI): {sign}{d}")
+            lines.append(f"\n**📈 Cambio vs última medición**: {sign}{d} puntos (ASI)")
         except Exception:
             pass
 
-    insights = result.get("insights")
-    if isinstance(insights, list) and insights:
-        for x in insights[:2]:
-            if str(x).strip():
-                lines.append(f"insight: {str(x).strip()}")
-
-    weekly = result.get("weekly_adjustment") if isinstance(result.get("weekly_adjustment"), dict) else {}
-    if weekly.get("focus"):
-        try:
-            focus = weekly.get("focus")
-            if isinstance(focus, list):
-                focus_str = ", ".join([str(x) for x in focus if str(x).strip()])
-                if focus_str:
-                    lines.append(f"ajuste semanal: {focus_str}")
-        except Exception:
-            pass
+    # Cierre
+    if isinstance(patterns, list) and patterns:
+        lines.append("\nSi quieres un cambio visible, repite las fotos con la misma luz/encuadre 1 vez por semana.")
+    else:
+        lines.append("\nTu base se ve estable. Mantén consistencia (mismo encuadre) para medir progreso real semana a semana.")
 
     return "\n".join(lines).strip()
