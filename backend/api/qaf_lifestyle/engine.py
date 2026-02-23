@@ -381,7 +381,8 @@ def render_professional_summary(result: dict[str, Any]) -> str:
                 "Estado" 
             )
             lines.append(f"DHSS: {score_i}/100 — {label}")
-            lines.append("DHSS = qué tan listo estás hoy para exigir tu cuerpo sin quemarte.")
+            lines.append("DHSS = Daily Human System Score (Puntaje Diario de tu Sistema).")
+            lines.append("Sirve para decidir intensidad: entre más alto, más margen tienes para exigir sin quemarte.")
 
     # Confianza
     if conf.get('score') is not None:
@@ -412,13 +413,26 @@ def render_professional_summary(result: dict[str, Any]) -> str:
 
     quick: list[str] = []
     try:
-        if sleep_min is not None:
-            quick.append(f"Sueño: {int(round(float(sleep_min) / 60.0))}h")
+        if sleep_min is None:
+            quick.append("Sueño: sin dato")
+        else:
+            # Si es muy bajo, suele ser 'no registrado' o incompleto.
+            sm = float(sleep_min)
+            if sm < 30:
+                quick.append("Sueño: sin dato")
+            else:
+                quick.append(f"Sueño: {int(round(sm / 60.0))}h")
     except Exception:
         pass
     try:
-        if steps is not None:
-            quick.append(f"Pasos: {int(round(float(steps)))}")
+        if steps is None:
+            quick.append("Pasos: sin dato")
+        else:
+            st = float(steps)
+            if st < 50:
+                quick.append("Pasos: sin dato")
+            else:
+                quick.append(f"Pasos: {int(round(st))}")
     except Exception:
         pass
     try:
@@ -466,6 +480,14 @@ def render_professional_summary(result: dict[str, Any]) -> str:
             lines.append("\n✅ Micro-hábitos (1–3 hoy, sin excusas)")
             for n in names[:3]:
                 lines.append(f"• {n}")
+
+    # Si la precisión salió baja, dar una forma rápida de mejorar sin fricción.
+    try:
+        if conf.get('score') is not None and float(conf.get('score') or 0.0) < 0.45:
+            lines.append("\nPara afinar esto en 10 segundos, respóndeme así:")
+            lines.append("• Sueño 1/5\n• Movimiento 1/5\n• Estrés 1/5")
+    except Exception:
+        pass
 
     lines.append("\nResponde con una opción y te lo dejo listo:\nA) caminata\nB) movilidad\nC) fuerza moderada\nD) cardio zona 2")
     return "\n".join(lines).strip()
