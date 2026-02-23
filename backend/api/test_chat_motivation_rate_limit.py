@@ -128,3 +128,20 @@ class ChatMotivationRateLimitTests(TestCase):
             out3 = (r3.json() or {}).get("output") or ""
             self.assertIn("Hoy estoy leyendo", out3)
             self.assertNotIn("RESPUESTA_N8N", out3)
+
+    @patch("api.views.requests.post", return_value=_DummyN8nResp())
+    @override_settings(SECURE_SSL_REDIRECT=False)
+    def test_motivation_activates_on_procrastination_language(self, _mock_post):
+        msg = "No tengo ganas de entrenar y estoy procrastinando. Dame un plan de 10 minutos para volver a la constancia hoy."
+
+        r = self.client.post(
+            "/api/chat/",
+            {"message": msg, "sessionId": "", "attachment": "", "attachment_text": "", "username": "juan"},
+            format="json",
+        )
+
+        self.assertEqual(r.status_code, 200)
+        out = (r.json() or {}).get("output") or ""
+        self.assertIn("Hola", out)
+        self.assertIn("Hoy estoy leyendo", out)
+        self.assertNotIn("RESPUESTA_N8N", out)

@@ -5204,7 +5204,23 @@ def chat_n8n(request):
                     want_motivation = True
                 else:
                     msg_low = str(message or '').lower()
-                    if re.search(r"\b(motivaci[oó]n|me\s+cuesta|no\s+quiero|no\s+pude|me\s+dio\s+pereza|estoy\s+agotad|estoy\s+cansad)\b", msg_low):
+                    if re.search(
+                        r"\b("
+                        r"motivaci[oó]n|"
+                        r"necesito\s+motivaci[oó]n|"
+                        r"me\s+cuesta|"
+                        r"no\s+quiero|"
+                        r"no\s+pude|"
+                        r"no\s+tengo\s+ganas|"
+                        r"sin\s+ganas|"
+                        r"me\s+dio\s+pereza|"
+                        r"procrastin\w*|"
+                        r"posterg\w*|pospon\w*|"
+                        r"estoy\s+agotad\w*|"
+                        r"estoy\s+cansad\w*"
+                        r")\b",
+                        msg_low,
+                    ):
                         want_motivation = True
 
                 # Rate limit (heurístico): máximo 1 activación por ventana de 8 horas (3/día).
@@ -5213,7 +5229,12 @@ def chat_n8n(request):
                 try:
                     implicit = not (isinstance(mr, dict) or isinstance(ma, dict))
                     msg_low = str(message or '').lower()
-                    explicit_text_intent = bool(re.search(r"\b(necesito\s+motivaci[oó]n|quiero\s+motivaci[oó]n|activa\s+motivaci[oó]n)\b", msg_low))
+                    explicit_text_intent = bool(
+                        re.search(
+                            r"\b(necesito\s+motivaci[oó]n|quiero\s+motivaci[oó]n|activa\s+motivaci[oó]n|dame\s+motivaci[oó]n|ay[uú]dame\s+a\s+motivarme)\b",
+                            msg_low,
+                        )
+                    )
                     if want_motivation and implicit and not explicit_text_intent and user:
                         cs0 = getattr(user, 'coach_state', {}) or {}
                         rl = cs0.get('motivation_heuristic_rate_limit') if isinstance(cs0.get('motivation_heuristic_rate_limit'), dict) else {}
