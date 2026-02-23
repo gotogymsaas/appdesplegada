@@ -4792,7 +4792,7 @@ def chat_n8n(request):
         except Exception as ex:
             print(f"QAF posture proportion warning: {ex}")
 
-        # 0.2.c) Exp-012: Shape & Presence Intelligence (1–2 fotos; keypoints 2D)
+        # 0.2.c) Exp-012: Alta Costura Inteligente (antes Shape & Presence) (1–2 fotos; keypoints 2D)
         try:
             if user and isinstance(request.data, dict):
                 sp_req = request.data.get('shape_presence_request')
@@ -4801,16 +4801,16 @@ def chat_n8n(request):
                 msg_low = str(message or '').strip().lower()
                 want_sp = bool(
                     re.fullmatch(
-                        r"shape\s*&\s*presence|shape\s+presence|shape\s+and\s+presence|forma\s*&\s*presencia|forma\s+y\s+presencia|presencia\s+\&\s+forma",
+                        r"shape\s*&\s*presence|shape\s+presence|shape\s+and\s+presence|forma\s*&\s*presencia|forma\s+y\s+presencia|presencia\s+\&\s+forma|alta\s*costura\s*inteligente|alta\s*costura|alta\s+costura\s+inteligente",
                         msg_low or "",
                     )
                 )
                 if (not isinstance(sp_req, dict)) and want_sp:
                     out = (
-                        "[SHAPE & PRESENCE]\n"
-                        "Podemos analizar tu **presencia** y **proporción** con fotos (proxy por keypoints, sin prometer cm reales).\n\n"
+                        "**Alta Costura Inteligente**\n"
+                        "Asesoría visual tipo diseñador: arquitectura de silueta + verticalidad + presencia (ratios *ópticos*, sin cm reales).\n\n"
                         "- Mínimo: 1 foto (frente relajado)\n"
-                        "- Mejor: agrega 1 foto de perfil derecho\n\n"
+                        "- Mejor: agrega 1 foto (perfil derecho)\n\n"
                         "Empecemos con **frente relajado** (cuerpo completo, buena luz, cámara a 2–3m)."
                     )
                     return Response(
@@ -4872,7 +4872,7 @@ def chat_n8n(request):
 
                     return Response(
                         {
-                            'output': text or 'Shape & Presence listo.',
+                            'output': text or 'Alta Costura Inteligente listo.',
                             'qaf_shape_presence': res,
                             'quick_actions': qas,
                         }
@@ -6915,7 +6915,7 @@ def chat_n8n(request):
                     qa.extend([
                         {'label': 'Postura', 'type': 'posture_start'},
                         {'label': 'Postura & Proporción', 'type': 'pp_start'},
-                        {'label': 'Shape & Presence', 'type': 'shape_start'},
+                        {'label': 'Alta Costura Inteligente', 'type': 'shape_start'},
                         {'label': 'Medición del progreso muscular', 'type': 'message', 'text': 'Medición del progreso muscular'},
                         {'label': 'Tomar foto', 'type': 'open_camera'},
                         {'label': 'Adjuntar foto', 'type': 'open_attach'},

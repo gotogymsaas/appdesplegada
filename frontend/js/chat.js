@@ -206,7 +206,7 @@ function loadSkinState() {
 
 loadSkinState();
 
-// --- Exp-012 Shape & Presence (pose-estimation en cliente; 1..2 vistas) ---
+// --- Exp-012 Alta Costura Inteligente (pose-estimation en cliente; 1..2 vistas) ---
 let shapeFlow = {
   active: false,
   step: 'idle',
@@ -368,9 +368,9 @@ function startShapeFlow() {
   saveShapeState();
 
   appendMessage(
-    'Vamos a hacer **Shape & Presence** (proporción + presencia postural) con fotos (proxy por keypoints, sin prometer cm reales).\n\n' +
+    'Vamos a hacer **Alta Costura Inteligente** (arquitectura visual + verticalidad + presencia) con fotos (ratios ópticos, sin prometer cm reales).\n\n' +
       '- Mínimo: **1** foto (frente relajado)\n' +
-      '- Mejor: agrega **1** foto de perfil derecho\n\n' +
+      '- Mejor: agrega **1** foto (perfil derecho)\n\n' +
       'Empecemos con **frente relajado** (cuerpo completo, buena luz, cámara a 2–3m).',
     'bot'
   );
@@ -450,7 +450,7 @@ function cancelShapeFlow(opts = {}) {
     // ignore
   }
   if (!opts.silent && wasActive) {
-    appendMessage('Listo. Si quieres retomarlo, escribe: "Shape & Presence".', 'bot');
+    appendMessage('Listo. Si quieres retomarlo, escribe: "Alta Costura Inteligente".', 'bot');
   }
 }
 
@@ -718,7 +718,7 @@ async function handleMuscleCapture(file, view) {
 
 async function handleShapeCapture(file, view) {
   if (!_isImageFile(file)) {
-    appendMessage('Para Shape & Presence necesito una imagen.', 'bot');
+    appendMessage('Para Alta Costura Inteligente necesito una imagen.', 'bot');
     return;
   }
 
@@ -844,7 +844,7 @@ function sendShapeAnalyze() {
     appendMessage('Primero necesito al menos 1 foto (frente relajado).', 'bot');
     return;
   }
-  sendQuickMessage('Shape & Presence', {
+  sendQuickMessage('Alta Costura Inteligente', {
     shape_presence_request: {
       poses: poses,
       locale: 'es-CO',
