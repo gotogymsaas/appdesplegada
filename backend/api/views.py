@@ -7707,6 +7707,8 @@ def chat_n8n(request):
         # No cambia UX: solo enriquece payload y, en modo quantum o baja claridad, añade un resumen corto.
         qaf_cognition = None
         qaf_cognition_summary = ""
+        protocol_cognitive_body = None
+        protocol_cognitive_body_summary = ""
         try:
             if user is not None:
                 from .qaf_cognition.engine import evaluate_cognition
@@ -7761,15 +7763,80 @@ def chat_n8n(request):
                             attachment_text = ((attachment_text or '').strip() + "\n\n" if (attachment_text or '').strip() else "") + (
                                 "[QAF / COGNICIÓN]\n" + qaf_cognition_summary
                             )
+
+                # Protocolo Cognitivo Corporal (determinista): consolida experiencias en estado evolutivo.
+                try:
+                    from .protocol_cognitive_body.engine import evaluate_protocol
+
+                    proto = evaluate_protocol(
+                        user_profile=user_profile,
+                        coach_state=getattr(user, 'coach_state', {}) or {},
+                        coach_weekly_state=getattr(user, 'coach_weekly_state', {}) or {},
+                        qaf_cognition=qaf_cognition if isinstance(qaf_cognition, dict) else None,
+                        observations=observations,
+                        week_id=week_id_now,
+                        locale='es-CO',
+                    ).payload
+                    protocol_cognitive_body = proto if isinstance(proto, dict) else None
+
+                    # Persistir (coach_state + weekly)
+                    if isinstance(protocol_cognitive_body, dict):
+                        try:
+                            cs2 = dict(getattr(user, 'coach_state', {}) or {})
+                            cs2['protocol_cognitive_body'] = protocol_cognitive_body
+                            user.coach_state = cs2
+                            user.coach_state_updated_at = timezone.now()
+                            user.save(update_fields=['coach_state', 'coach_state_updated_at'])
+                        except Exception:
+                            pass
+
+                        try:
+                            ws2 = dict(getattr(user, 'coach_weekly_state', {}) or {})
+                            pw = ws2.get('protocol_cognitive_body') if isinstance(ws2.get('protocol_cognitive_body'), dict) else {}
+                            pw2 = dict(pw)
+                            pw2[week_id_now] = {'result': protocol_cognitive_body, 'updated_at': timezone.now().isoformat(), 'week_id': week_id_now}
+                            ws2['protocol_cognitive_body'] = pw2
+                            user.coach_weekly_state = ws2
+                            user.coach_weekly_updated_at = timezone.now()
+                            user.save(update_fields=['coach_weekly_state', 'coach_weekly_updated_at'])
+                        except Exception:
+                            pass
+
+                        # Resumen corto para n8n
+                        try:
+                            summ = protocol_cognitive_body.get('summary') if isinstance(protocol_cognitive_body.get('summary'), dict) else {}
+                            ev = str(summ.get('evolution_state') or '').strip()
+                            foc = str(summ.get('primary_focus') or '').strip()
+                            goal = str(summ.get('week_goal') or '').strip()
+                            restr = summ.get('restrictions') if isinstance(summ.get('restrictions'), list) else []
+                            restr = [str(x).strip() for x in restr if str(x).strip()][:2]
+                            lines = []
+                            if ev:
+                                lines.append(f"estado: {ev}")
+                            if foc:
+                                lines.append(f"foco: {foc}")
+                            if goal:
+                                lines.append(f"meta_semana: {goal}")
+                            if restr:
+                                lines.append("restricciones: " + " | ".join(restr))
+                            protocol_cognitive_body_summary = "\n".join(lines).strip()
+                        except Exception:
+                            protocol_cognitive_body_summary = ""
+                except Exception:
+                    protocol_cognitive_body = None
+                    protocol_cognitive_body_summary = ""
         except Exception:
             qaf_cognition = None
             qaf_cognition_summary = ""
+            protocol_cognitive_body = None
+            protocol_cognitive_body_summary = ""
 
         payload = {
             "chatInput": final_input,
             "system_rules": {
                 "professional_focus": professional_rule,
                 "qaf_cognition_summary": qaf_cognition_summary,
+                "protocol_cognitive_body_summary": protocol_cognitive_body_summary,
             },
             "message": message,
             "sessionId": session_id,
@@ -7780,6 +7847,7 @@ def chat_n8n(request):
             "attachment_text_diagnostic": attachment_text_diagnostic,
             "qaf": qaf_result,
             "qaf_cognition": qaf_cognition,
+            "protocol_cognitive_body": protocol_cognitive_body,
             "qaf_context": {"vision": vision_parsed} if isinstance(vision_parsed, dict) else None,
             "qaf_metabolic": metabolic_result,
             "qaf_meal_plan": meal_plan_result,
