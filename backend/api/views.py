@@ -4402,7 +4402,18 @@ def chat_n8n(request):
         try:
             if user and isinstance(request.data, dict):
                 msg_low = str(message or '').strip().lower()
-                want_skin = bool(re.fullmatch(r"belleza\s*/\s*piel|belleza\s+p\s*iel|piel|skin\s*health", msg_low or ""))
+                want_skin = False
+                try:
+                    # Activación intuitiva (sin ser demasiado amplia)
+                    if re.search(r"\b(vitalidad\s+de\s+la\s+piel|vitalidad\s+piel|piel|skin\s*health|skincare|rutina\s+de\s+piel|cara|rostro|ojeras|manchas)\b", msg_low):
+                        want_skin = True
+                    # Casos comunes (tildes/variantes)
+                    if any(k in msg_low for k in ("acne", "acné", "irritación", "irritacion", "reseca", "resequedad", "grasa", "brillo")):
+                        want_skin = True
+                    if re.fullmatch(r"belleza\s*/\s*piel|belleza\s+piel|piel|skin\s*health", msg_low or ""):
+                        want_skin = True
+                except Exception:
+                    want_skin = bool(re.fullmatch(r"belleza\s*/\s*piel|belleza\s+p\s*iel|piel|skin\s*health", msg_low or ""))
 
                 cs = getattr(user, 'coach_state', {}) or {}
                 health_mode = str(cs.get('health_mode') or '').strip().lower()
@@ -4418,14 +4429,22 @@ def chat_n8n(request):
                     user.save(update_fields=['coach_state', 'coach_state_updated_at'])
 
                     out = (
-                        "[SKIN HEALTH]\n"
-                        "Vamos a medir la energía visible de tu piel (no es diagnóstico médico).\n\n"
-                        "Toma una foto con **luz natural**, sin filtros, sin contraluz y con la cara centrada."
+                        "[VITALIDAD DE LA PIEL]\n"
+                        "**✅ Empecemos** (sin diagnósticos médicos).\n\n"
+                        "Para que el análisis sea confiable:\n"
+                        "- Luz natural, sin contraluz\n"
+                        "- Sin filtros\n"
+                        "- Rostro centrado\n\n"
+                        "Cuando estés listo, envía **1 foto**."
                     )
                     return Response(
                         {
                             'output': out,
                             'quick_actions': [
+                                {'label': 'Añadir agua', 'type': 'message', 'text': 'Añadir agua', 'payload': {'skin_context_prompt': 'water'}},
+                                {'label': 'Añadir estrés', 'type': 'message', 'text': 'Añadir estrés', 'payload': {'skin_context_prompt': 'stress'}},
+                                {'label': 'Añadir sol', 'type': 'message', 'text': 'Añadir sol', 'payload': {'skin_context_prompt': 'sun'}},
+                                {'label': 'Añadir movimiento', 'type': 'message', 'text': 'Añadir movimiento', 'payload': {'skin_context_prompt': 'movement'}},
                                 {'label': 'Tomar foto', 'type': 'open_camera'},
                                 {'label': 'Adjuntar foto', 'type': 'open_attach'},
                             ],
@@ -4442,6 +4461,131 @@ def chat_n8n(request):
                         mode_active = timezone.now() <= until_dt
                 except Exception:
                     mode_active = (health_mode == 'skin')
+
+                # 2.a) Si el modo está activo, permitir registrar contexto auto-reportado (sin foto todavía).
+                if mode_active and isinstance(request.data, dict):
+                    prompt = str(request.data.get('skin_context_prompt') or '').strip().lower()
+                    if prompt in ('water', 'stress', 'sun', 'movement'):
+                        if prompt == 'water':
+                            out = (
+                                "[VITALIDAD DE LA PIEL]\n"
+                                "**💧 Agua (auto‑reporte)**\n"
+                                "Elige lo que aplique hoy (esto mejora la lectura contextual)."
+                            )
+                            return Response(
+                                {
+                                    'output': out,
+                                    'quick_actions': [
+                                        {'label': '+250ml', 'type': 'message', 'text': '+250ml', 'payload': {'skin_context_update': {'water_delta_liters': 0.25}}},
+                                        {'label': '+500ml', 'type': 'message', 'text': '+500ml', 'payload': {'skin_context_update': {'water_delta_liters': 0.5}}},
+                                        {'label': '+750ml', 'type': 'message', 'text': '+750ml', 'payload': {'skin_context_update': {'water_delta_liters': 0.75}}},
+                                        {'label': 'Listo (enviar foto)', 'type': 'message', 'text': 'Listo (enviar foto)', 'payload': {'skin_context_prompt': 'photo'}},
+                                    ],
+                                }
+                            )
+
+                        if prompt == 'stress':
+                            out = (
+                                "[VITALIDAD DE LA PIEL]\n"
+                                "**🧠 Estrés (1–5)**\n"
+                                "1 = bajo · 5 = alto"
+                            )
+                            qas = []
+                            for i in (1, 2, 3, 4, 5):
+                                qas.append({'label': str(i), 'type': 'message', 'text': str(i), 'payload': {'skin_context_update': {'stress_1_5': i}}})
+                            qas.append({'label': 'Listo (enviar foto)', 'type': 'message', 'text': 'Listo (enviar foto)', 'payload': {'skin_context_prompt': 'photo'}})
+                            return Response({'output': out, 'quick_actions': qas})
+
+                        if prompt == 'movement':
+                            out = (
+                                "[VITALIDAD DE LA PIEL]\n"
+                                "**🚶 Movimiento (1–5)**\n"
+                                "1 = muy bajo · 5 = excelente"
+                            )
+                            qas = []
+                            for i in (1, 2, 3, 4, 5):
+                                qas.append({'label': str(i), 'type': 'message', 'text': str(i), 'payload': {'skin_context_update': {'movement_1_5': i}}})
+                            qas.append({'label': 'Listo (enviar foto)', 'type': 'message', 'text': 'Listo (enviar foto)', 'payload': {'skin_context_prompt': 'photo'}})
+                            return Response({'output': out, 'quick_actions': qas})
+
+                        if prompt == 'sun':
+                            out = (
+                                "[VITALIDAD DE LA PIEL]\n"
+                                "**☀️ Exposición al sol (minutos)**\n"
+                                "Estimado hoy (solo para contexto)."
+                            )
+                            return Response(
+                                {
+                                    'output': out,
+                                    'quick_actions': [
+                                        {'label': '0', 'type': 'message', 'text': '0', 'payload': {'skin_context_update': {'sun_minutes': 0}}},
+                                        {'label': '10', 'type': 'message', 'text': '10', 'payload': {'skin_context_update': {'sun_minutes': 10}}},
+                                        {'label': '20', 'type': 'message', 'text': '20', 'payload': {'skin_context_update': {'sun_minutes': 20}}},
+                                        {'label': '40+', 'type': 'message', 'text': '40+', 'payload': {'skin_context_update': {'sun_minutes': 40}}},
+                                        {'label': 'Listo (enviar foto)', 'type': 'message', 'text': 'Listo (enviar foto)', 'payload': {'skin_context_prompt': 'photo'}},
+                                    ],
+                                }
+                            )
+
+                    # Conveniencia: volver a CTA de foto
+                    if prompt == 'photo':
+                        return Response(
+                            {
+                                'output': "[VITALIDAD DE LA PIEL]\nPerfecto. Ahora envía **1 foto** (luz natural, sin filtros, rostro centrado).",
+                                'quick_actions': [
+                                    {'label': 'Tomar foto', 'type': 'open_camera'},
+                                    {'label': 'Adjuntar foto', 'type': 'open_attach'},
+                                ],
+                            }
+                        )
+
+                    upd = request.data.get('skin_context_update')
+                    if isinstance(upd, dict) and upd:
+                        try:
+                            cs2 = dict(cs)
+                            sc = cs2.get('skin_context') if isinstance(cs2.get('skin_context'), dict) else {}
+                            sc2 = dict(sc)
+
+                            # Agua puede venir como delta o valor absoluto
+                            if upd.get('water_delta_liters') is not None:
+                                try:
+                                    d = float(upd.get('water_delta_liters') or 0.0)
+                                    cur = float(sc2.get('water_liters') or 0.0)
+                                    sc2['water_liters'] = round(max(0.0, cur + d), 2)
+                                except Exception:
+                                    pass
+                            if upd.get('water_liters') is not None:
+                                try:
+                                    sc2['water_liters'] = round(max(0.0, float(upd.get('water_liters'))), 2)
+                                except Exception:
+                                    pass
+
+                            for k in ('stress_1_5', 'movement_1_5', 'sun_minutes', 'steps'):
+                                if upd.get(k) is None:
+                                    continue
+                                try:
+                                    sc2[k] = float(upd.get(k))
+                                except Exception:
+                                    sc2[k] = upd.get(k)
+
+                            cs2['skin_context'] = sc2
+                            cs2['skin_context_updated_at'] = timezone.now().isoformat()
+                            user.coach_state = cs2
+                            user.coach_state_updated_at = timezone.now()
+                            user.save(update_fields=['coach_state', 'coach_state_updated_at'])
+
+                            return Response(
+                                {
+                                    'output': "[VITALIDAD DE LA PIEL]\nListo. Ya lo integro a tu lectura de hoy. Ahora envía **1 foto**.",
+                                    'quick_actions': [
+                                        {'label': 'Añadir más contexto', 'type': 'message', 'text': 'Añadir más contexto', 'payload': {'skin_context_prompt': 'water'}},
+                                        {'label': 'Tomar foto', 'type': 'open_camera'},
+                                        {'label': 'Adjuntar foto', 'type': 'open_attach'},
+                                    ],
+                                }
+                            )
+                        except Exception:
+                            pass
 
                 if mode_active and attachment_url:
                     # Descargar bytes solo si es attachment del usuario.
@@ -4470,8 +4614,32 @@ def chat_n8n(request):
                         if isinstance(lifestyle_last, dict):
                             sig = lifestyle_last.get('signals') if isinstance(lifestyle_last.get('signals'), dict) else {}
                             ctx['sleep_minutes'] = (sig.get('sleep') or {}).get('value')
+                            # Movimiento: pasos si existen
+                            ctx['steps'] = (sig.get('steps') or {}).get('value')
+                            # Estrés: aproximación 1–5 basada en stress_inv.score01 (más alto = mejor)
+                            try:
+                                stress_score01 = (sig.get('stress_inv') or {}).get('score01')
+                                if stress_score01 is not None:
+                                    s = float(stress_score01)
+                                    s = max(0.0, min(1.0, s))
+                                    # 1 (bajo estrés) .. 5 (alto estrés)
+                                    ctx['stress_1_5'] = round((1.0 - s) * 4.0 + 1.0, 1)
+                            except Exception:
+                                pass
                     except Exception:
                         ctx = {}
+
+                    # Contexto auto-reportado específico para Skin (si existe)
+                    try:
+                        sc = cs.get('skin_context') if isinstance(cs.get('skin_context'), dict) else {}
+                        if isinstance(sc, dict):
+                            # Preferir auto-reporte explícito sobre inferencias
+                            for k in ('water_liters', 'stress_1_5', 'movement_1_5', 'sun_minutes', 'steps'):
+                                if sc.get(k) is None:
+                                    continue
+                                ctx[k] = sc.get(k)
+                    except Exception:
+                        pass
 
                     week_id_now = _week_id()
                     weekly_state = getattr(user, 'coach_weekly_state', {}) or {}
@@ -4489,6 +4657,15 @@ def chat_n8n(request):
 
                     from .qaf_skin_health.engine import evaluate_skin_health, render_professional_summary
                     res = evaluate_skin_health(image_bytes=image_bytes, content_type=image_content_type, context=ctx, baseline=baseline).payload
+
+                    # Enriquecer para renderer
+                    try:
+                        if isinstance(res, dict):
+                            res = dict(res)
+                            res['user_display_name'] = (getattr(user, 'full_name', None) or getattr(user, 'username', '') or '').strip()
+                    except Exception:
+                        pass
+
                     text = render_professional_summary(res)
 
                     # Persistir
@@ -4515,7 +4692,17 @@ def chat_n8n(request):
                     except Exception:
                         pass
 
-                    return Response({'output': text or 'Skin Health listo.', 'qaf_skin_health': res})
+                    qas = []
+                    try:
+                        if isinstance(res, dict) and str(res.get('decision') or '').strip().lower() != 'accepted':
+                            qas = [
+                                {'label': 'Tomar foto', 'type': 'open_camera'},
+                                {'label': 'Adjuntar foto', 'type': 'open_attach'},
+                            ]
+                    except Exception:
+                        qas = []
+
+                    return Response({'output': text or 'Skin Health listo.', 'qaf_skin_health': res, 'quick_actions': qas})
         except Exception as ex:
             print(f"QAF skin health warning: {ex}")
 
@@ -7988,7 +8175,7 @@ def qaf_posture_proportion(request):
 @authentication_classes([JWTAuthentication])
 @permission_classes([IsAuthenticatedOrOptions])
 def qaf_skin_health(request):
-    """Exp-011: Skin Health Intelligence (energía visible + salud de piel).
+    """Exp-011: Vitalidad de la Piel (energía visible + salud de piel).
 
     Importante:
     - No es diagnóstico médico.
@@ -8037,13 +8224,33 @@ def qaf_skin_health(request):
     ctx = payload.get('context') if isinstance(payload.get('context'), dict) else {}
     try:
         cs = getattr(user, 'coach_state', {}) or {}
+
+        # Auto-reporte específico de Skin (si existe): prioriza sobre inferencias.
+        try:
+            sc = cs.get('skin_context') if isinstance(cs.get('skin_context'), dict) else {}
+            if isinstance(sc, dict):
+                for k in ('water_liters', 'stress_1_5', 'movement_1_5', 'sun_minutes', 'steps', 'sleep_minutes'):
+                    if ctx.get(k) is None and sc.get(k) is not None:
+                        ctx[k] = sc.get(k)
+        except Exception:
+            pass
+
         lifestyle_last = (cs.get('lifestyle_last') or {}).get('result') if isinstance(cs.get('lifestyle_last'), dict) else None
         if isinstance(lifestyle_last, dict):
             sig = lifestyle_last.get('signals') if isinstance(lifestyle_last.get('signals'), dict) else {}
             if ctx.get('sleep_minutes') is None:
                 ctx['sleep_minutes'] = (sig.get('sleep') or {}).get('value')
+            if ctx.get('steps') is None:
+                ctx['steps'] = (sig.get('steps') or {}).get('value')
             if ctx.get('stress_1_5') is None:
-                ctx['stress_1_5'] = None
+                try:
+                    stress_score01 = (sig.get('stress_inv') or {}).get('score01')
+                    if stress_score01 is not None:
+                        s = float(stress_score01)
+                        s = max(0.0, min(1.0, s))
+                        ctx['stress_1_5'] = round((1.0 - s) * 4.0 + 1.0, 1)
+                except Exception:
+                    pass
     except Exception:
         pass
 
@@ -8070,6 +8277,13 @@ def qaf_skin_health(request):
         context=ctx,
         baseline=baseline if isinstance(baseline, dict) else None,
     ).payload
+
+    try:
+        if isinstance(res, dict):
+            res = dict(res)
+            res['user_display_name'] = (getattr(user, 'full_name', None) or getattr(user, 'username', '') or '').strip()
+    except Exception:
+        pass
     text = render_professional_summary(res)
 
     if persist:
@@ -8089,6 +8303,16 @@ def qaf_skin_health(request):
         except Exception:
             pass
 
-    return Response({'success': True, 'result': res, 'text': text})
+    qas = []
+    try:
+        if isinstance(res, dict) and str(res.get('decision') or '').strip().lower() != 'accepted':
+            qas = [
+                {'label': 'Tomar foto', 'type': 'open_camera'},
+                {'label': 'Adjuntar foto', 'type': 'open_attach'},
+            ]
+    except Exception:
+        qas = []
+
+    return Response({'success': True, 'result': res, 'text': text, 'quick_actions': qas})
 
 

@@ -170,6 +170,42 @@ function loadMuscleState() {
 
 loadMuscleState();
 
+// --- Exp-011 Vitalidad de la Piel (1 foto; análisis en backend) ---
+let skinFlow = {
+  active: false,
+  step: 'idle',
+};
+
+const SKIN_STATE_KEY = 'gtg_skin_flow_state_v0';
+
+function saveSkinState() {
+  try {
+    localStorage.setItem(SKIN_STATE_KEY, JSON.stringify(skinFlow));
+  } catch (e) {
+    // ignore
+  }
+}
+
+function loadSkinState() {
+  try {
+    const raw = localStorage.getItem(SKIN_STATE_KEY);
+    if (!raw) return;
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== 'object') return;
+    if (!parsed.active) return;
+    skinFlow = {
+      ...skinFlow,
+      ...parsed,
+      active: !!parsed.active,
+      step: String(parsed.step || skinFlow.step),
+    };
+  } catch (e) {
+    // ignore
+  }
+}
+
+loadSkinState();
+
 // --- Exp-012 Shape & Presence (pose-estimation en cliente; 1..2 vistas) ---
 let shapeFlow = {
   active: false,
@@ -264,6 +300,7 @@ function startMuscleFlow() {
   try { cancelPostureFlow({ silent: true }); } catch (e) { /* ignore */ }
   try { cancelShapeFlow({ silent: true }); } catch (e) { /* ignore */ }
   try { cancelPpFlow({ silent: true }); } catch (e) { /* ignore */ }
+  try { cancelSkinFlow({ silent: true }); } catch (e) { /* ignore */ }
 
   muscleFlow = {
     active: true,
@@ -297,6 +334,20 @@ function startMuscleFlow() {
     { label: 'Adjuntar foto frente', type: 'muscle_capture', view: 'front_relaxed', source: 'attach' },
     { label: 'Cancelar', type: 'muscle_cancel' },
   ]);
+}
+
+function startSkinFlow() {
+  // Un solo flujo activo a la vez
+  try { cancelPostureFlow({ silent: true }); } catch (e) { /* ignore */ }
+  try { cancelShapeFlow({ silent: true }); } catch (e) { /* ignore */ }
+  try { cancelPpFlow({ silent: true }); } catch (e) { /* ignore */ }
+  try { cancelMuscleFlow({ silent: true }); } catch (e) { /* ignore */ }
+
+  skinFlow = { active: true, step: 'active' };
+  saveSkinState();
+
+  // Activa el modo en backend (y devuelve los CTAs de contexto/foto).
+  sendQuickMessage('Vitalidad de la Piel', null);
 }
 
 function startShapeFlow() {
@@ -424,6 +475,19 @@ function cancelMuscleFlow(opts = {}) {
   }
   if (!opts.silent && wasActive) {
     appendMessage('Listo. Si quieres retomarlo, escribe: "Medición del progreso muscular".', 'bot');
+  }
+}
+
+function cancelSkinFlow(opts = {}) {
+  const wasActive = !!skinFlow.active;
+  skinFlow = { ...skinFlow, active: false, step: 'idle' };
+  try {
+    localStorage.removeItem(SKIN_STATE_KEY);
+  } catch (e) {
+    // ignore
+  }
+  if (!opts.silent && wasActive) {
+    appendMessage('Listo. Si quieres retomarlo, escribe: "Vitalidad de la Piel".', 'bot');
   }
 }
 
@@ -1756,6 +1820,15 @@ function getContextualPrompt(context) {
 }
 
 function buildQuickActions(context) {
+  // Guardrail UX: si un flujo está activo, no mostrar el menú base.
+  try {
+    if ((postureFlow && postureFlow.active) || (muscleFlow && muscleFlow.active) || (shapeFlow && shapeFlow.active) || (ppFlow && ppFlow.active) || (skinFlow && skinFlow.active)) {
+      return [];
+    }
+  } catch (e) {
+    // ignore
+  }
+
   const actions = [];
   const hasPlan = Array.isArray(context?.documents?.types) && context.documents.types.length > 0;
   const hasDevice = (context?.devices?.connected_providers || []).length > 0;
@@ -1778,13 +1851,8 @@ function buildQuickActions(context) {
     });
   }
 
-  // 2) Evolución de Entrenamiento (Exp-009)
-  actions.push({
-    label: 'Evolución de Entrenamiento',
-    type: 'message',
-    text: 'Evolución de Entrenamiento',
-    payload: { progression_request: {} },
-  });
+  // 2) Vitalidad de la Piel (Exp-011)
+  actions.push({ label: 'Vitalidad de la Piel', type: 'skin_start' });
 
   // 3) Postura (Exp-006)
   actions.push({ label: 'Corrección de postura', type: 'posture_start' });
@@ -2533,6 +2601,22 @@ async function processMessage(text, file, pendingId, extraPayload = null) {
             return;
           }
 
+          if (skinFlow && skinFlow.active) {
+            const filtered = actionsIn.filter((a) => {
+              if (!a || typeof a !== 'object') return false;
+              const t = String(a.type || '').trim();
+              if (t === 'open_camera' || t === 'open_attach') return true;
+              if (t === 'skin_cancel') return true;
+              if (t === 'message' && a.payload && typeof a.payload === 'object') {
+                if (a.payload.skin_context_prompt) return true;
+                if (a.payload.skin_context_update) return true;
+              }
+              return false;
+            });
+            if (filtered.length) appendQuickActions(filtered);
+            return;
+          }
+
           appendQuickActions(actionsIn);
         } catch (e) {
           appendQuickActions(data.quick_actions);
@@ -2546,7 +2630,21 @@ async function processMessage(text, file, pendingId, extraPayload = null) {
     try {
       if (data && typeof data === 'object') {
         if (data.qaf_context) lastQafContext = data.qaf_context;
-        appendQafFollowUps(data.follow_up_questions, lastQafContext);
+        if (!(skinFlow && skinFlow.active)) {
+          appendQafFollowUps(data.follow_up_questions, lastQafContext);
+        }
+      }
+    } catch (e) {
+      // ignore
+    }
+
+    // Cierre limpio: si llegó resultado de Vitalidad de la Piel, finalizar flujo y remover botones.
+    try {
+      if (skinFlow && skinFlow.active && data && typeof data === 'object' && data.qaf_skin_health) {
+        skinFlow.active = false;
+        skinFlow.step = 'idle';
+        try { localStorage.removeItem(SKIN_STATE_KEY); } catch (e) { /* ignore */ }
+        clearQuickActions();
       }
     } catch (e) {
       // ignore
@@ -2902,6 +3000,16 @@ function scheduleEditButtonUpdate() {
   }, 0);
 }
 
+function clearQuickActions() {
+  try {
+    document.querySelectorAll('.quick-actions').forEach((el) => {
+      try { el.remove(); } catch (e) { /* ignore */ }
+    });
+  } catch (e) {
+    // ignore
+  }
+}
+
 function appendQuickActions(actions) {
   if (!Array.isArray(actions) || !actions.length) return;
 
@@ -2974,6 +3082,10 @@ function appendQuickActions(actions) {
         startPostureFlow();
         return;
       }
+      if (action.type === 'skin_start') {
+        startSkinFlow();
+        return;
+      }
       if (action.type === 'muscle_start') {
         startMuscleFlow();
         return;
@@ -2988,6 +3100,11 @@ function appendQuickActions(actions) {
       }
       if (action.type === 'posture_cancel') {
         cancelPostureFlow();
+        return;
+      }
+      if (action.type === 'skin_cancel') {
+        cancelSkinFlow();
+        clearQuickActions();
         return;
       }
       if (action.type === 'muscle_cancel') {
@@ -3144,6 +3261,11 @@ function appendQuickActions(actions) {
 let lastQafContext = null;
 
 function appendQafFollowUps(followUps, qafContext) {
+  try {
+    if (skinFlow && skinFlow.active) return;
+  } catch (e) {
+    // ignore
+  }
   if (!Array.isArray(followUps) || !followUps.length) return;
   const q = followUps[0];
   if (!q || q.type !== 'confirm_portion') return;

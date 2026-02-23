@@ -384,6 +384,9 @@ def evaluate_skin_health(
             "facial_energy": int(s_energy),
             "texture_quality": int(s_texture),
         },
+        "progress": None,
+        "context_signals": {},
+        "recommendation_plan": None,
         "observations": observations,
         "extra_observations": {
             "redness_balance": int(s_redness),
@@ -395,6 +398,184 @@ def evaluate_skin_health(
         "meta": {"algorithm": "exp-011_skin_health_v0", "as_of": str(date.today())},
     }
 
+    # Señales de contexto (si existen). No son obligatorias.
+    try:
+        ctx_out: dict[str, Any] = {}
+        for k in (
+            'sleep_minutes',
+            'stress_1_5',
+            'steps',
+            'movement_1_5',
+            'water_liters',
+            'sun_minutes',
+        ):
+            if ctx.get(k) is None:
+                continue
+            ctx_out[k] = ctx.get(k)
+        payload_out['context_signals'] = ctx_out
+    except Exception:
+        payload_out['context_signals'] = {}
+
+    # Motor de recomendación inteligente (no médico): prioridades + acciones simples.
+    try:
+        if decision == 'accepted':
+            # Necesidades (0..1). Mientras más alto, más prioridad.
+            need_hyd = _clamp01((70.0 - float(s_hydration)) / 70.0)
+            need_sleep = 0.0
+            try:
+                sleep_min = _safe_float(ctx.get('sleep_minutes'))
+                if sleep_min is not None and sleep_min > 0:
+                    # <7h => sube necesidad
+                    need_sleep = max(need_sleep, _clamp01((420.0 - float(sleep_min)) / 180.0))
+            except Exception:
+                pass
+            need_sleep = max(need_sleep, _clamp01((70.0 - float(s_energy)) / 70.0))
+
+            s_red = int(sub.get('redness_balance') or 0)
+            need_infl = _clamp01((70.0 - float(s_red)) / 70.0)
+            try:
+                if float(patchiness) >= 0.06:
+                    need_infl = max(need_infl, 0.55)
+            except Exception:
+                pass
+
+            # Ajustes por contexto (si existe)
+            water_l = _safe_float(ctx.get('water_liters'))
+            if water_l is not None and water_l < 1.6:
+                need_hyd = max(need_hyd, 0.60)
+
+            stress_1_5 = _safe_float(ctx.get('stress_1_5'))
+            if stress_1_5 is not None and stress_1_5 >= 4:
+                need_infl = max(need_infl, 0.55)
+                need_sleep = max(need_sleep, 0.40)
+
+            steps = _safe_float(ctx.get('steps'))
+            movement_1_5 = _safe_float(ctx.get('movement_1_5'))
+            need_movement = 0.0
+            if steps is not None and steps >= 0:
+                need_movement = _clamp01((6000.0 - float(steps)) / 6000.0)
+            elif movement_1_5 is not None:
+                # 1 = bajo movimiento (alta necesidad), 5 = excelente (baja necesidad)
+                m = max(1.0, min(5.0, float(movement_1_5)))
+                need_movement = _clamp01((5.0 - m) / 4.0)
+
+            sun_min = _safe_float(ctx.get('sun_minutes'))
+            need_sun = 0.0
+            if sun_min is not None and sun_min > 20:
+                need_sun = _clamp01((float(sun_min) - 20.0) / 60.0)
+
+            # Priorización (siempre entregamos 3, pero ordenamos por necesidad)
+            candidates = [
+                ('hidratación', need_hyd),
+                ('sueño', need_sleep),
+                ('reducción de inflamación visible', need_infl),
+                ('protección solar', need_sun),
+                ('movimiento diario', need_movement),
+            ]
+            # Mantener las 3 “core” aunque todo esté bien, pero ordenadas.
+            core = {c[0] for c in candidates[:3]}
+            sorted_all = sorted(candidates, key=lambda t: float(t[1]), reverse=True)
+            # Garantizar presencia de 3 core
+            ordered: list[str] = []
+            for name, _w in sorted_all:
+                if name in core and name not in ordered:
+                    ordered.append(name)
+            for name, _w in sorted_all:
+                if len(ordered) >= 3:
+                    break
+                if name not in ordered:
+                    ordered.append(name)
+            ordered = ordered[:3]
+
+            # Acciones simples (sin activos médicos)
+            actions_simple: list[str] = []
+            # 1) Agua
+            if ('hidratación' in ordered) or (need_hyd >= 0.45):
+                actions_simple.append('+500ml de agua hoy')
+            # 2) Respiración (estrés/inflamación visible)
+            if ('reducción de inflamación visible' in ordered) or (stress_1_5 is not None and stress_1_5 >= 3.5) or (need_infl >= 0.45):
+                actions_simple.append('5 min de respiración lenta (inhala 4, exhala 6)')
+            # 3) Rutina nocturna
+            if ('sueño' in ordered) or (need_sleep >= 0.45):
+                actions_simple.append('Rutina nocturna básica: 30 min sin pantallas + dormir 30 min antes')
+
+            # Si alguna acción falta, rellenar hasta 3 sin inventar tratamientos
+            if len(actions_simple) < 3:
+                fillers = [
+                    'Lávate la cara con limpiador suave (sin frotar fuerte)',
+                    'Hidrata con una crema simple (sin perfume si tu piel es sensible)',
+                    'Protección solar de día si vas a salir al sol',
+                ]
+                for f in fillers:
+                    if len(actions_simple) >= 3:
+                        break
+                    if f not in actions_simple:
+                        actions_simple.append(f)
+
+            payload_out['recommendation_plan'] = {
+                'priorities': ordered,
+                'actions': actions_simple[:3],
+                'note': 'Plan no médico basado en tendencia visual + contexto disponible.'
+            }
+    except Exception:
+        payload_out['recommendation_plan'] = None
+
+    # Progreso vs baseline (semana pasada): deltas + % cuando sea posible
+    try:
+        if baseline and isinstance(baseline, dict):
+            prev_score = baseline.get('skin_health_score')
+            prev_sub = baseline.get('sub_scores') if isinstance(baseline.get('sub_scores'), dict) else {}
+
+            deltas: dict[str, dict[str, Any]] = {}
+            try:
+                prev_i = int(prev_score) if prev_score is not None else None
+                if prev_i is not None:
+                    now_i = int(skin_health_score)
+                    d = int(now_i - prev_i)
+                    pct = (float(d) / float(prev_i) * 100.0) if prev_i not in (0, None) else None
+                    deltas['skin_health_score'] = {
+                        'prev': prev_i,
+                        'now': now_i,
+                        'delta': d,
+                        'pct': (round(float(pct), 2) if pct is not None else None),
+                    }
+            except Exception:
+                pass
+
+            for k, cur in (
+                ('hydration_visible', s_hydration),
+                ('uniformity', s_uniformity),
+                ('facial_energy', s_energy),
+                ('texture_quality', s_texture),
+            ):
+                try:
+                    prev_v = prev_sub.get(k)
+                    prev_i = int(prev_v) if prev_v is not None else None
+                    if prev_i is None:
+                        continue
+                    now_i = int(cur)
+                    d = int(now_i - prev_i)
+                    pct = (float(d) / float(prev_i) * 100.0) if prev_i not in (0, None) else None
+                    deltas[k] = {
+                        'prev': prev_i,
+                        'now': now_i,
+                        'delta': d,
+                        'pct': (round(float(pct), 2) if pct is not None else None),
+                    }
+                except Exception:
+                    continue
+
+            if deltas:
+                payload_out['progress'] = {
+                    'baseline_source': 'last_week',
+                    'vs_last_week': {
+                        'available': True,
+                        'deltas': deltas,
+                    },
+                }
+    except Exception:
+        pass
+
     return SkinHealthResult(payload=payload_out)
 
 
@@ -402,45 +583,193 @@ def render_professional_summary(result: dict[str, Any]) -> str:
     if not isinstance(result, dict):
         return ""
 
-    lines: list[str] = []
-    lines.append(f"decision: {result.get('decision')}")
+    user_display_name = str(result.get('user_display_name') or '').strip()
+    hello = f"Hola {user_display_name}," if user_display_name else "Hola,"
 
+    decision = str(result.get('decision') or '').strip().lower()
     conf = result.get('confidence') if isinstance(result.get('confidence'), dict) else {}
-    if conf.get('score') is not None:
-        try:
-            lines.append(f"confidence: {round(float(conf.get('score')), 3)}")
-        except Exception:
-            pass
+    obs = result.get('observations') if isinstance(result.get('observations'), dict) else {}
+    q = obs.get('quality') if isinstance(obs.get('quality'), dict) else {}
+    progress = result.get('progress') if isinstance(result.get('progress'), dict) else {}
 
-    score = result.get('skin_health_score')
-    if score is not None:
-        try:
-            lines.append(f"Skin Health Score™: {int(score)}/100")
-        except Exception:
-            pass
+    score = None
+    try:
+        score = int(result.get('skin_health_score')) if result.get('skin_health_score') is not None else None
+    except Exception:
+        score = None
+
+    confidence_pct = None
+    try:
+        if conf.get('score') is not None:
+            confidence_pct = int(round(float(conf.get('score')) * 100.0))
+    except Exception:
+        confidence_pct = None
 
     sub = result.get('sub_scores') if isinstance(result.get('sub_scores'), dict) else {}
-    if sub:
+    plan = result.get('recommendation_plan') if isinstance(result.get('recommendation_plan'), dict) else {}
+    ctx_sig = result.get('context_signals') if isinstance(result.get('context_signals'), dict) else {}
+
+    def _sub_int(key: str) -> int | None:
+        v = sub.get(key)
+        if v is None:
+            return None
+        try:
+            return int(v)
+        except Exception:
+            return None
+
+    s_h = _sub_int('hydration_visible')
+    s_u = _sub_int('uniformity')
+    s_e = _sub_int('facial_energy')
+    s_t = _sub_int('texture_quality')
+
+    filter_suspected = bool(q.get('filter_suspected'))
+
+    lines: list[str] = [hello]
+    lines.append("**🔹 Skin Health (beta)**")
+    lines.append("(Análisis visual de tendencia; **no es diagnóstico médico**.)")
+
+    if decision != 'accepted':
+        lines.append("\n**⚠️ No pude analizar con confianza**")
+        lines.append("Para que el resultado sea confiable:")
+        lines.append("- Luz natural (sin contraluz) y sin filtros")
+        lines.append("- Rostro centrado, sin zoom extremo")
+        lines.append("- Sin maquillaje pesado si quieres tendencia real")
+        return "\n".join(lines).strip()
+
+    lines.append("\n**✅ Listo**")
+    if score is not None:
+        if confidence_pct is not None:
+            lines.append(f"- Skin Health Score™: {score}/100 · Confianza: {confidence_pct}%")
+        else:
+            lines.append(f"- Skin Health Score™: {score}/100")
+
+    if any(v is not None for v in (s_h, s_u, s_e, s_t)):
         parts = []
-        for k, label in (
-            ('hydration_visible', 'Hidratación visible'),
-            ('uniformity', 'Uniformidad'),
-            ('facial_energy', 'Energía facial'),
-            ('texture_quality', 'Textura'),
-        ):
-            if sub.get(k) is None:
-                continue
+        if s_h is not None:
+            parts.append(f"Hidratación: {s_h}/100")
+        if s_u is not None:
+            parts.append(f"Uniformidad: {s_u}/100")
+        if s_e is not None:
+            parts.append(f"Energía: {s_e}/100")
+        if s_t is not None:
+            parts.append(f"Textura: {s_t}/100")
+        if parts:
+            lines.append("- " + " · ".join(parts))
+
+    if filter_suspected:
+        lines.append("- Nota: detecté indicios de filtro/edición; puede distorsionar la tendencia.")
+
+    # IA contextual (si hay señales)
+    try:
+        ctx_parts: list[str] = []
+        sm = ctx_sig.get('sleep_minutes')
+        if sm is not None:
             try:
-                parts.append(f"{label}: {int(sub.get(k))}/100")
+                ctx_parts.append(f"Sueño: {int(float(sm))} min")
             except Exception:
                 pass
-        if parts:
-            lines.append(' · '.join(parts))
+        st = ctx_sig.get('stress_1_5')
+        if st is not None:
+            try:
+                ctx_parts.append(f"Estrés (1–5): {float(st):.1f}")
+            except Exception:
+                pass
+        steps = ctx_sig.get('steps')
+        if steps is not None:
+            try:
+                ctx_parts.append(f"Pasos: {int(float(steps))}")
+            except Exception:
+                pass
+        mv = ctx_sig.get('movement_1_5')
+        if mv is not None:
+            try:
+                ctx_parts.append(f"Movimiento (1–5): {float(mv):.1f}")
+            except Exception:
+                pass
+        wl = ctx_sig.get('water_liters')
+        if wl is not None:
+            try:
+                ctx_parts.append(f"Agua: {float(wl):.1f} L")
+            except Exception:
+                pass
+        sunm = ctx_sig.get('sun_minutes')
+        if sunm is not None:
+            try:
+                ctx_parts.append(f"Sol: {int(float(sunm))} min")
+            except Exception:
+                pass
 
-    insights = result.get('insights')
-    if isinstance(insights, list) and insights:
-        for x in insights[:3]:
-            if str(x).strip():
-                lines.append(f"note: {str(x).strip()}")
+        if ctx_parts:
+            lines.append("\n**🧠 IA contextual (tu piel refleja tu sistema)**")
+            lines.append("- " + " · ".join(ctx_parts))
+            lines.append("- Si ajustamos 1–2 hábitos hoy, normalmente la piel lo refleja en tendencia (no es diagnóstico).")
+    except Exception:
+        pass
 
+    # Cambios vs semana pasada (si existe)
+    try:
+        vs = progress.get('vs_last_week') if isinstance(progress.get('vs_last_week'), dict) else None
+        if vs and isinstance(vs.get('deltas'), dict):
+            deltas = vs.get('deltas')
+
+            def _fmt(key: str, label: str) -> str | None:
+                row = deltas.get(key) if isinstance(deltas.get(key), dict) else None
+                if not row:
+                    return None
+                try:
+                    d = int(row.get('delta') or 0)
+                    prev = row.get('prev')
+                    sign = "+" if d >= 0 else ""
+                    pct = row.get('pct')
+                    if pct is not None:
+                        return f"- {label}: {sign}{d} pts ({sign}{float(pct):.1f}%)"
+                    if prev is not None and int(prev) > 0:
+                        pct2 = float(d) / float(int(prev)) * 100.0
+                        return f"- {label}: {sign}{d} pts ({sign}{pct2:.1f}%)"
+                    return f"- {label}: {sign}{d} pts"
+                except Exception:
+                    return None
+
+            parts = [
+                _fmt('skin_health_score', 'Score'),
+                _fmt('hydration_visible', 'Hidratación'),
+                _fmt('uniformity', 'Uniformidad'),
+                _fmt('facial_energy', 'Energía'),
+            ]
+            parts = [p for p in parts if p]
+            if parts:
+                lines.append("\n**📈 Cambios vs semana pasada**")
+                lines.extend(parts[:3])
+    except Exception:
+        pass
+
+    # Recomendaciones seguras (no médicas)
+    lines.append("\n**🎯 Prioridades de hoy**")
+    try:
+        prios = plan.get('priorities') if isinstance(plan.get('priorities'), list) else []
+        if prios:
+            for i, p in enumerate([str(x).strip() for x in prios if str(x).strip()][:3], start=1):
+                lines.append(f"- Prioridad {i}: {p}")
+        else:
+            lines.append("- Prioridad 1: hidratación")
+            lines.append("- Prioridad 2: sueño")
+            lines.append("- Prioridad 3: reducción de inflamación visible")
+    except Exception:
+        lines.append("- Prioridad 1: hidratación")
+        lines.append("- Prioridad 2: sueño")
+        lines.append("- Prioridad 3: reducción de inflamación visible")
+
+    lines.append("\n**✅ Acciones simples (hoy)**")
+    try:
+        acts = plan.get('actions') if isinstance(plan.get('actions'), list) else []
+        acts = [str(x).strip() for x in acts if str(x).strip()]
+        for a in acts[:3]:
+            lines.append(f"- {a}")
+    except Exception:
+        lines.append("- +500ml de agua hoy")
+        lines.append("- 5 min de respiración lenta")
+        lines.append("- Rutina nocturna básica")
+
+    lines.append("\nSi hay ardor fuerte, lesión, sangrado o empeora de forma persistente, consulta a un profesional de salud.")
     return "\n".join(lines).strip()
