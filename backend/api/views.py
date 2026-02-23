@@ -3895,6 +3895,7 @@ def chat_n8n(request):
         motivation_result = None
         motivation_text_for_output_override = ""
         motivation_quick_actions_out: list[dict[str, Any]] = []
+        motivation_requested = False
 
         # Exp-009 (progresión): resultado + texto + quick-actions
         progression_result = None
@@ -5206,6 +5207,35 @@ def chat_n8n(request):
                     if re.search(r"\b(motivaci[oó]n|me\s+cuesta|no\s+quiero|no\s+pude|me\s+dio\s+pereza|estoy\s+agotad|estoy\s+cansad)\b", msg_low):
                         want_motivation = True
 
+                # Rate limit (heurístico): máximo 1 activación por ventana de 8 horas (3/día).
+                # La activación explícita (payload o frases tipo "Necesito motivación") siempre pasa.
+                motivation_heuristic_window_to_mark = None
+                try:
+                    implicit = not (isinstance(mr, dict) or isinstance(ma, dict))
+                    msg_low = str(message or '').lower()
+                    explicit_text_intent = bool(re.search(r"\b(necesito\s+motivaci[oó]n|quiero\s+motivaci[oó]n|activa\s+motivaci[oó]n)\b", msg_low))
+                    if want_motivation and implicit and not explicit_text_intent and user:
+                        cs0 = getattr(user, 'coach_state', {}) or {}
+                        rl = cs0.get('motivation_heuristic_rate_limit') if isinstance(cs0.get('motivation_heuristic_rate_limit'), dict) else {}
+                        used = rl.get('used') if isinstance(rl.get('used'), dict) else {}
+
+                        today = timezone.localdate().isoformat()
+                        if str(rl.get('day') or '') != today:
+                            used = {}
+
+                        try:
+                            hour = int(getattr(timezone.localtime(timezone.now()), 'hour', 0) or 0)
+                        except Exception:
+                            hour = 0
+                        window = str(max(0, min(2, hour // 8)))
+
+                        if window in used:
+                            want_motivation = False
+                        else:
+                            motivation_heuristic_window_to_mark = window
+                except Exception:
+                    pass
+
                 cs = getattr(user, 'coach_state', {}) or {}
                 mem = cs.get('motivation_memory') if isinstance(cs.get('motivation_memory'), dict) else {}
                 prefs = cs.get('motivation_preferences') if isinstance(cs.get('motivation_preferences'), dict) else {}
@@ -5262,13 +5292,23 @@ def chat_n8n(request):
                 except Exception:
                     pass
 
+                motivation_requested = bool(want_motivation)
+
                 if want_motivation:
+                    # Nombre amigable para copy (sin depender de n8n)
+                    user_display_name = None
+                    try:
+                        user_display_name = (getattr(user, 'full_name', '') or '').strip() or (getattr(user, 'username', '') or '').strip() or None
+                    except Exception:
+                        user_display_name = None
+
                     # Si viene acción explícita, priorizar reconocimiento breve.
                     try:
                         if isinstance(ma, dict) and ma.get('accept') is True:
                             streak_now = int(getattr(user, 'current_streak', 0) or 0)
+                            greeting = (f"Hola {user_display_name},\n" if user_display_name else "Hola,\n")
                             motivation_text_for_output_override = (
-                                "Perfecto. Eso cuenta como constancia de hoy.\n"
+                                greeting + "Perfecto. Eso cuenta como constancia de hoy.\n"
                                 f"Racha actual: {streak_now} días.\n"
                                 "¿Quieres que subamos un poco el reto mañana o mantenemos estabilidad?"
                             )
@@ -5276,10 +5316,11 @@ def chat_n8n(request):
                         pass
                     try:
                         if isinstance(ma, dict) and str(ma.get('mode') or '').strip().lower() == 'renacer_7d':
+                            greeting = (f"Hola {user_display_name},\n" if user_display_name else "Hola,\n")
                             motivation_text_for_output_override = (
-                                "Listo. Activé Modo Renacer por 7 días.\n"
-                                "Objetivo: hábitos mínimos, sin presión.\n"
-                                "Hoy solo vamos por el siguiente paso pequeño."
+                                greeting + "Listo: activé Modo Renacer por 7 días.\n"
+                                "Objetivo: hábitos mínimos, sin presión, sin culpa.\n"
+                                "Hoy solo vamos por el siguiente paso pequeño: 6 minutos y lo celebramos."
                             )
                     except Exception:
                         pass
@@ -5305,6 +5346,13 @@ def chat_n8n(request):
                         'lifestyle': lifestyle_last or {},
                     }).payload
 
+                    # UX: permitir que el renderer personalice el saludo.
+                    try:
+                        if user_display_name and isinstance(motivation_result, dict):
+                            motivation_result = {**motivation_result, 'user_display_name': user_display_name}
+                    except Exception:
+                        pass
+
                     mtext = render_professional_summary(motivation_result)
                     if mtext and not motivation_text_for_output_override:
                         motivation_text_for_output_override = mtext
@@ -5321,6 +5369,24 @@ def chat_n8n(request):
                         cs2['motivation_memory'] = mem2
                         cs2['motivation_preferences'] = prefs
                         cs2['motivation_last'] = {'result': motivation_result, 'updated_at': timezone.now().isoformat()}
+
+                        # Persistir rate limit de activación heurística por ventana (si aplica)
+                        try:
+                            if motivation_heuristic_window_to_mark:
+                                today = timezone.localdate().isoformat()
+                                rl0 = cs2.get('motivation_heuristic_rate_limit') if isinstance(cs2.get('motivation_heuristic_rate_limit'), dict) else {}
+                                used0 = rl0.get('used') if isinstance(rl0.get('used'), dict) else {}
+                                # reset si cambió el día
+                                if str(rl0.get('day') or '') != today:
+                                    used0 = {}
+                                used1 = dict(used0)
+                                used1[str(motivation_heuristic_window_to_mark)] = timezone.now().isoformat()
+                                # mantener solo 3 ventanas
+                                used1 = {k: used1[k] for k in used1.keys() if str(k) in ('0', '1', '2')}
+                                cs2['motivation_heuristic_rate_limit'] = {'day': today, 'used': used1}
+                        except Exception:
+                            pass
+
                         user.coach_state = cs2
                         user.coach_state_updated_at = timezone.now()
                         user.save(update_fields=['coach_state', 'coach_state_updated_at'])
@@ -6510,7 +6576,9 @@ def chat_n8n(request):
                         data.setdefault('qaf_motivation', motivation_result)
 
                     out_text = data.get('output')
-                    if isinstance(out_text, str) and motivation_text_for_output_override:
+                    if motivation_requested and motivation_text_for_output_override:
+                        data['output'] = motivation_text_for_output_override
+                    elif isinstance(out_text, str) and motivation_text_for_output_override:
                         low = out_text.lower()
                         has_mot = ('motiv' in low) or ('reto:' in low) or ('perfil dominante' in low)
                         if (not out_text.strip()) or ('problema tecnico' in low) or ('problema técnico' in low):
@@ -7378,6 +7446,14 @@ def qaf_motivation(request):
 
     from .qaf_motivation.engine import evaluate_motivation, render_professional_summary
     res = evaluate_motivation({'message': message, 'memory': mem, 'preferences': prefs, 'gamification': gam, 'lifestyle': lifestyle or {}}).payload
+
+    # UX: nombre amigable para saludo
+    try:
+        display = (getattr(user, 'full_name', '') or '').strip() or (getattr(user, 'username', '') or '').strip()
+        if display and isinstance(res, dict):
+            res = {**res, 'user_display_name': display}
+    except Exception:
+        pass
     text = render_professional_summary(res)
 
     try:

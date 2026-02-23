@@ -296,16 +296,99 @@ def render_professional_summary(result: dict[str, Any]) -> str:
     chall = result.get("challenge") if isinstance(result.get("challenge"), dict) else {}
     reward = result.get("reward") if isinstance(result.get("reward"), dict) else {}
 
-    lines: list[str] = []
-    if result.get('decision') == 'needs_confirmation':
-        lines.append("Antes de ajustar el tono, necesito una preferencia rápida.")
-    if prof.get("top"):
-        lines.append(f"perfil dominante: {prof.get('top')}")
-    if state.get("mood"):
-        lines.append(f"estado de hoy: {state.get('mood')}")
+    user_display_name = str(result.get("user_display_name") or "").strip()
+    hello = f"Hola {user_display_name}," if user_display_name else "Hola,"
+
+    top = str(prof.get("top") or "").strip().lower() or None
+    mood = str(state.get("mood") or "").strip().lower() or None
+
+    profile_labels = {
+        "logro": "progreso medible",
+        "disciplina": "constancia y hábitos",
+        "salud": "energía y bienestar",
+        "estetica": "cambio visible y postura",
+        "comunidad": "acompañamiento y reto compartido",
+    }
+    profile_explain = {
+        "logro": "te engancha ver avances concretos (reps, kg, marcas).",
+        "disciplina": "te sostiene una identidad: *yo cumplo*, aunque sea en pequeño.",
+        "salud": "priorizas sentirte mejor: energía, sueño y recuperación.",
+        "estetica": "te motiva notar cambios en cómo te ves y cómo te queda la ropa.",
+        "comunidad": "te impulsa sentir apoyo o competir sanamente con otros.",
+    }
+    mood_labels = {
+        "euforico": "con buen impulso",
+        "neutral": "en modo normal",
+        "fatiga": "con baja energía",
+        "frustrado": "con frustración encima",
+        "ansioso": "con ansiedad/estrés",
+    }
+    mood_explain = {
+        "euforico": "hoy puedes aprovechar ese empuje sin pasarte de rosca.",
+        "neutral": "perfecto para ganar la victoria del día con algo simple.",
+        "fatiga": "hoy la meta es activar sin castigar al cuerpo.",
+        "frustrado": "hoy conviene un plan corto para cortar la racha de ‘no pude’.",
+        "ansioso": "hoy conviene bajar ruido mental con movimiento suave y respiración.",
+    }
+
+    top_label = profile_labels.get(top or "", "constancia")
+    mood_label = mood_labels.get(mood or "", "en modo normal")
+
+    lines: list[str] = [hello]
+
+    # 1) Paso de configuración (pressure)
+    if result.get("decision") == "needs_confirmation":
+        lines.append(
+            "Antes de darte el empujón exacto, necesito algo rápido para personalizar tu experiencia:"
+        )
+        lines.append("¿Cómo quieres que te empuje hoy?")
+        lines.append("- Suave: contención + paso pequeño")
+        lines.append("- Medio: equilibrio (exigente, pero realista)")
+        lines.append("- Firme: directo, sin excusas")
+        lines.append("")
+
+    # 2) Transparencia: qué evalúo y qué significa
+    lines.append("Hoy estoy leyendo 2 cosas de tu mensaje:")
+    if top:
+        lines.append(f"1) Tu motor principal: {top_label} — {profile_explain.get(top, '').strip()}")
+    else:
+        lines.append("1) Tu motor principal: constancia — hoy vamos por un paso pequeño.")
+    if mood:
+        lines.append(f"2) Tu estado de hoy: {mood_label} — {mood_explain.get(mood, '').strip()}")
+    else:
+        lines.append("2) Tu estado de hoy: normal — podemos ejecutar un plan simple.")
+
+    # 3) Propuesta: reto + mini-plan
     if chall.get("label"):
-        lines.append(f"reto: {chall.get('label')}")
+        lines.append("")
+        lines.append("Tu plan mínimo de hoy (para ganar constancia):")
+        lines.append(f"🎯 {str(chall.get('label')).strip()}")
+
+        # Si el reto es de tipo mínimo/recuperación o menciona minutos, damos una guía corta.
+        ch_type = str(chall.get("type") or "").strip().lower()
+        minutes = chall.get("minutes")
+        try:
+            minutes_i = int(_safe_float(minutes) or 0)
+        except Exception:
+            minutes_i = 0
+
+        if ch_type in ("minimo", "recuperacion", "salud", "consistencia") or minutes_i in (6, 8, 10, 12):
+            lines.append("")
+            lines.append("Guía rápida (10 minutos, sin presión):")
+            lines.append("- 2 min: movilidad (cuello, hombros, caderas)")
+            lines.append("- 3 min: marcha/caminata en el lugar")
+            lines.append("- 3 min: 2–3 ejercicios suaves (sentadilla sin peso, talones, bisagra)" )
+            lines.append("- 2 min: respiración + estiramiento suave para cerrar")
+
+    # 4) Recompensa
     if reward.get("label"):
-        lines.append(f"recompensa: {reward.get('label')}")
-    lines.append("nota: si hay dolor fuerte o mareo, baja intensidad y prioriza seguridad.")
-    return "\n".join(lines).strip()
+        lines.append("")
+        lines.append(f"🏅 Recompensa de hoy: {str(reward.get('label')).strip()}")
+        note = str(reward.get("note") or "").strip()
+        if note:
+            lines.append(f"   {note}")
+
+    # 5) Seguridad
+    lines.append("")
+    lines.append("Si sientes dolor fuerte o mareo, baja intensidad o detente. La constancia vale, la lesión no.")
+    return "\n".join([ln for ln in lines if ln is not None]).strip()
