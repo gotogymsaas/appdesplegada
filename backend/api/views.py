@@ -1028,6 +1028,62 @@ def _extract_blob_ref_from_url(file_url):
         return None, None
 
 
+def _normalize_attachment_url(value: str) -> str:
+    """Normaliza una URL http(s) candidata.
+
+    - Evita concatenaciones accidentales del tipo "...https://...https://..."
+    - No intenta validar; solo sanea de forma conservadora.
+    """
+
+    raw = str(value or '').strip()
+    if not raw:
+        return ''
+
+    # Si hay múltiples https://, tomar la última (suele ser la real tras concatenación)
+    last_https = raw.rfind('https://')
+    if last_https > 0:
+        raw = raw[last_https:]
+
+    last_http = raw.rfind('http://')
+    if last_http > 0 and (last_https < 0 or last_http > last_https):
+        raw = raw[last_http:]
+
+    return raw.strip()
+
+
+def _is_signed_chat_attachment_url(url_value: str) -> bool:
+    """Valida de forma conservadora si es una URL SAS del container de attachments.
+
+    Nota: esto NO garantiza ownership por username, pero el SAS es un secreto y se restringe a nuestro storage.
+    """
+
+    try:
+        u = _normalize_attachment_url(url_value)
+        if not u:
+            return False
+        if 'sig=' not in u.lower():
+            return False
+
+        parsed = urlparse(u)
+        host = (parsed.hostname or '').strip().lower()
+        if not host or not host.endswith('.blob.core.windows.net'):
+            return False
+
+        account_name = getattr(settings, 'AZURE_STORAGE_ACCOUNT_NAME', '').strip().lower()
+        if account_name:
+            expected = f"{account_name}.blob.core.windows.net"
+            if host != expected:
+                return False
+
+        container_name, blob_name = _extract_blob_ref_from_url(u)
+        if container_name != _chat_attachment_container() or not blob_name:
+            return False
+
+        return True
+    except Exception:
+        return False
+
+
 def _resolve_blob_name(container_name, blob_name):
     if not container_name or not blob_name:
         return None
@@ -3869,7 +3925,7 @@ def chat_n8n(request):
                     user.coach_state = cs2
                     user.coach_state_updated_at = timezone.now()
                     user.save(update_fields=['coach_state', 'coach_state_updated_at'])
-                    return Response({'output': '[VITALIDAD DE LA PIEL]\nListo. Cerré el proceso.', 'skin_flow_stage': 'completed'})
+                    return Response({'output': '**Vitalidad de la Piel**\nListo. Cerré el proceso.', 'skin_flow_stage': 'completed'})
             except Exception:
                 pass
 
@@ -3890,7 +3946,7 @@ def chat_n8n(request):
                         pass
 
                 out = (
-                    "[VITALIDAD DE LA PIEL]\n"
+                    "**Vitalidad de la Piel**\n"
                     "**✅ Empecemos**\n"
                     "Con 1 foto puedo darte una lectura visual con métricas + acciones simples (sin diagnósticos).\n\n"
                     "**📷 Para que mida bien:** luz natural, sin filtros, sin contraluz, rostro centrado."
@@ -3927,12 +3983,15 @@ def chat_n8n(request):
                 image_bytes = None
                 image_content_type = None
                 try:
-                    container_name, blob_name = _extract_blob_ref_from_url(str(attachment_url))
+                    normalized_url = _normalize_attachment_url(str(attachment_url))
+                    container_name, blob_name = _extract_blob_ref_from_url(normalized_url)
                     if container_name == _chat_attachment_container() and blob_name:
+                        blob_name = _resolve_blob_name(container_name, blob_name) or blob_name
                         safe_username = user.username.replace('/', '_')
-                        if blob_name.startswith(f"{safe_username}/"):
+                        allowed = bool(blob_name.startswith(f"{safe_username}/")) or _is_signed_chat_attachment_url(normalized_url)
+                        if allowed:
                             max_bytes = int(os.getenv('CHAT_VISION_MAX_BYTES', str(4 * 1024 * 1024)) or (4 * 1024 * 1024))
-                            resp = requests.get(str(attachment_url), timeout=20)
+                            resp = requests.get(normalized_url, timeout=20)
                             if resp.status_code == 200 and resp.content and len(resp.content) <= max_bytes:
                                 image_bytes = resp.content
                                 image_content_type = (resp.headers.get('Content-Type') or 'image/jpeg')
@@ -3942,7 +4001,7 @@ def chat_n8n(request):
                 if not image_bytes:
                     return Response(
                         {
-                            'output': '[VITALIDAD DE LA PIEL]\nNo pude usar la foto (permiso/tamaño). Intenta adjuntarla de nuevo.',
+                            'output': '**Vitalidad de la Piel**\nNo pude usar la foto (permiso/tamaño). Intenta adjuntarla de nuevo.',
                             'skin_flow_stage': 'need_photo',
                             'quick_actions': [
                                 {'label': 'Tomar foto', 'type': 'open_camera'},
@@ -4066,12 +4125,15 @@ def chat_n8n(request):
         # Fallback de adjunto: si hay URL pero no texto, descargar y extraer (solo attachments del usuario)
         try:
             if user and attachment_url and not (attachment_text or "").strip():
-                container_name, blob_name = _extract_blob_ref_from_url(str(attachment_url))
+                normalized_url = _normalize_attachment_url(str(attachment_url))
+                container_name, blob_name = _extract_blob_ref_from_url(normalized_url)
                 if container_name == _chat_attachment_container() and blob_name:
+                    blob_name = _resolve_blob_name(container_name, blob_name) or blob_name
                     safe_username = user.username.replace("/", "_")
-                    if blob_name.startswith(f"{safe_username}/"):
+                    allowed = bool(blob_name.startswith(f"{safe_username}/")) or _is_signed_chat_attachment_url(normalized_url)
+                    if allowed:
                         max_bytes = int(os.getenv('CHAT_ATTACHMENT_MAX_BYTES', str(15 * 1024 * 1024)) or (15 * 1024 * 1024))
-                        resp = requests.get(str(attachment_url), timeout=20)
+                        resp = requests.get(normalized_url, timeout=20)
                         if resp.status_code == 200 and resp.content and len(resp.content) <= max_bytes:
                             filename = os.path.basename(blob_name)
                             extracted, diagnostic = _extract_text_from_file_bytes(filename, resp.content)
@@ -4658,7 +4720,7 @@ def chat_n8n(request):
                         user.coach_state = cs2
                         user.coach_state_updated_at = timezone.now()
                         user.save(update_fields=['coach_state', 'coach_state_updated_at'])
-                        return Response({'output': '[VITALIDAD DE LA PIEL]\nListo. Cerré el proceso.', 'skin_flow_stage': 'completed'})
+                        return Response({'output': '**Vitalidad de la Piel**\nListo. Cerré el proceso.', 'skin_flow_stage': 'completed'})
                 except Exception:
                     pass
 
@@ -4733,7 +4795,7 @@ def chat_n8n(request):
                         is_yes = bool(re.fullmatch(r"(si|sí|ok|dale|listo|de\s*una|vamos|claro)", msg_low or ""))
                         if is_yes:
                             out = (
-                                "[VITALIDAD DE LA PIEL]\n"
+                                "**Vitalidad de la Piel**\n"
                                 "Perfecto. Envíame **1 foto** del rostro (luz natural, sin filtros, sin contraluz)."
                             )
                             return Response(
@@ -4761,7 +4823,7 @@ def chat_n8n(request):
                         acts = [str(x).strip() for x in acts if str(x).strip()]
 
                         out_lines = [
-                            "[VITALIDAD DE LA PIEL]",
+                            "**Vitalidad de la Piel**",
                             "**✅ Hábitos recomendados (hoy)**",
                         ]
                         if prios:
@@ -4930,13 +4992,15 @@ def chat_n8n(request):
                     image_bytes = None
                     image_content_type = None
                     try:
-                        container_name, blob_name = _extract_blob_ref_from_url(str(attachment_url))
+                        normalized_url = _normalize_attachment_url(str(attachment_url))
+                        container_name, blob_name = _extract_blob_ref_from_url(normalized_url)
                         if container_name == _chat_attachment_container() and blob_name:
                             blob_name = _resolve_blob_name(container_name, blob_name) or blob_name
                             safe_username = user.username.replace('/', '_')
-                            if blob_name.startswith(f"{safe_username}/"):
+                            allowed = bool(blob_name.startswith(f"{safe_username}/")) or _is_signed_chat_attachment_url(normalized_url)
+                            if allowed:
                                 max_bytes = int(os.getenv('CHAT_VISION_MAX_BYTES', str(4 * 1024 * 1024)) or (4 * 1024 * 1024))
-                                resp = requests.get(str(attachment_url), timeout=20)
+                                resp = requests.get(normalized_url, timeout=20)
                                 if resp.status_code == 200 and resp.content and len(resp.content) <= max_bytes:
                                     image_bytes = resp.content
                                     image_content_type = (resp.headers.get('Content-Type') or 'image/jpeg')
@@ -6495,11 +6559,14 @@ def chat_n8n(request):
                     # Intento seguro: solo descargamos bytes si es un blob de attachments del propio usuario.
                     try:
                         if user:
-                            container_name, blob_name = _extract_blob_ref_from_url(str(attachment_url))
+                            normalized_url = _normalize_attachment_url(str(attachment_url))
+                            container_name, blob_name = _extract_blob_ref_from_url(normalized_url)
                             if container_name == _chat_attachment_container() and blob_name:
+                                blob_name = _resolve_blob_name(container_name, blob_name) or blob_name
                                 safe_username = user.username.replace("/", "_")
-                                if blob_name.startswith(f"{safe_username}/"):
-                                    resp = requests.get(str(attachment_url), timeout=20)
+                                allowed = bool(blob_name.startswith(f"{safe_username}/")) or _is_signed_chat_attachment_url(normalized_url)
+                                if allowed:
+                                    resp = requests.get(normalized_url, timeout=20)
                                     if resp.status_code == 200 and resp.content and len(resp.content) <= max_vision_bytes:
                                         image_bytes = resp.content
                                         image_content_type = (resp.headers.get("Content-Type") or "image/png")
@@ -8607,13 +8674,15 @@ def qaf_skin_health(request):
     image_bytes = None
     image_content_type = None
     try:
-        container_name, blob_name = _extract_blob_ref_from_url(str(attachment_url))
+        normalized_url = _normalize_attachment_url(str(attachment_url))
+        container_name, blob_name = _extract_blob_ref_from_url(normalized_url)
         if container_name == _chat_attachment_container() and blob_name:
             blob_name = _resolve_blob_name(container_name, blob_name) or blob_name
             safe_username = user.username.replace('/', '_')
-            if blob_name.startswith(f"{safe_username}/"):
+            allowed = bool(blob_name.startswith(f"{safe_username}/")) or _is_signed_chat_attachment_url(normalized_url)
+            if allowed:
                 max_bytes = int(os.getenv('CHAT_VISION_MAX_BYTES', str(4 * 1024 * 1024)) or (4 * 1024 * 1024))
-                resp = requests.get(str(attachment_url), timeout=20)
+                resp = requests.get(normalized_url, timeout=20)
                 if resp.status_code == 200 and resp.content and len(resp.content) <= max_bytes:
                     image_bytes = resp.content
                     image_content_type = (resp.headers.get('Content-Type') or 'image/jpeg')
