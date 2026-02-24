@@ -9,6 +9,7 @@ import logging
 import re
 import threading
 import secrets
+import time
 from typing import Any
 
 from devices.models import DeviceConnection, FitnessSync as DevicesFitnessSync
@@ -98,6 +99,103 @@ except Exception:
 
 
 logger = logging.getLogger(__name__)
+
+
+def _bench_event_get(request):
+    """Obtiene el dict de benchmark creado por `BenchmarkChatMiddleware` (si está activo)."""
+    try:
+        django_req = getattr(request, "_request", request)
+        return getattr(django_req, "_bench_event", None)
+    except Exception:
+        return None
+
+
+def _bench_event_note(request, **kwargs):
+    """Actualiza campos del evento benchmark de forma defensiva (no rompe la request)."""
+    bench = _bench_event_get(request)
+    if not isinstance(bench, dict):
+        return
+    try:
+        for k, v in kwargs.items():
+            if v is not None:
+                bench[k] = v
+    except Exception:
+        pass
+
+
+def _infer_chat_flow(message: str, data: Any) -> str:
+    """Clasifica el request para métricas comparativas por servicio.
+
+    Valores esperados para benchmark: 011/012/013/cognition/protocol/other.
+    Aquí usamos nombres estables en forma `exp-XXX_*` para poder segmentar.
+    """
+    try:
+        if isinstance(data, dict):
+            if data.get("skin_habits_request") is True or data.get("skin_cancel") is True:
+                return "exp-011_skin_health"
+            if data.get("couture_garments_request") is True:
+                return "exp-012_shape_presence"
+            # Arquitectura Corporal (Postura & Proporción)
+            if data.get("pp_cancel") is True or data.get("pp_start") is True:
+                return "exp-013_body_architecture"
+            if data.get("qaf_cognition") is True:
+                return "cognition"
+            if data.get("protocol_cognitive_body") is True:
+                return "protocol"
+    except Exception:
+        pass
+
+    msg = (str(message or "").strip().lower())
+    if not msg:
+        return "other"
+    if ("vitalidad" in msg and ("piel" in msg or "peil" in msg)) or ("skin health" in msg) or ("skincare" in msg):
+        return "exp-011_skin_health"
+    if ("alta costura" in msg) or ("couture" in msg):
+        return "exp-012_shape_presence"
+    if ("arquitectura corporal" in msg) or ("postura" in msg and "propor" in msg):
+        return "exp-013_body_architecture"
+    if "cognici" in msg:
+        return "cognition"
+    if "protocolo" in msg and "corporal" in msg:
+        return "protocol"
+    return "other"
+
+
+def _bench_n8n_post(request, url: str, payload: dict, timeout: int):
+    """Wrapper para medir n8n y marcar `n8n_called` + tokens si vienen en la respuesta."""
+    _bench_event_note(request, n8n_called=True)
+    start = time.perf_counter()
+    resp = requests.post(url, json=payload, timeout=timeout)
+    ms = int(round((time.perf_counter() - start) * 1000.0))
+
+    # Acumular latencia n8n (por si hay más de 1 llamada)
+    bench = _bench_event_get(request)
+    if isinstance(bench, dict):
+        try:
+            prev = int(bench.get("latency_ms_n8n") or 0)
+        except Exception:
+            prev = 0
+        bench["latency_ms_n8n"] = prev + ms
+
+        # Tokens opcionales (si n8n devuelve usage)
+        try:
+            data = None
+            if getattr(resp, "headers", None) and (resp.headers.get("Content-Type") or "").lower().startswith("application/json"):
+                data = resp.json()
+            if isinstance(data, dict):
+                usage = data.get("usage") if isinstance(data.get("usage"), dict) else None
+                if isinstance(usage, dict):
+                    bench["tokens_in"] = usage.get("prompt_tokens") or bench.get("tokens_in")
+                    bench["tokens_out"] = usage.get("completion_tokens") or bench.get("tokens_out")
+                # Alternativos
+                if bench.get("tokens_in") is None and data.get("tokens_in") is not None:
+                    bench["tokens_in"] = data.get("tokens_in")
+                if bench.get("tokens_out") is None and data.get("tokens_out") is not None:
+                    bench["tokens_out"] = data.get("tokens_out")
+        except Exception:
+            pass
+
+    return resp
 
 
 def _normalize_height_cm_from_user_value(user_height_value):
@@ -3870,6 +3968,14 @@ def chat_n8n(request):
         if not message and not attachment_url:
             return Response({'error': 'Mensaje o adjunto vacío'}, status=400)
 
+        # Benchmark: inferir flow temprano (si middleware está activo)
+        try:
+            _bench_event_note(request, flow=_infer_chat_flow(message, request.data))
+            if attachment_url:
+                _bench_event_note(request, attachment_bytes=0)
+        except Exception:
+            pass
+
         # 2. Configuración de n8n
         n8n_url = getattr(settings, "N8N_WEBHOOK_URL", "").strip() or "http://172.200.202.47/webhook/general-agent-gotogym-v2"
 
@@ -4021,7 +4127,7 @@ def chat_n8n(request):
                                 "no_medical": True,
                             },
                         }
-                        resp = requests.post(n8n_url, json=n8n_payload, timeout=45)
+                        resp = _bench_n8n_post(request, n8n_url, n8n_payload, timeout=45)
                         if resp.status_code == 200:
                             try:
                                 data = resp.json()
@@ -4073,6 +4179,7 @@ def chat_n8n(request):
                         pass
 
                     if not habits_text.strip():
+                        _bench_event_note(request, fallback_used=True)
                         plan = last_res.get('recommendation_plan') if isinstance(last_res.get('recommendation_plan'), dict) else {}
                         prios = plan.get('priorities') if isinstance(plan.get('priorities'), list) else []
                         acts = plan.get('actions') if isinstance(plan.get('actions'), list) else []
@@ -4188,6 +4295,7 @@ def chat_n8n(request):
                             resp = requests.get(normalized_url, timeout=20)
                             if resp.status_code == 200 and resp.content and len(resp.content) <= max_bytes:
                                 image_bytes = resp.content
+                                _bench_event_note(request, attachment_bytes=len(image_bytes))
                                 image_content_type = (resp.headers.get('Content-Type') or 'image/jpeg')
                 except Exception:
                     image_bytes = None
@@ -4841,7 +4949,7 @@ def chat_n8n(request):
                                     'no_medical': True,
                                 },
                             }
-                            resp = requests.post(n8n_url, json=n8n_payload, timeout=45)
+                            resp = _bench_n8n_post(request, n8n_url, n8n_payload, timeout=45)
                             if resp.status_code == 200:
                                 try:
                                     data = resp.json()
@@ -4889,6 +4997,13 @@ def chat_n8n(request):
                             if lines2 and ('¿' in lines2[-1] or lines2[-1].strip().endswith('?')):
                                 lines2.pop()
                             qc_text = "\n".join(lines2).strip()
+                        except Exception:
+                            pass
+
+                        # Si intentamos Quantum Coach y no entregó texto usable, se considera fallback.
+                        try:
+                            if (not str(qc_text or '').strip()) and isinstance(res, dict) and str(res.get('decision') or '').strip().lower() == 'accepted':
+                                _bench_event_note(request, fallback_used=True)
                         except Exception:
                             pass
 
@@ -5006,7 +5121,7 @@ def chat_n8n(request):
                                     'no_medical': True,
                                 },
                             }
-                            resp = requests.post(n8n_url, json=n8n_payload, timeout=45)
+                            resp = _bench_n8n_post(request, n8n_url, n8n_payload, timeout=45)
                             if resp.status_code == 200:
                                 try:
                                     data = resp.json()
@@ -5039,6 +5154,7 @@ def chat_n8n(request):
                             pass
 
                         if not (garments_text or '').strip():
+                            _bench_event_note(request, fallback_used=True)
                             # Fallback determinista
                             vars_ = last_res.get('variables') if isinstance(last_res.get('variables'), dict) else {}
                             couture = last_res.get('couture') if isinstance(last_res.get('couture'), dict) else {}
@@ -7882,7 +7998,7 @@ def chat_n8n(request):
 
         # 3. Enviar a n8n
         # Timeout corto por si n8n tarda
-        response = requests.post(n8n_url, json=payload, timeout=60)
+        response = _bench_n8n_post(request, n8n_url, payload, timeout=60)
         
         def _extract_text_from_iframe(html: str) -> str:
             if not html:
