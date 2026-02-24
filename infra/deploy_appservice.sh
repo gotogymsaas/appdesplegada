@@ -15,7 +15,7 @@ set -e
 #   export MERCADOPAGO_ACCESS_TOKEN='replace-me'
 #   export GF_WEB_CLIENT_ID='replace-me'
 #   export GF_WEB_CLIENT_SECRET='replace-me'
-#   export GF_WEB_REDIRECT_URI='https://api.gotogym.com/oauth/google_fit/callback/'
+#   export GF_WEB_REDIRECT_URI='https://api.gotogym.store/oauth/google_fit/callback/'
 
 if [ -z "$RESOURCE_GROUP" ] || [ -z "$APP_NAME" ]; then
   echo "RESOURCE_GROUP and APP_NAME are required."

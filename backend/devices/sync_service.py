@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import base64
 import os
+import re
 from dataclasses import dataclass
 from typing import Any
 
@@ -339,14 +340,15 @@ def sync_device(user: User, provider: str) -> SyncResult:
         now = timezone.now()
         start = conn.last_sync_at or (now - timezone.timedelta(hours=24))
 
-        payload = {
-            "aggregateBy": [
-                {"dataTypeName": "com.google.step_count.delta"},
-                {"dataTypeName": "com.google.calories.expended"},
-                {"dataTypeName": "com.google.distance.delta"},
-                {"dataTypeName": "com.google.sleep.segment"},
-                {"dataTypeName": "com.google.heart_rate.bpm"},
-            ],
+        aggregate_types = [
+            "com.google.step_count.delta",
+            "com.google.calories.expended",
+            "com.google.distance.delta",
+            "com.google.sleep.segment",
+            "com.google.heart_rate.bpm",
+        ]
+
+        payload_base = {
             "bucketByTime": {"durationMillis": 86400000},
             "startTimeMillis": int(start.timestamp() * 1000),
             "endTimeMillis": int(now.timestamp() * 1000),
@@ -355,20 +357,70 @@ def sync_device(user: User, provider: str) -> SyncResult:
         headers = {"Authorization": f"Bearer {conn.access_token}"}
 
         try:
-            r = requests.post(
-                "https://www.googleapis.com/fitness/v1/users/me/dataset:aggregate",
-                json=payload,
-                headers=headers,
-                timeout=15,
-            )
-            if r.status_code != 200:
+            blocked_types: list[str] = []
+            current_types = list(aggregate_types)
+            data: dict[str, Any] | None = None
+
+            while current_types:
+                payload = {
+                    **payload_base,
+                    "aggregateBy": [{"dataTypeName": t} for t in current_types],
+                }
+                r = requests.post(
+                    "https://www.googleapis.com/fitness/v1/users/me/dataset:aggregate",
+                    json=payload,
+                    headers=headers,
+                    timeout=15,
+                )
+
+                if r.status_code == 200:
+                    data = r.json()
+                    break
+
+                # Degradación elegante: si Google bloquea un datatype, lo removemos y reintentamos.
+                if r.status_code == 403:
+                    body: dict[str, Any]
+                    try:
+                        body = r.json() if r.content else {}
+                    except Exception:
+                        body = {}
+
+                    msg = ""
+                    if isinstance(body, dict):
+                        err_obj = body.get("error")
+                        if isinstance(err_obj, dict):
+                            msg = str(err_obj.get("message") or "")
+                        elif isinstance(err_obj, str):
+                            msg = err_obj
+
+                    m = re.search(r"com\.google\.[a-z_\.]+", msg)
+                    denied_type = m.group(0) if m else ""
+                    if denied_type and denied_type in current_types:
+                        blocked_types.append(denied_type)
+                        current_types = [t for t in current_types if t != denied_type]
+                        continue
+
+                # Error no recuperable
+                try:
+                    google_body = r.json() if r.content else {}
+                except Exception:
+                    google_body = {"raw": (r.text or "")[:500]}
                 return SyncResult(
                     False,
                     400,
-                    {"ok": False, "error": "Google Fit error", "google": r.json()},
+                    {"ok": False, "error": "Google Fit error", "google": google_body},
                 )
 
-            data = r.json()
+            if data is None:
+                return SyncResult(
+                    False,
+                    400,
+                    {
+                        "ok": False,
+                        "error": "Google Fit permisos insuficientes para métricas solicitadas",
+                        "blocked_data_types": blocked_types,
+                    },
+                )
             total_steps = 0
             total_calories = 0.0
             total_distance_m = 0.0
@@ -415,6 +467,7 @@ def sync_device(user: User, provider: str) -> SyncResult:
                 "avg_heart_rate_bpm": avg_hr,
                 "start_time": start.isoformat(),
                 "end_time": now.isoformat(),
+                "blocked_data_types": blocked_types,
             }
 
             FitnessSync.objects.create(

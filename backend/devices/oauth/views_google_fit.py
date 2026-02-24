@@ -164,24 +164,73 @@ def google_fit_callback(request):
     except Exception:
         return Response({"ok": False, "error": "State inválido"}, status=400)
 
+    client_id = (settings.GOOGLE_FIT.get("WEB", {}).get("CLIENT_ID") or "").strip()
+    client_secret = (settings.GOOGLE_FIT.get("WEB", {}).get("CLIENT_SECRET") or "").strip()
+    redirect_uri = (settings.GOOGLE_FIT.get("WEB", {}).get("REDIRECT_URI") or "").strip()
+    token_url = (settings.GOOGLE_FIT.get("TOKEN_URL") or "").strip() or "https://oauth2.googleapis.com/token"
+
+    if not client_id or not client_secret or not redirect_uri:
+        logger.error(
+            "Google Fit OAuth config incompleta en callback (client_id=%s, secret_len=%s, redirect_uri=%s)",
+            (client_id[:10] + "…") if client_id else "",
+            len(client_secret or ""),
+            redirect_uri,
+        )
+        return Response(
+            {
+                "ok": False,
+                "error": "google_fit_config_incomplete",
+                "detail": "Faltan GF_WEB_CLIENT_ID / GF_WEB_CLIENT_SECRET / GF_WEB_REDIRECT_URI en el backend.",
+            },
+            status=500,
+        )
+
     payload = {
-        "client_id": settings.GOOGLE_FIT["WEB"]["CLIENT_ID"],
-        "client_secret": settings.GOOGLE_FIT["WEB"]["CLIENT_SECRET"],
+        "client_id": client_id,
+        "client_secret": client_secret,
         "code": code,
         "grant_type": "authorization_code",
-        "redirect_uri": settings.GOOGLE_FIT["WEB"]["REDIRECT_URI"],
+        "redirect_uri": redirect_uri,
     }
 
-    r = requests.post(
-        settings.GOOGLE_FIT["TOKEN_URL"],
-        data=payload,
-        timeout=15,
-    )
-    data = r.json()
-
+    r = requests.post(token_url, data=payload, timeout=15)
+    data = r.json() if r.content else {}
 
     if r.status_code != 200:
-        return Response({"ok": False, "google": data}, status=400)
+        err = (data.get("error") if isinstance(data, dict) else None) or "token_exchange_failed"
+        desc = (data.get("error_description") if isinstance(data, dict) else None) or ""
+        hint = ""
+
+        if err == "invalid_client":
+            hint = (
+                "Google devolvió invalid_client. Verifica que GF_WEB_CLIENT_ID y GF_WEB_CLIENT_SECRET "
+                "corresponden al MISMO OAuth Client de tipo 'Web application' en Google Cloud Console, "
+                "y que no estás usando credenciales de Android/iOS. Si rotaste el secret, actualízalo en App Service y reinicia."
+            )
+        elif err in ("invalid_grant", "redirect_uri_mismatch"):
+            hint = (
+                "Revisa que GF_WEB_REDIRECT_URI coincida EXACTAMENTE (incluye https, dominio y trailing slash) "
+                "con el Redirect URI configurado en el OAuth Client de Google."
+            )
+
+        logger.warning(
+            "Google Fit token exchange failed (http=%s, error=%s, desc=%s, redirect_uri=%s, client_id_prefix=%s)",
+            r.status_code,
+            err,
+            (desc or "")[:200],
+            redirect_uri,
+            (client_id[:10] + "…") if client_id else "",
+        )
+
+        return Response(
+            {
+                "ok": False,
+                "error": "google_fit_token_exchange_failed",
+                "google": data,
+                "hint": hint,
+            },
+            status=400,
+        )
 
     expires_at = timezone.now() + timedelta(seconds=int(data.get("expires_in", 0)))
 
