@@ -30,14 +30,20 @@ PROVIDER_KEYS = {p["provider"] for p in PROVIDERS}
 
 
 def _provider_catalog():
+    dev_stub = (os.getenv("OAUTH_DEV_STUB", "").strip() == "1")
+
     # Apple Health no está soportado vía web OAuth en este MVP.
     apple_enabled = False
     apple_reason = "Próximamente (requiere integración nativa iOS)."
 
     # Importante: no dependemos de defaults en settings.py para "enabled".
     # Solo habilitamos si hay variables de entorno configuradas (producción real).
-    gf_enabled = bool((os.getenv("GF_WEB_CLIENT_ID", "") or "").strip()) and bool((os.getenv("GF_WEB_CLIENT_SECRET", "") or "").strip()) and bool((os.getenv("GF_WEB_REDIRECT_URI", "") or "").strip())
-    gf_reason = "Próximamente (Google Fit en configuración)." if not gf_enabled else ""
+    gf_web = getattr(settings, "GOOGLE_FIT", {}).get("WEB", {})
+    gf_enabled = bool((gf_web.get("CLIENT_ID") or "").strip()) and bool((gf_web.get("CLIENT_SECRET") or "").strip()) and bool((gf_web.get("REDIRECT_URI") or "").strip())
+    gf_reason = "Configura credenciales de Google Fit" if not gf_enabled else ""
+    if dev_stub:
+        gf_enabled = True
+        gf_reason = ""
 
     fb_enabled = bool((os.getenv("FITBIT_CLIENT_ID", "") or "").strip()) and bool((os.getenv("FITBIT_CLIENT_SECRET", "") or "").strip()) and bool((os.getenv("FITBIT_REDIRECT_URI", "") or "").strip())
     fb_reason = "Configura credenciales de Fitbit" if not fb_enabled else ""
@@ -231,6 +237,16 @@ def device_connect(request, provider):
 
     if not _validate_provider(provider):
         return Response({"detail": "Proveedor inválido"}, status=400)
+
+    # No permitir connect si el proveedor está deshabilitado por configuración.
+    try:
+        catalog = {p["provider"]: p for p in _provider_catalog() if isinstance(p, dict) and p.get("provider")}
+        meta = catalog.get(provider) or {}
+        if meta and meta.get("enabled") is False:
+            return Response({"detail": meta.get("disabled_reason") or "Proveedor no disponible"}, status=400)
+    except Exception:
+        # No bloquear por fallos de catálogo.
+        pass
 
     obj, _ = DeviceConnection.objects.get_or_create(user=request.user, provider=provider)
 

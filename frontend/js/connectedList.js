@@ -128,7 +128,7 @@
           .join("");
 
         const buttonClass = isOn ? "btn btn-outline-gold" : "btn btn-secondary";
-        const buttonLabel = !enabled ? "Próximamente" : (isOn ? "Desconectar" : "Conectar");
+        const buttonLabel = isOn ? "Desconectar" : "Conectar";
 
         card.innerHTML = `
           <div class="device-info">

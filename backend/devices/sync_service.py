@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+import os
 from dataclasses import dataclass
 from typing import Any
 
@@ -244,7 +245,9 @@ def _whoop_fetch_collection(user: User, access_token: str, *, resource_type: str
 
 
 def sync_device(user: User, provider: str) -> SyncResult:
-    if not _is_premium_or_trial(user):
+    dev_stub = (os.getenv("OAUTH_DEV_STUB", "").strip() == "1")
+
+    if not dev_stub and not _is_premium_or_trial(user):
         return SyncResult(
             ok=False,
             status=402,
@@ -264,6 +267,67 @@ def sync_device(user: User, provider: str) -> SyncResult:
             conn = DeviceConnection.objects.create(user=user, provider=provider)
 
     if provider == "google_fit":
+        # QA local: sync fake para validar flujo completo sin credenciales reales.
+        if dev_stub and (conn.access_token or "").startswith("stub-"):
+            now = timezone.now()
+            start = conn.last_sync_at or (now - timezone.timedelta(hours=24))
+            steps = 7342
+            sleep_minutes = 432
+            metrics = {
+                "steps": steps,
+                "calories": 512.3,
+                "distance_m": 3850.5,
+                "sleep_minutes": sleep_minutes,
+                "avg_heart_rate_bpm": 61.2,
+                "start_time": start.isoformat(),
+                "end_time": now.isoformat(),
+                "data_quality": "ok",
+                "note": "dev_stub",
+            }
+
+            FitnessSync.objects.create(
+                user=user,
+                provider="google_fit",
+                start_time=start,
+                end_time=now,
+                metrics=metrics,
+                raw={"stub": True},
+            )
+
+            try:
+                db_user = User.objects.get(id=user.id)
+                current_scores = db_user.scores if db_user.scores else {}
+                current_scores["s_steps"] = _score_from_steps(steps)
+                current_scores["s_sleep"] = _score_from_sleep_minutes(sleep_minutes)
+                db_user.scores = current_scores
+                db_user.save(update_fields=["scores"])
+            except User.DoesNotExist:
+                pass
+
+            conn.status = "connected"
+            conn.last_sync_at = now
+            conn.save(update_fields=["status", "last_sync_at", "updated_at"])
+
+            return SyncResult(
+                True,
+                200,
+                {
+                    "ok": True,
+                    "provider": "google_fit",
+                    "metrics": metrics,
+                    "scores": {
+                        "s_steps": _score_from_steps(steps),
+                        "s_sleep": _score_from_sleep_minutes(sleep_minutes),
+                    },
+                    "device": {
+                        "provider": conn.provider,
+                        "status": conn.status,
+                        "last_sync_at": conn.last_sync_at.isoformat() if conn.last_sync_at else None,
+                        "updated_at": conn.updated_at.isoformat() if conn.updated_at else None,
+                    },
+                },
+            )
+
         if conn.status != "connected" or not conn.access_token:
             return SyncResult(False, 400, {"ok": False, "error": "Google Fit no conectado"})
 

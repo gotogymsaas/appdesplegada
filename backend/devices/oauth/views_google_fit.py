@@ -3,6 +3,7 @@ import requests
 import logging
 from datetime import timedelta
 from urllib.parse import urlencode
+import os
 
 from django.conf import settings
 from django.core import signing
@@ -30,6 +31,10 @@ def google_fit_authorize(request):
     """
 
     logger.info("🚀 Entrando a google_fit_authorize")
+
+    # Modo stub (QA local): permite probar UX sin credenciales reales.
+    # IMPORTANT: No usar en producción.
+    dev_stub = (os.getenv("OAUTH_DEV_STUB", "").strip() == "1")
     logger.info(f"📥 Query params: {request.query_params}")
 
     token = request.query_params.get("token")
@@ -58,6 +63,21 @@ def google_fit_authorize(request):
             {"detail": "Token inválido o expirado"},
             status=401
         )
+
+    if dev_stub:
+        conn, _ = DeviceConnection.objects.get_or_create(user=user, provider="google_fit")
+        conn.status = "connected"
+        conn.access_token = "stub-access-token-google_fit"
+        conn.refresh_token = "stub-refresh-token-google_fit"
+        conn.token_expires_at = timezone.now() + timedelta(days=30)
+        conn.save(update_fields=["status", "access_token", "refresh_token", "token_expires_at", "updated_at"])
+
+        frontend_url = getattr(
+            settings,
+            "GOOGLE_FIT_FRONTEND_REDIRECT",
+            "http://127.0.0.1:5500/pages/settings/Dispositivos.html",
+        )
+        return redirect(f"{frontend_url}?oauth=success&provider=google_fit")
 
     client_id = settings.GOOGLE_FIT["WEB"]["CLIENT_ID"]
     redirect_uri = settings.GOOGLE_FIT["WEB"]["REDIRECT_URI"]
@@ -104,6 +124,8 @@ def _get_uid_from_state(state: str) -> int:
 @authentication_classes([])
 @permission_classes([AllowAny])
 def google_fit_callback(request):
+    dev_stub = (os.getenv("OAUTH_DEV_STUB", "").strip() == "1")
+
     error = request.query_params.get("error")
     code = request.query_params.get("code")
     state = request.query_params.get("state")
@@ -112,6 +134,27 @@ def google_fit_callback(request):
         return Response({"ok": False, "error": error}, status=400)
 
     if not code or not state:
+        if dev_stub and state:
+            # Permite callback "manual" en QA local aunque no haya code.
+            try:
+                user_id = _get_uid_from_state(state)
+                User = get_user_model()
+                user = User.objects.get(id=user_id)
+                conn, _ = DeviceConnection.objects.get_or_create(user=user, provider="google_fit")
+                conn.status = "connected"
+                conn.access_token = "stub-access-token-google_fit"
+                conn.refresh_token = "stub-refresh-token-google_fit"
+                conn.token_expires_at = timezone.now() + timedelta(days=30)
+                conn.save(update_fields=["status", "access_token", "refresh_token", "token_expires_at", "updated_at"])
+                frontend_url = getattr(
+                    settings,
+                    "GOOGLE_FIT_FRONTEND_REDIRECT",
+                    "http://127.0.0.1:5500/pages/settings/Dispositivos.html",
+                )
+                return redirect(f"{frontend_url}?oauth=success&provider=google_fit")
+            except Exception:
+                pass
+
         return Response({"ok": False, "error": "Faltan code o state"}, status=400)
 
     try:

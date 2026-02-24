@@ -101,6 +101,7 @@ INSTALLED_APPS = [
 # ======================
 MIDDLEWARE = [
     'api.middleware.AzureInternalHostMiddleware',
+    'api.middleware.BenchmarkChatMiddleware',
     'api.middleware.CorsMiddleware',  # PRIMERO - Middleware personalizado
     'corsheaders.middleware.CorsMiddleware',  # SEGUNDO - CorsHeaders
     'django.middleware.security.SecurityMiddleware',
@@ -321,14 +322,8 @@ if AZURE_STORAGE_ACCOUNT_NAME and AZURE_STORAGE_ACCOUNT_KEY:
 
 GOOGLE_FIT = {
     "WEB": {
-        "CLIENT_ID": os.getenv(
-            "GF_WEB_CLIENT_ID",
-            "16190961867-j27bvojfhann46tqf8p1ba75b5imfdgb.apps.googleusercontent.com"
-        ),
-        "CLIENT_SECRET": os.getenv(
-            "GF_WEB_CLIENT_SECRET",
-            "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"
-        ),
+        "CLIENT_ID": os.getenv("GF_WEB_CLIENT_ID", ""),
+        "CLIENT_SECRET": os.getenv("GF_WEB_CLIENT_SECRET", ""),
         "REDIRECT_URI": os.getenv(
             "GF_WEB_REDIRECT_URI",
             "http://127.0.0.1:8000/oauth/google_fit/callback/"
