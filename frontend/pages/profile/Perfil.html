@@ -302,8 +302,16 @@
                     background: rgba(15, 191, 176, 0.08);
                 }
 
+                .mission-action-btn.claim-ready {
+                    animation: claim-pulse 1.8s ease-in-out infinite;
+                }
+
                 .mission-item.completed {
                     border-color: rgba(15, 191, 176, 0.4);
+                }
+
+                .mission-item.newly-completed {
+                    animation: mission-complete-pop 520ms ease;
                 }
 
                 .wow-row {
@@ -332,10 +340,60 @@
                     font-weight: 600;
                 }
 
+                .wow-value.bump {
+                    animation: wow-bump 380ms ease;
+                }
+
+                .wow-row.claim-success {
+                    animation: claim-success-flash 520ms ease;
+                }
+
                 .claim-feedback {
                     color: var(--text-muted);
                     font-size: 11px;
                     margin-top: 6px;
+                }
+
+                .evolution-section.reveal {
+                    animation: evo-reveal 300ms ease;
+                }
+
+                @keyframes wow-bump {
+                    0% { transform: scale(1); }
+                    50% { transform: scale(1.18); }
+                    100% { transform: scale(1); }
+                }
+
+                @keyframes claim-pulse {
+                    0%, 100% { box-shadow: 0 0 0 rgba(15, 191, 176, 0); }
+                    50% { box-shadow: 0 0 12px rgba(15, 191, 176, 0.35); }
+                }
+
+                @keyframes claim-success-flash {
+                    0% { box-shadow: 0 0 0 rgba(212, 180, 106, 0); }
+                    50% { box-shadow: 0 0 16px rgba(212, 180, 106, 0.35); }
+                    100% { box-shadow: 0 0 0 rgba(212, 180, 106, 0); }
+                }
+
+                @keyframes mission-complete-pop {
+                    0% { transform: scale(1); }
+                    45% { transform: scale(1.02); }
+                    100% { transform: scale(1); }
+                }
+
+                @keyframes evo-reveal {
+                    0% { opacity: 0.72; transform: translateY(4px); }
+                    100% { opacity: 1; transform: translateY(0); }
+                }
+
+                @media (prefers-reduced-motion: reduce) {
+                    .mission-action-btn.claim-ready,
+                    .mission-item.newly-completed,
+                    .wow-value.bump,
+                    .wow-row.claim-success,
+                    .evolution-section.reveal {
+                        animation: none !important;
+                    }
                 }
                 
                 .badge-item {
@@ -533,7 +591,10 @@
         </div>
         <div class="wow-row">
             <div class="wow-pill">Puntos <span class="wow-value" id="wowPoints">0</span></div>
-            <button id="claimDailyBtn" class="mission-action-btn" type="button" onclick="claimDailyReward()">Reclamar recompensa diaria</button>
+            <div style="display:flex; gap:8px; align-items:center;">
+                <button id="sfxToggleBtn" class="mission-action-btn" type="button" onclick="toggleSfx()">SFX: ON</button>
+                <button id="claimDailyBtn" class="mission-action-btn" type="button" onclick="claimDailyReward()">Reclamar recompensa diaria</button>
+            </div>
         </div>
         <div id="claimDailyFeedback" class="claim-feedback"></div>
         <div class="weekly-hint" id="weeklyHint">Activa tu racha con 1 acción al día: check-in, hábito o sincronización.</div>
@@ -585,6 +646,11 @@
 
         let gtgLastProfileFetchAt = 0;
         const GTG_PROFILE_FETCH_TTL_MS = 15000;
+        let gtgPrevMissionCompleted = {};
+        let gtgPrevWowPoints = null;
+        let gtgGamificationRendered = false;
+        let gtgAudioCtx = null;
+        let gtgSfxEnabled = localStorage.getItem('gtg_sfx_enabled') !== '0';
 
         function getStoredUser() {
             const raw = localStorage.getItem("user");
@@ -631,6 +697,80 @@
             const action = getMissionAction(key);
             if (!action || !action.href) return;
             window.location.href = action.href;
+        }
+
+        function prefersReducedMotion() {
+            return !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+        }
+
+        function syncSfxToggleUi() {
+            const sfxBtn = document.getElementById('sfxToggleBtn');
+            if (!sfxBtn) return;
+            sfxBtn.textContent = gtgSfxEnabled ? 'SFX: ON' : 'SFX: OFF';
+            sfxBtn.style.opacity = gtgSfxEnabled ? '1' : '0.7';
+        }
+
+        function toggleSfx() {
+            gtgSfxEnabled = !gtgSfxEnabled;
+            localStorage.setItem('gtg_sfx_enabled', gtgSfxEnabled ? '1' : '0');
+            syncSfxToggleUi();
+            showToast(gtgSfxEnabled ? 'Sonidos activados' : 'Sonidos desactivados', 'success');
+        }
+
+        function playPositiveSfx(kind = 'success') {
+            if (!gtgSfxEnabled || prefersReducedMotion()) return;
+            try {
+                const AudioCtx = window.AudioContext || window.webkitAudioContext;
+                if (!AudioCtx) return;
+                if (!gtgAudioCtx) gtgAudioCtx = new AudioCtx();
+                if (gtgAudioCtx.state === 'suspended') {
+                    gtgAudioCtx.resume();
+                }
+                const now = gtgAudioCtx.currentTime;
+                const osc = gtgAudioCtx.createOscillator();
+                const gain = gtgAudioCtx.createGain();
+                const baseFreq = kind === 'claim' ? 740 : (kind === 'mission' ? 660 : 620);
+                osc.type = 'triangle';
+                osc.frequency.setValueAtTime(baseFreq, now);
+                osc.frequency.exponentialRampToValueAtTime(baseFreq * 1.22, now + 0.09);
+                gain.gain.setValueAtTime(0.0001, now);
+                gain.gain.exponentialRampToValueAtTime(0.04, now + 0.015);
+                gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.12);
+                osc.connect(gain);
+                gain.connect(gtgAudioCtx.destination);
+                osc.start(now);
+                osc.stop(now + 0.13);
+            } catch (e) {
+                if (window.GTG_DEBUG) console.warn('[Perfil] playPositiveSfx falló', e);
+            }
+        }
+
+        function triggerSuccessHaptic() {
+            try {
+                if (navigator && typeof navigator.vibrate === 'function') {
+                    navigator.vibrate(20);
+                }
+            } catch (e) {
+                if (window.GTG_DEBUG) console.warn('[Perfil] vibrate falló', e);
+            }
+        }
+
+        function animateWowPointsChange(previousPoints, currentPoints) {
+            if (previousPoints === null || currentPoints <= previousPoints) return;
+            const wowPoints = document.getElementById('wowPoints');
+            const wowRow = document.querySelector('.wow-row');
+            if (wowPoints) {
+                wowPoints.classList.remove('bump');
+                void wowPoints.offsetWidth;
+                wowPoints.classList.add('bump');
+            }
+            if (wowRow) {
+                wowRow.classList.remove('claim-success');
+                void wowRow.offsetWidth;
+                wowRow.classList.add('claim-success');
+            }
+            playPositiveSfx('claim');
+            triggerSuccessHaptic();
         }
 
         function applyUserToUI(user, opts = {}) {
@@ -708,6 +848,10 @@
                     if (evo) evo.style.display = 'none';
                 } else {
                     evo.style.display = '';
+                    if (!gtgGamificationRendered) {
+                        evo.classList.add('reveal');
+                        gtgGamificationRendered = true;
+                    }
                     const identityLabel = document.getElementById('identityLabel');
                     if (identityLabel && g.identity && g.identity.label) {
                         identityLabel.textContent = g.identity.label;
@@ -724,6 +868,7 @@
                     const missionsEl = document.getElementById('missionsContainer');
                     if (missionsEl) {
                         const items = (g.missions.items && Array.isArray(g.missions.items)) ? g.missions.items : [];
+                        const nextMissionCompleted = {};
                         missionsEl.innerHTML = '';
                         items.forEach((m) => {
                             if (!m) return;
@@ -734,6 +879,7 @@
                             const status = completed ? '✓' : `${progress}/${targetVal}`;
 
                             const key = String(m.key || '').toLowerCase();
+                            nextMissionCompleted[key] = completed;
                             let howTo = 'Haz 1 acción válida hoy para activar tu evolución.';
                             if (key === 'checkins') {
                                 howTo = 'Responde el check-in (Cuestionario IF) para contar un registro.';
@@ -744,7 +890,13 @@
                             }
 
                             const row = document.createElement('div');
-                                                        row.className = `mission-item ${completed ? 'completed' : ''}`.trim();
+                            row.className = `mission-item ${completed ? 'completed' : ''}`.trim();
+                            const wasCompleted = !!gtgPrevMissionCompleted[key];
+                            if (completed && wasCompleted === false && gtgGamificationRendered) {
+                                row.classList.add('newly-completed');
+                                playPositiveSfx('mission');
+                                triggerSuccessHaptic();
+                            }
                                                         const action = completed ? null : getMissionAction(key);
                                                         const actionButton = action
                                                                 ? `<button class="mission-action-btn" type="button" onclick="runMissionAction('${escapeHtml(key)}')">${escapeHtml(action.label)}</button>`
@@ -761,18 +913,24 @@
                             `;
                             missionsEl.appendChild(row);
                         });
+                        gtgPrevMissionCompleted = nextMissionCompleted;
                     }
 
                                         const wow = g.wow || {};
+                                        const currentWowPoints = Number(wow.points_total || 0);
                                         const wowPoints = document.getElementById('wowPoints');
-                                        if (wowPoints) wowPoints.textContent = String(Number(wow.points_total || 0));
+                                        if (wowPoints) wowPoints.textContent = String(currentWowPoints);
+                                        animateWowPointsChange(gtgPrevWowPoints, currentWowPoints);
+                                        gtgPrevWowPoints = currentWowPoints;
                                         const claimBtn = document.getElementById('claimDailyBtn');
+                                        syncSfxToggleUi();
                                         const claimFeedback = document.getElementById('claimDailyFeedback');
                                         const dailyReward = wow.daily_reward || {};
                                         const rewardAmount = Number(dailyReward.amount || 0);
                                         const claimedToday = !!dailyReward.claimed_today;
                                         if (claimBtn) {
                                                 claimBtn.disabled = claimedToday;
+                                            claimBtn.classList.toggle('claim-ready', !claimedToday);
                                                 claimBtn.style.opacity = claimedToday ? '0.6' : '1';
                                                 claimBtn.style.cursor = claimedToday ? 'default' : 'pointer';
                                                 claimBtn.textContent = claimedToday
@@ -932,6 +1090,7 @@
         }
         
         document.addEventListener('DOMContentLoaded', () => {
+            syncSfxToggleUi();
             const user = getStoredUser();
             
             if (!user) {
