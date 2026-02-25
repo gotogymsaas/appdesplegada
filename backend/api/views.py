@@ -198,6 +198,276 @@ def _bench_n8n_post(request, url: str, payload: dict, timeout: int):
     return resp
 
 
+def _hito5_env_bool(name: str, default: bool = False) -> bool:
+    raw = os.getenv(name)
+    if raw is None:
+        return bool(default)
+    return str(raw).strip().lower() in ("1", "true", "yes", "y", "on")
+
+
+def _hito5_env_float(name: str, default: float) -> float:
+    raw = os.getenv(name)
+    if raw is None:
+        return float(default)
+    try:
+        val = float(raw)
+    except Exception:
+        return float(default)
+    if val < 0.0:
+        return 0.0
+    if val > 100.0:
+        return 100.0
+    return val
+
+
+def _hito5_release_context(user, session_id: str) -> dict:
+    enabled = _hito5_env_bool("HITO5_RELEASE_ENABLED", False)
+    rollback_force = _hito5_env_bool("HITO5_ROLLBACK_FORCE", False)
+    canary_percent = _hito5_env_float("HITO5_CANARY_PERCENT", 10.0)
+    salt = os.getenv("HITO5_CANARY_SALT", "gotogym-hito5")
+
+    if not enabled:
+        return {
+            "enabled": False,
+            "rollback_force": rollback_force,
+            "canary_percent": canary_percent,
+            "assigned": True,
+            "variant": "legacy",
+            "bucket": None,
+            "reason": "release_disabled",
+        }
+
+    if rollback_force:
+        return {
+            "enabled": True,
+            "rollback_force": True,
+            "canary_percent": canary_percent,
+            "assigned": False,
+            "variant": "rollback",
+            "bucket": None,
+            "reason": "rollback_forced",
+        }
+
+    if not user:
+        return {
+            "enabled": True,
+            "rollback_force": False,
+            "canary_percent": canary_percent,
+            "assigned": False,
+            "variant": "control",
+            "bucket": None,
+            "reason": "unauthenticated",
+        }
+
+    key = f"{getattr(user, 'id', '')}:{session_id}:{salt}"
+    digest = hashlib.sha256(key.encode("utf-8")).hexdigest()
+    bucket = int(digest[:8], 16) % 100
+    assigned = float(bucket) < float(canary_percent)
+    return {
+        "enabled": True,
+        "rollback_force": False,
+        "canary_percent": canary_percent,
+        "assigned": bool(assigned),
+        "variant": "canary" if assigned else "control",
+        "bucket": int(bucket),
+        "reason": "bucket_assignment",
+    }
+
+
+def _hito5_should_inject_qaf(release_ctx: dict) -> bool:
+    if not isinstance(release_ctx, dict):
+        return True
+    if not bool(release_ctx.get("enabled")):
+        return True
+    if bool(release_ctx.get("rollback_force")):
+        return False
+    return bool(release_ctx.get("assigned"))
+
+
+def _hito5_should_use_fused_runtime(release_ctx: dict) -> bool:
+    fused_enabled = _hito5_env_bool("HITO5_FUSED_MODE_ENABLED", False)
+    if not fused_enabled:
+        return False
+
+    if not isinstance(release_ctx, dict):
+        return True
+
+    if bool(release_ctx.get("rollback_force")):
+        return False
+
+    canary_only = _hito5_env_bool("HITO5_FUSED_MODE_CANARY_ONLY", True)
+    if not canary_only:
+        return True
+
+    return bool(release_ctx.get("enabled")) and bool(release_ctx.get("assigned"))
+
+
+def _hito5_compose_fused_output(
+    *,
+    message: str,
+    qaf_cognition: dict | None,
+    protocol_cognitive_body: dict | None,
+    preferred_outputs: list[str] | None = None,
+) -> str:
+    candidates = [str(x).strip() for x in (preferred_outputs or []) if str(x or "").strip()]
+    if candidates:
+        return candidates[0]
+
+    decision = qaf_cognition.get("decision") if isinstance(qaf_cognition, dict) and isinstance(qaf_cognition.get("decision"), dict) else {}
+    mode = str(decision.get("mode") or "").strip().lower()
+    dtyp = str(decision.get("type") or "").strip().lower()
+
+    actions = decision.get("next_3_actions") if isinstance(decision.get("next_3_actions"), list) else []
+    action_titles = [
+        str(row.get("title") or "").strip()
+        for row in actions
+        if isinstance(row, dict) and str(row.get("title") or "").strip()
+    ][:3]
+
+    follow = decision.get("follow_up_questions") if isinstance(decision.get("follow_up_questions"), list) else []
+    follow_prompt = ""
+    for row in follow:
+        if isinstance(row, dict) and str(row.get("prompt") or "").strip():
+            follow_prompt = str(row.get("prompt") or "").strip()
+            break
+
+    header = "Activé el modo cognitivo QAF"
+    if mode:
+        header = f"Activé el modo QAF: {mode}"
+
+    lines = [header + "."]
+    if action_titles:
+        lines.append("")
+        for idx, title in enumerate(action_titles, start=1):
+            lines.append(f"{idx}) {title}.")
+
+    if dtyp in ("ask_clarifying", "needs_confirmation") and follow_prompt:
+        lines.append("")
+        lines.append(follow_prompt)
+
+    if isinstance(protocol_cognitive_body, dict):
+        summary = protocol_cognitive_body.get("summary") if isinstance(protocol_cognitive_body.get("summary"), dict) else {}
+        week_goal = str(summary.get("week_goal") or "").strip()
+        if week_goal:
+            lines.append("")
+            lines.append(f"Meta semanal sugerida: {week_goal}.")
+
+    result = "\n".join(lines).strip()
+    if result:
+        return result
+
+    msg = str(message or "").strip()
+    if msg:
+        return (
+            "Recibí tu mensaje y activé una respuesta local segura sin n8n. "
+            "Puedo orientarte con pasos concretos si me confirmas si quieres priorizar nutrición, entrenamiento o salud."
+        )
+
+    return "Modo local activo. Comparte tu objetivo de hoy y te doy 3 acciones concretas."
+
+
+def _hito5_apply_response_guardrail(output_text: str, qaf_cognition: dict | None) -> tuple[str, bool]:
+    if not isinstance(qaf_cognition, dict):
+        return output_text, False
+
+    decision = qaf_cognition.get("decision") if isinstance(qaf_cognition.get("decision"), dict) else {}
+    flags = qaf_cognition.get("flags") if isinstance(qaf_cognition.get("flags"), dict) else {}
+    needs_human = bool(flags.get("human_validation_required")) or str(decision.get("type") or "") in ("needs_confirmation", "ask_clarifying")
+
+    if not needs_human:
+        return output_text, False
+
+    follow = decision.get("follow_up_questions") if isinstance(decision.get("follow_up_questions"), list) else []
+    prompt = ""
+    for row in follow:
+        if isinstance(row, dict) and str(row.get("prompt") or "").strip():
+            prompt = str(row.get("prompt") or "").strip()
+            break
+
+    base = str(output_text or "").strip()
+    low = base.lower()
+    if "confirm" in low or "¿" in base:
+        return base, False
+
+    if not prompt:
+        prompt = "Antes de continuar, confirma si te sientes en un estado seguro para tomar esta decisión hoy."
+    merged = f"{base}\n\n{prompt}".strip()
+    return merged, True
+
+
+def _hito5_write_trace(
+    *,
+    request,
+    user,
+    session_id: str,
+    release_ctx: dict,
+    qaf_cognition: dict | None,
+    protocol_cognitive_body: dict | None,
+    status_code: int,
+    guardrail_applied: bool,
+    error: str = "",
+) -> None:
+    try:
+        bench = _bench_event_get(request) if request else None
+        latency_total = None
+        latency_n8n = None
+        latency_qaf = None
+        if isinstance(bench, dict):
+            latency_total = bench.get("latency_ms_total")
+            latency_n8n = bench.get("latency_ms_n8n")
+            latency_qaf = bench.get("latency_ms_qaf")
+
+        decision = qaf_cognition.get("decision") if isinstance(qaf_cognition, dict) and isinstance(qaf_cognition.get("decision"), dict) else {}
+        flags = qaf_cognition.get("flags") if isinstance(qaf_cognition, dict) and isinstance(qaf_cognition.get("flags"), dict) else {}
+
+        before_json = {
+            "session_id": str(session_id or ""),
+            "release": {
+                "enabled": bool(release_ctx.get("enabled")) if isinstance(release_ctx, dict) else False,
+                "variant": str(release_ctx.get("variant") or "") if isinstance(release_ctx, dict) else "",
+                "assigned": bool(release_ctx.get("assigned")) if isinstance(release_ctx, dict) else False,
+                "bucket": release_ctx.get("bucket") if isinstance(release_ctx, dict) else None,
+                "canary_percent": release_ctx.get("canary_percent") if isinstance(release_ctx, dict) else None,
+            },
+            "qaf_mode": str(decision.get("mode") or ""),
+            "qaf_decision_type": str(decision.get("type") or ""),
+            "human_validation_required": bool(flags.get("human_validation_required")),
+        }
+
+        after_json = {
+            "status_code": int(status_code or 0),
+            "guardrail_applied": bool(guardrail_applied),
+            "protocol_present": bool(isinstance(protocol_cognitive_body, dict)),
+            "latency_ms_total": latency_total,
+            "latency_ms_n8n": latency_n8n,
+            "latency_ms_qaf": latency_qaf,
+            "error": str(error or "")[:400],
+        }
+
+        req = getattr(request, "_request", request)
+        ip = ""
+        ua = ""
+        try:
+            ip = req.META.get("HTTP_X_FORWARDED_FOR", "").split(",")[0].strip() or req.META.get("REMOTE_ADDR", "")
+            ua = req.META.get("HTTP_USER_AGENT", "")
+        except Exception:
+            pass
+
+        AuditLog.objects.create(
+            actor=user if getattr(user, "is_authenticated", False) else None,
+            action="llm.hito5.inference",
+            entity_type="chat",
+            entity_id=str(getattr(user, "id", "") or "guest"),
+            before_json=before_json,
+            after_json=after_json,
+            reason="hito5_runtime_trace",
+            ip=ip or None,
+            user_agent=str(ua or "")[:500],
+        )
+    except Exception:
+        pass
+
+
 def _normalize_height_cm_from_user_value(user_height_value):
     """Normaliza una altura almacenada en `User.height` a centímetros.
 
@@ -4016,6 +4286,16 @@ def chat_n8n(request):
         elif not session_id or session_id == 'invitado':
             session_id = f"guest_{uuid.uuid4().hex}"
 
+        release_ctx = _hito5_release_context(user, session_id)
+        hito5_inject_qaf = _hito5_should_inject_qaf(release_ctx)
+        _bench_event_note(
+            request,
+            hito5_release_enabled=bool(release_ctx.get("enabled")),
+            hito5_variant=str(release_ctx.get("variant") or ""),
+            hito5_canary_assigned=bool(release_ctx.get("assigned")),
+            hito5_rollback_force=bool(release_ctx.get("rollback_force")),
+        )
+
         # Router UX transversal (13 experiencias):
         # - confirmar intención (ver último vs iniciar nuevo)
         # - resolver "ver último" sin activar flujo de captura/medición
@@ -7124,6 +7404,26 @@ def chat_n8n(request):
                     want_motivation = True
                 else:
                     msg_low = str(message or '').lower()
+
+                    # Guardrail UX: no activar motivación solo por saludo/despedida/cortesía.
+                    try:
+                        is_greeting_or_farewell = bool(
+                            re.search(
+                                r"\b(hola|buenas|buenos\s+d[ií]as|buenas\s+tardes|buenas\s+noches|saludos|gracias|chao|chau|ad[ií]os|me\s+voy|a\s+dormir|solo\s+saludarte|probarte)\b",
+                                msg_low,
+                            )
+                        )
+                        explicit_motivation_text = bool(
+                            re.search(
+                                r"\b(necesito\s+motivaci[oó]n|quiero\s+motivaci[oó]n|activa\s+motivaci[oó]n|dame\s+motivaci[oó]n|ay[uú]dame\s+a\s+motivarme)\b",
+                                msg_low,
+                            )
+                        )
+                        if is_greeting_or_farewell and not explicit_motivation_text:
+                            want_motivation = False
+                    except Exception:
+                        pass
+
                     if re.search(
                         r"\b("
                         r"motivaci[oó]n|"
@@ -7253,6 +7553,17 @@ def chat_n8n(request):
                     pass
 
                 motivation_requested = bool(want_motivation)
+
+                # Estado del modo Renacer para controlar CTAs y evitar loops de botones.
+                renacer_mode_active = False
+                try:
+                    mem_local = cs.get('motivation_memory') if isinstance(cs.get('motivation_memory'), dict) else {}
+                    ren_until = str(mem_local.get('renacer_until') or '').strip()
+                    if ren_until:
+                        until_d = date.fromisoformat(ren_until[:10])
+                        renacer_mode_active = bool(date.today() <= until_d)
+                except Exception:
+                    renacer_mode_active = False
 
                 if want_motivation:
                     # Nombre amigable para copy (sin depender de n8n)
@@ -7389,12 +7700,32 @@ def chat_n8n(request):
                                 'text': '✅ Lo hago',
                                 'payload': {'motivation_action': {'accept': True, 'challenge_id': cid}},
                             })
-                            motivation_quick_actions_out.append({
-                                'label': '🟡 Modo fácil 7 días',
-                                'type': 'message',
-                                'text': '🟡 Modo fácil 7 días',
-                                'payload': {'motivation_action': {'mode': 'renacer_7d'}},
-                            })
+
+                            # Evitar loop: no reofrecer Modo fácil si ya está activo
+                            # o si el usuario acaba de pulsar una acción de motivación.
+                            just_acted = isinstance(ma, dict)
+                            if (not renacer_mode_active) and (not just_acted):
+                                motivation_quick_actions_out.append({
+                                    'label': '🟡 Modo fácil 7 días',
+                                    'type': 'message',
+                                    'text': '🟡 Modo fácil 7 días',
+                                    'payload': {'motivation_action': {'mode': 'renacer_7d'}},
+                                })
+
+                            # Si ya aceptó hoy, ofrecer continuidad más intuitiva en lugar de repetir loop.
+                            if isinstance(ma, dict) and ma.get('accept') is True:
+                                motivation_quick_actions_out.append({
+                                    'label': 'Mantener estabilidad',
+                                    'type': 'message',
+                                    'text': 'Mantener estabilidad',
+                                    'payload': {'motivation_request': {'preferences': {'pressure': 'suave'}}},
+                                })
+                                motivation_quick_actions_out.append({
+                                    'label': 'Subir reto mañana',
+                                    'type': 'message',
+                                    'text': 'Subir reto mañana',
+                                    'payload': {'motivation_request': {'preferences': {'pressure': 'firme'}}},
+                                })
                         motivation_quick_actions_out = motivation_quick_actions_out[:6]
                     except Exception:
                         pass
@@ -8387,7 +8718,7 @@ def chat_n8n(request):
                     dec = qaf_cognition.get('decision') if isinstance(qaf_cognition.get('decision'), dict) else {}
                     mode = str(dec.get('mode') or '').strip().lower()
                     dtyp = str(dec.get('type') or '').strip().lower()
-                    if mode in ('quantum',) or dtyp in ('ask_clarifying', 'needs_confirmation'):
+                    if hito5_inject_qaf and (mode in ('quantum',) or dtyp in ('ask_clarifying', 'needs_confirmation')):
                         actions = dec.get('next_3_actions') if isinstance(dec.get('next_3_actions'), list) else []
                         titles = [str(a.get('title') or '').strip() for a in actions if isinstance(a, dict) and a.get('title')]
                         titles = [t for t in titles if t][:3]
@@ -8491,8 +8822,8 @@ def chat_n8n(request):
             "attachment_text": attachment_text,
             "attachment_text_diagnostic": attachment_text_diagnostic,
             "qaf": qaf_result,
-            "qaf_cognition": qaf_cognition,
-            "protocol_cognitive_body": protocol_cognitive_body,
+            "qaf_cognition": qaf_cognition if hito5_inject_qaf else None,
+            "protocol_cognitive_body": protocol_cognitive_body if hito5_inject_qaf else None,
             "qaf_context": {"vision": vision_parsed} if isinstance(vision_parsed, dict) else None,
             "qaf_metabolic": metabolic_result,
             "qaf_meal_plan": meal_plan_result,
@@ -8506,6 +8837,36 @@ def chat_n8n(request):
             "integrations": integrations_payload,
             "documents": documents_payload,
         }
+
+        try:
+            payload.setdefault("release", {})
+            payload["release"]["hito5"] = {
+                "enabled": bool(release_ctx.get("enabled")),
+                "variant": str(release_ctx.get("variant") or ""),
+                "assigned": bool(release_ctx.get("assigned")),
+                "bucket": release_ctx.get("bucket"),
+                "canary_percent": release_ctx.get("canary_percent"),
+                "rollback_force": bool(release_ctx.get("rollback_force")),
+            }
+        except Exception:
+            pass
+
+        try:
+            if hito5_inject_qaf and isinstance(qaf_cognition, dict):
+                decision = qaf_cognition.get("decision") if isinstance(qaf_cognition.get("decision"), dict) else {}
+                flags = qaf_cognition.get("flags") if isinstance(qaf_cognition.get("flags"), dict) else {}
+                needs_human = bool(flags.get("human_validation_required")) or str(decision.get("type") or "") in ("needs_confirmation", "ask_clarifying")
+                if needs_human:
+                    payload["human_in_the_loop"] = {
+                        "required": True,
+                        "reason": str(decision.get("type") or "needs_confirmation"),
+                        "mode": str(decision.get("mode") or ""),
+                    }
+                    payload.setdefault("system_rules", {})
+                    payload["system_rules"]["human_in_the_loop_required"] = True
+                    payload["system_rules"]["llm_role"] = "narrate_only"
+        except Exception:
+            pass
 
         # Enriquecer reglas para n8n (mejor tono / framing) si se calculó motivación.
         try:
@@ -8524,6 +8885,101 @@ def chat_n8n(request):
                 }
         except Exception:
             pass
+
+        use_fused_runtime = _hito5_should_use_fused_runtime(release_ctx)
+        _bench_event_note(request, hito5_fused_runtime=bool(use_fused_runtime))
+
+        if use_fused_runtime:
+            preferred_outputs = [
+                qaf_text_for_output_override,
+                metabolic_text_for_output_override,
+                posture_text_for_output_override,
+                lifestyle_text_for_output_override,
+                motivation_text_for_output_override,
+                progression_text_for_output_override,
+                meal_plan_text_for_output_override,
+                body_trend_text_for_output_override,
+            ]
+
+            output_text = _hito5_compose_fused_output(
+                message=message,
+                qaf_cognition=qaf_cognition if isinstance(qaf_cognition, dict) else None,
+                protocol_cognitive_body=protocol_cognitive_body if isinstance(protocol_cognitive_body, dict) else None,
+                preferred_outputs=preferred_outputs,
+            )
+
+            data = {
+                "output": output_text,
+                "source": "hito5_fused_local",
+            }
+
+            try:
+                merged_quick_actions = []
+                for block in [
+                    quick_actions_out,
+                    posture_quick_actions_out,
+                    lifestyle_quick_actions_out,
+                    motivation_quick_actions_out,
+                    progression_quick_actions_out,
+                ]:
+                    if isinstance(block, list):
+                        merged_quick_actions.extend([x for x in block if isinstance(x, dict)])
+                if merged_quick_actions:
+                    data["quick_actions"] = merged_quick_actions[:6]
+            except Exception:
+                pass
+
+            for key, value in [
+                ("qaf", qaf_result),
+                ("qaf_metabolic", metabolic_result),
+                ("qaf_posture", posture_result),
+                ("qaf_lifestyle", lifestyle_result),
+                ("qaf_motivation", motivation_result),
+                ("qaf_progression", progression_result),
+                ("qaf_meal_plan", meal_plan_result),
+                ("qaf_body_trend", body_trend_result),
+            ]:
+                if isinstance(value, dict):
+                    data[key] = value
+
+            guardrail_applied = False
+            try:
+                if hito5_inject_qaf:
+                    out2, applied = _hito5_apply_response_guardrail(
+                        str(data.get("output") or ""),
+                        qaf_cognition if isinstance(qaf_cognition, dict) else None,
+                    )
+                    data["output"] = out2
+                    guardrail_applied = bool(applied)
+                    if applied:
+                        _bench_event_note(request, fallback_used=True, hito5_guardrail_applied=True)
+            except Exception:
+                pass
+
+            try:
+                data.setdefault("release", {})
+                data["release"]["hito5"] = {
+                    "enabled": bool(release_ctx.get("enabled")),
+                    "variant": str(release_ctx.get("variant") or ""),
+                    "assigned": bool(release_ctx.get("assigned")),
+                    "rollback_force": bool(release_ctx.get("rollback_force")),
+                    "runtime": "fused",
+                }
+            except Exception:
+                pass
+
+            _hito5_write_trace(
+                request=request,
+                user=user,
+                session_id=session_id,
+                release_ctx=release_ctx,
+                qaf_cognition=qaf_cognition if isinstance(qaf_cognition, dict) else None,
+                protocol_cognitive_body=protocol_cognitive_body if isinstance(protocol_cognitive_body, dict) else None,
+                status_code=200,
+                guardrail_applied=guardrail_applied,
+                error="",
+            )
+            return Response(data)
 
         # 3. Enviar a n8n
         # Timeout corto por si n8n tarda
@@ -8562,6 +9018,18 @@ def chat_n8n(request):
             try:
                 if isinstance(data, dict) and isinstance(data.get('output'), str):
                     data['output'] = _extract_text_from_iframe(data['output'])
+            except Exception:
+                pass
+
+            guardrail_applied = False
+            try:
+                if isinstance(data, dict) and hito5_inject_qaf:
+                    out = str(data.get("output") or "")
+                    out2, applied = _hito5_apply_response_guardrail(out, qaf_cognition if isinstance(qaf_cognition, dict) else None)
+                    data["output"] = out2
+                    guardrail_applied = bool(applied)
+                    if applied:
+                        _bench_event_note(request, fallback_used=True, hito5_guardrail_applied=True)
             except Exception:
                 pass
 
@@ -8722,6 +9190,30 @@ def chat_n8n(request):
                             data['output'] = (body_trend_text_for_output_override.strip() + "\n\n" + out_text.strip()).strip()
             except Exception:
                 pass
+            try:
+                if isinstance(data, dict):
+                    data.setdefault("release", {})
+                    data["release"]["hito5"] = {
+                        "enabled": bool(release_ctx.get("enabled")),
+                        "variant": str(release_ctx.get("variant") or ""),
+                        "assigned": bool(release_ctx.get("assigned")),
+                        "rollback_force": bool(release_ctx.get("rollback_force")),
+                        "runtime": "n8n",
+                    }
+            except Exception:
+                pass
+
+            _hito5_write_trace(
+                request=request,
+                user=user,
+                session_id=session_id,
+                release_ctx=release_ctx,
+                qaf_cognition=qaf_cognition if isinstance(qaf_cognition, dict) else None,
+                protocol_cognitive_body=protocol_cognitive_body if isinstance(protocol_cognitive_body, dict) else None,
+                status_code=200,
+                guardrail_applied=guardrail_applied,
+                error="",
+            )
             return Response(data)
         else:
             # Intentar obtener mensaje de error de n8n
@@ -8732,6 +9224,17 @@ def chat_n8n(request):
                 err_msg = response.text
                 
             print(f"Error n8n body: {err_msg}")
+            _hito5_write_trace(
+                request=request,
+                user=user,
+                session_id=session_id,
+                release_ctx=release_ctx,
+                qaf_cognition=qaf_cognition if isinstance(qaf_cognition, dict) else None,
+                protocol_cognitive_body=protocol_cognitive_body if isinstance(protocol_cognitive_body, dict) else None,
+                status_code=response.status_code,
+                guardrail_applied=False,
+                error=str(err_msg or "")[:400],
+            )
             return Response({'error': f"n8n Error ({response.status_code}): {err_msg}"}, status=502)
 
     except Exception as e:
@@ -8792,6 +9295,84 @@ def qaf_cognition_evaluate(request):
     )
 
     return Response(_attach_wow_event_payload(user, result, event_key='qaf_cognition', label='Motor de cognición activado'))
+
+
+@api_view(['GET', 'OPTIONS'])
+@authentication_classes([JWTAuthentication])
+@permission_classes([IsAuthenticatedOrOptions])
+def hito5_release_status(request):
+    """Estado operativo de Hito 5: entrenamiento, release y KPIs runtime."""
+    if request.method == 'OPTIONS':
+        return Response(status=status.HTTP_200_OK)
+
+    user = _resolve_request_user(request)
+    if not user:
+        return Response({'error': 'Autenticacion requerida'}, status=status.HTTP_401_UNAUTHORIZED)
+
+    now = timezone.now()
+    since_24h = now - timedelta(hours=24)
+
+    release_cfg = {
+        "enabled": _hito5_env_bool("HITO5_RELEASE_ENABLED", False),
+        "canary_percent": _hito5_env_float("HITO5_CANARY_PERCENT", 10.0),
+        "rollback_force": _hito5_env_bool("HITO5_ROLLBACK_FORCE", False),
+        "fused_mode_enabled": _hito5_env_bool("HITO5_FUSED_MODE_ENABLED", False),
+        "fused_mode_canary_only": _hito5_env_bool("HITO5_FUSED_MODE_CANARY_ONLY", True),
+    }
+
+    train_manifest = None
+    alignment_report = None
+    try:
+        base = Path(__file__).resolve().parents[1] / "llmops" / "hito4" / "output"
+        manifest_path = base / "manifest.json"
+        report_path = base / "alignment_report.json"
+        if manifest_path.exists():
+            train_manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        if report_path.exists():
+            alignment_report = json.loads(report_path.read_text(encoding="utf-8"))
+    except Exception:
+        train_manifest = None
+        alignment_report = None
+
+    runtime_qs = AuditLog.objects.filter(action="llm.hito5.inference", occurred_at__gte=since_24h)
+    total = runtime_qs.count()
+    success = runtime_qs.filter(after_json__status_code=200).count()
+    guardrail_hits = runtime_qs.filter(after_json__guardrail_applied=True).count()
+    canary_hits = runtime_qs.filter(before_json__release__variant="canary").count()
+
+    decision_counts = {}
+    for row in runtime_qs.values_list("before_json", flat=True):
+        if not isinstance(row, dict):
+            continue
+        decision_type = str(row.get("qaf_decision_type") or "").strip() or "unknown"
+        decision_counts[decision_type] = int(decision_counts.get(decision_type, 0)) + 1
+
+    status_payload = {
+        "success": True,
+        "hito": 5,
+        "release": release_cfg,
+        "training": {
+            "manifest": train_manifest,
+            "alignment_report": alignment_report,
+            "alignment_ok": bool(isinstance(alignment_report, dict) and alignment_report.get("pass") is True),
+        },
+        "runtime_24h": {
+            "requests": total,
+            "success": success,
+            "error": max(0, total - success),
+            "success_rate": round((float(success) / float(total)) if total else 0.0, 4),
+            "canary_requests": canary_hits,
+            "guardrail_hits": guardrail_hits,
+            "decision_type_counts": decision_counts,
+        },
+        "notes": [
+            "QAF engine -> policy -> LLM narrador activo cuando el release lo permite.",
+            "Canary y rollback se controlan por variables de entorno HITO5_*.",
+            "Trazabilidad por request en AuditLog accion llm.hito5.inference.",
+        ],
+    }
+
+    return Response(status_payload)
 
 
 @api_view(['POST', 'OPTIONS'])
