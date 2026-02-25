@@ -375,6 +375,16 @@ def build_gamification_status(user: User, *, as_of: date | None = None) -> dict[
         coach_state["identity_changed_at"] = timezone.now().isoformat()
         _set_user_json_state(user, coach_state=coach_state)
 
+    wow_state = coach_state.get("wow") if isinstance(coach_state.get("wow"), dict) else {}
+    wow_events_by_day = wow_state.get("events_by_day") if isinstance(wow_state.get("events_by_day"), dict) else {}
+    today_iso = _iso(d) or ""
+    today_events = wow_events_by_day.get(today_iso) if today_iso else []
+    if not isinstance(today_events, list):
+        today_events = []
+    points_total = int(wow_state.get("points_total") or 0)
+    last_daily_claim_on = wow_state.get("last_daily_claim_on") if isinstance(wow_state.get("last_daily_claim_on"), str) else None
+    claimed_today = bool(last_daily_claim_on and last_daily_claim_on == today_iso)
+
     return {
         "as_of": _iso(d),
         "streak": int(user.current_streak or 0),
@@ -393,6 +403,15 @@ def build_gamification_status(user: User, *, as_of: date | None = None) -> dict[
         "identity": {
             **identity,
             "changed": identity_changed,
+        },
+        "wow": {
+            "points_total": points_total,
+            "today_events_count": len(today_events),
+            "daily_reward": {
+                "amount": WOW_DAILY_REWARD_POINTS,
+                "claimed_today": claimed_today,
+                "last_claim_on": last_daily_claim_on,
+            },
         },
         "documents": docs_map,
     }

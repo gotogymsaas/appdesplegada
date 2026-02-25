@@ -279,6 +279,64 @@
                     min-width: 56px;
                     text-align: right;
                 }
+
+                .mission-right {
+                    display: flex;
+                    flex-direction: column;
+                    align-items: flex-end;
+                    gap: 6px;
+                }
+
+                .mission-action-btn {
+                    background: transparent;
+                    border: 1px solid var(--primary);
+                    color: var(--primary);
+                    border-radius: 999px;
+                    padding: 5px 10px;
+                    font-size: 10px;
+                    cursor: pointer;
+                    transition: all 0.2s ease;
+                }
+
+                .mission-action-btn:hover {
+                    background: rgba(15, 191, 176, 0.08);
+                }
+
+                .mission-item.completed {
+                    border-color: rgba(15, 191, 176, 0.4);
+                }
+
+                .wow-row {
+                    display: flex;
+                    align-items: center;
+                    justify-content: space-between;
+                    gap: 10px;
+                    margin: 8px 0 10px 0;
+                }
+
+                .wow-pill {
+                    display: flex;
+                    align-items: baseline;
+                    gap: 6px;
+                    border: 1px solid rgba(255, 255, 255, 0.1);
+                    border-radius: 999px;
+                    padding: 6px 10px;
+                    color: var(--text-main);
+                    font-size: 11px;
+                    background: rgba(255, 255, 255, 0.03);
+                }
+
+                .wow-value {
+                    color: var(--secondary);
+                    font-size: 14px;
+                    font-weight: 600;
+                }
+
+                .claim-feedback {
+                    color: var(--text-muted);
+                    font-size: 11px;
+                    margin-top: 6px;
+                }
                 
                 .badge-item {
                     background: linear-gradient(145deg, #1e1e1e, #252525);
@@ -459,10 +517,10 @@
     
     <!-- Streak Section (Moved) -->
     <div style="text-align: center; margin-bottom: 40px;">
-        <div style="font-size: 40px; color: #FF5722; font-weight: bold; line-height: 1;">
+        <div style="font-size: 40px; color: var(--secondary); font-weight: bold; line-height: 1;">
             🔥 <span id="stat-streak">0</span>
         </div>
-        <div style="font-size: 14px; color: #FF5722; margin-top: 5px;">Racha actual</div>
+        <div style="font-size: 14px; color: var(--secondary); margin-top: 5px;">Racha actual</div>
     </div>
 
     <!-- Evolution / Gamificación -->
@@ -473,11 +531,19 @@
         <div class="progress-bar" aria-label="Progreso semanal">
             <div class="progress-fill" id="weeklyProgressFill"></div>
         </div>
+        <div class="wow-row">
+            <div class="wow-pill">Puntos <span class="wow-value" id="wowPoints">0</span></div>
+            <button id="claimDailyBtn" class="mission-action-btn" type="button" onclick="claimDailyReward()">Reclamar recompensa diaria</button>
+        </div>
+        <div id="claimDailyFeedback" class="claim-feedback"></div>
         <div class="weekly-hint" id="weeklyHint">Activa tu racha con 1 acción al día: check-in, hábito o sincronización.</div>
         <div class="evolution-help" id="evolutionHelp"></div>
 
         <div class="missions-title">Misión semanal</div>
         <div id="missionsContainer"></div>
+
+        <div class="missions-title">Logros desbloqueados</div>
+        <div id="badges-container" class="badges-grid"></div>
     </div>
     
     <!-- Badges Section -->
@@ -535,6 +601,36 @@
             const next = { ...current, ...(patch || {}) };
             localStorage.setItem("user", JSON.stringify(next));
             return next;
+        }
+
+        function escapeHtml(value) {
+            return String(value ?? '').replace(/[&<>'"]/g, (char) => ({
+                '&': '&amp;',
+                '<': '&lt;',
+                '>': '&gt;',
+                "'": '&#39;',
+                '"': '&quot;'
+            }[char] || char));
+        }
+
+        function getMissionAction(key) {
+            const normalized = String(key || '').toLowerCase();
+            if (normalized === 'checkins') {
+                return { label: 'Ir al check-in', href: '../../pages/forms/CuestionarioIF.html' };
+            }
+            if (normalized === 'sync') {
+                return { label: 'Ir a dispositivos', href: '../../pages/settings/Dispositivos.html' };
+            }
+            if (normalized === 'if_delta') {
+                return { label: 'Mejorar IF', href: '../../pages/forms/CuestionarioIF.html' };
+            }
+            return null;
+        }
+
+        function runMissionAction(key) {
+            const action = getMissionAction(key);
+            if (!action || !action.href) return;
+            window.location.href = action.href;
         }
 
         function applyUserToUI(user, opts = {}) {
@@ -648,17 +744,46 @@
                             }
 
                             const row = document.createElement('div');
-                            row.className = 'mission-item';
+                                                        row.className = `mission-item ${completed ? 'completed' : ''}`.trim();
+                                                        const action = completed ? null : getMissionAction(key);
+                                                        const actionButton = action
+                                                                ? `<button class="mission-action-btn" type="button" onclick="runMissionAction('${escapeHtml(key)}')">${escapeHtml(action.label)}</button>`
+                                                                : '';
                             row.innerHTML = `
                               <div class="mission-left">
                                 <div class="mission-label">${label}</div>
                                 <div class="mission-sub">${howTo}</div>
                               </div>
-                              <div class="mission-status">${status}</div>
+                                                            <div class="mission-right">
+                                                                <div class="mission-status">${status}</div>
+                                                                ${actionButton}
+                                                            </div>
                             `;
                             missionsEl.appendChild(row);
                         });
                     }
+
+                                        const wow = g.wow || {};
+                                        const wowPoints = document.getElementById('wowPoints');
+                                        if (wowPoints) wowPoints.textContent = String(Number(wow.points_total || 0));
+                                        const claimBtn = document.getElementById('claimDailyBtn');
+                                        const claimFeedback = document.getElementById('claimDailyFeedback');
+                                        const dailyReward = wow.daily_reward || {};
+                                        const rewardAmount = Number(dailyReward.amount || 0);
+                                        const claimedToday = !!dailyReward.claimed_today;
+                                        if (claimBtn) {
+                                                claimBtn.disabled = claimedToday;
+                                                claimBtn.style.opacity = claimedToday ? '0.6' : '1';
+                                                claimBtn.style.cursor = claimedToday ? 'default' : 'pointer';
+                                                claimBtn.textContent = claimedToday
+                                                        ? 'Recompensa reclamada hoy'
+                                                        : `Reclamar +${rewardAmount} puntos`;
+                                        }
+                                        if (claimFeedback) {
+                                                claimFeedback.textContent = claimedToday
+                                                        ? 'Recompensa diaria ya reclamada. Vuelve mañana para sumar más puntos.'
+                                                        : 'Reclama tu recompensa diaria para mantener tu momentum.';
+                                        }
 
                     const hint = document.getElementById('weeklyHint');
                     if (hint) {
@@ -777,6 +902,33 @@
             if (!stored) return;
             applyUserToUI(stored, { silent: true });
             await fetchUserProfile({ silent });
+        }
+
+        async function claimDailyReward() {
+            if (!window.API_URL || typeof authFetch !== 'function') return;
+            const claimBtn = document.getElementById('claimDailyBtn');
+            if (claimBtn && claimBtn.disabled) return;
+
+            try {
+                const res = await authFetch(`${API_URL}gamification/claim_daily/`, { method: 'POST' });
+                if (!res.ok) {
+                    showToast('No se pudo reclamar la recompensa diaria.', 'error');
+                    return;
+                }
+                const data = await res.json();
+                if (data && data.gamification) {
+                    const merged = mergeAndStoreUser({ gamification: data.gamification });
+                    applyUserToUI(merged, { silent: true });
+                }
+                if (data && data.claimed) {
+                    showToast(`+${Number(data.reward || 0)} puntos diarios`, 'success');
+                } else {
+                    showToast('La recompensa de hoy ya fue reclamada.', 'success');
+                }
+            } catch (e) {
+                if (window.GTG_DEBUG) console.warn('[Perfil] claimDailyReward falló', e);
+                showToast('No se pudo reclamar la recompensa diaria.', 'error');
+            }
         }
         
         document.addEventListener('DOMContentLoaded', () => {
