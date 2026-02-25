@@ -34,6 +34,27 @@ IDENTITY_STATES: list[tuple[str, str]] = [
 ]
 
 
+QAF_EXPERIENCES: list[dict[str, Any]] = [
+    {"code": "exp-001_calories", "label": "Calorías Inteligentes", "event_keys": ["qaf_calories", "exp-001_calories"]},
+    {"code": "exp-002_meal_coherence", "label": "Coherencia Nutricional", "event_keys": ["qaf_meal_coherence"]},
+    {"code": "exp-003_metabolic_profile", "label": "Perfil Metabólico", "event_keys": ["qaf_metabolic_profile"]},
+    {
+        "code": "exp-004_meal_plan",
+        "label": "Menú Semanal",
+        "event_keys": ["qaf_meal_plan", "qaf_meal_plan_apply", "qaf_meal_plan_mutate"],
+    },
+    {"code": "exp-005_body_trend", "label": "Tendencia 6 Semanas", "event_keys": ["qaf_body_trend"]},
+    {"code": "exp-006_posture", "label": "Corrección de Postura", "event_keys": ["qaf_posture"]},
+    {"code": "exp-007_lifestyle", "label": "Estado de Hoy", "event_keys": ["qaf_lifestyle"]},
+    {"code": "exp-008_motivation", "label": "Motivación", "event_keys": ["qaf_motivation"]},
+    {"code": "exp-009_progression", "label": "Evolución de Entrenamiento", "event_keys": ["qaf_progression"]},
+    {"code": "exp-010_muscle_measure", "label": "Progreso Muscular", "event_keys": ["qaf_muscle_measure"]},
+    {"code": "exp-011_skin_health", "label": "Vitalidad de la Piel", "event_keys": ["qaf_skin_health"]},
+    {"code": "exp-012_shape_presence", "label": "Alta Costura Inteligente", "event_keys": ["qaf_shape_presence"]},
+    {"code": "exp-013_body_architecture", "label": "Arquitectura Corporal", "event_keys": ["qaf_posture_proportion"]},
+]
+
+
 def _today() -> date:
     return timezone.localdate()
 
@@ -290,6 +311,53 @@ def resolve_identity_state(user: User, *, weekly: dict[str, Any] | None = None) 
     return {"key": key, "label": label}
 
 
+def _resolve_qaf_experiences_progress(
+    *,
+    wow_events_by_day: dict[str, Any],
+    week_start: date,
+    week_end: date,
+) -> dict[str, Any]:
+    all_events: set[str] = set()
+    week_events: set[str] = set()
+
+    for day_key, events in wow_events_by_day.items():
+        if not isinstance(events, list):
+            continue
+        d = _parse_iso_date(day_key)
+        normalized = {str(x).strip().lower() for x in events if str(x).strip()}
+        all_events |= normalized
+        if d is not None and week_start <= d <= week_end:
+            week_events |= normalized
+
+    items: list[dict[str, Any]] = []
+    completed_total = 0
+    completed_week = 0
+
+    for exp in QAF_EXPERIENCES:
+        keys = [str(k).strip().lower() for k in (exp.get("event_keys") or []) if str(k).strip()]
+        done_all = any(k in all_events for k in keys)
+        done_week = any(k in week_events for k in keys)
+        if done_all:
+            completed_total += 1
+        if done_week:
+            completed_week += 1
+        items.append({
+            "code": exp.get("code"),
+            "label": exp.get("label"),
+            "completed": done_all,
+            "completed_week": done_week,
+        })
+
+    return {
+        "summary": {
+            "completed": completed_total,
+            "total": len(QAF_EXPERIENCES),
+            "completed_week": completed_week,
+        },
+        "items": items,
+    }
+
+
 def build_gamification_status(user: User, *, as_of: date | None = None) -> dict[str, Any]:
     d = as_of or _today()
 
@@ -384,6 +452,13 @@ def build_gamification_status(user: User, *, as_of: date | None = None) -> dict[
     points_total = int(wow_state.get("points_total") or 0)
     last_daily_claim_on = wow_state.get("last_daily_claim_on") if isinstance(wow_state.get("last_daily_claim_on"), str) else None
     claimed_today = bool(last_daily_claim_on and last_daily_claim_on == today_iso)
+    week_start_d = _parse_iso_date(registers.get("week_start")) or _week_start(d)
+    week_end_d = _parse_iso_date(registers.get("week_end")) or _week_end(d)
+    qaf_experiences = _resolve_qaf_experiences_progress(
+        wow_events_by_day=wow_events_by_day,
+        week_start=week_start_d,
+        week_end=week_end_d,
+    )
 
     return {
         "as_of": _iso(d),
@@ -413,6 +488,7 @@ def build_gamification_status(user: User, *, as_of: date | None = None) -> dict[
                 "last_claim_on": last_daily_claim_on,
             },
         },
+        "experiences": qaf_experiences,
         "documents": docs_map,
     }
 

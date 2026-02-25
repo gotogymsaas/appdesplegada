@@ -246,6 +246,50 @@
                     margin: 14px 0 8px 0;
                 }
 
+                .qaf-progress-note {
+                    color: var(--text-muted);
+                    font-size: 11px;
+                    margin-bottom: 8px;
+                }
+
+                .qaf-experiences-grid {
+                    display: grid;
+                    grid-template-columns: 1fr;
+                    gap: 6px;
+                    margin-bottom: 8px;
+                }
+
+                .qaf-experience-item {
+                    display: flex;
+                    align-items: center;
+                    justify-content: space-between;
+                    padding: 8px 10px;
+                    border-radius: 10px;
+                    border: 1px solid rgba(255, 255, 255, 0.06);
+                    background: rgba(255, 255, 255, 0.03);
+                }
+
+                .qaf-experience-label {
+                    color: var(--text-main);
+                    font-size: 11px;
+                    line-height: 1.2;
+                }
+
+                .qaf-experience-status {
+                    color: var(--text-muted);
+                    font-size: 11px;
+                    min-width: 42px;
+                    text-align: right;
+                }
+
+                .qaf-experience-item.done {
+                    border-color: rgba(15, 191, 176, 0.4);
+                }
+
+                .qaf-experience-item.done .qaf-experience-status {
+                    color: var(--primary);
+                }
+
                 .mission-item {
                     display: flex;
                     align-items: center;
@@ -603,6 +647,10 @@
         <div class="missions-title">Misión semanal</div>
         <div id="missionsContainer"></div>
 
+        <div class="missions-title">13 Experiencias QAF</div>
+        <div id="qafProgressNote" class="qaf-progress-note">Completadas: 0/13</div>
+        <div id="qafExperiencesContainer" class="qaf-experiences-grid"></div>
+
         <div class="missions-title">Logros desbloqueados</div>
         <div id="badges-container" class="badges-grid"></div>
     </div>
@@ -949,6 +997,35 @@
                         hint.textContent = tier
                             ? `Estado: ${tier}. Activa tu racha con 1 acción al día: check-in, hábito o sincronización.`
                             : 'Activa tu racha con 1 acción al día: check-in, hábito o sincronización.';
+                    }
+
+                    const qafProgressNote = document.getElementById('qafProgressNote');
+                    const qafContainer = document.getElementById('qafExperiencesContainer');
+                    const experiences = g.experiences || {};
+                    const summary = experiences.summary || {};
+                    const expItems = Array.isArray(experiences.items) ? experiences.items : [];
+                    const total = Number(summary.total || expItems.length || 13);
+                    const completed = Number(summary.completed || 0);
+                    const completedWeek = Number(summary.completed_week || 0);
+                    if (qafProgressNote) {
+                        qafProgressNote.textContent = `Completadas: ${completed}/${total} · Esta semana: ${completedWeek}`;
+                    }
+                    if (qafContainer) {
+                        qafContainer.innerHTML = '';
+                        expItems.forEach((exp) => {
+                            if (!exp) return;
+                            const label = escapeHtml(exp.label || exp.code || 'Experiencia');
+                            const done = !!exp.completed;
+                            const doneWeek = !!exp.completed_week;
+                            const status = done ? (doneWeek ? '✓ semana' : '✓') : '○';
+                            const row = document.createElement('div');
+                            row.className = `qaf-experience-item ${done ? 'done' : ''}`.trim();
+                            row.innerHTML = `
+                              <div class="qaf-experience-label">${label}</div>
+                              <div class="qaf-experience-status">${status}</div>
+                            `;
+                            qafContainer.appendChild(row);
+                        });
                     }
 
                     const help = document.getElementById('evolutionHelp');
