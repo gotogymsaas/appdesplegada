@@ -3341,6 +3341,14 @@ function appendQuickActions(actions) {
         return;
       }
       if (action.type === 'message' && action.text) {
+        try {
+          const ppIntent = action.payload && action.payload.posture_proportion_intent && action.payload.posture_proportion_intent.action;
+          if (ppIntent) {
+            cancelPpFlow();
+          }
+        } catch (e) {
+          // ignore
+        }
         // Si es un CTA de enfoque muscular, persistirlo en el flujo.
         try {
           const fx = action.payload && action.payload.muscle_measure_request && action.payload.muscle_measure_request.focus;

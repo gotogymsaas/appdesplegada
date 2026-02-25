@@ -4808,6 +4808,13 @@ def chat_n8n(request):
         try:
             if user and isinstance(request.data, dict):
                 pp_req = request.data.get('posture_proportion_request')
+                pp_intent = request.data.get('posture_proportion_intent')
+                pp_intent_action = ""
+                if isinstance(pp_intent, dict):
+                    pp_intent_action = str(pp_intent.get('action') or '').strip().lower()
+
+                week_id_now = _week_id()
+                weekly_state = getattr(user, 'coach_weekly_state', {}) or {}
 
                 msg_low = str(message or '').strip().lower()
                 # Activación intuitiva: tolera frases largas y acentos.
@@ -4843,7 +4850,132 @@ def chat_n8n(request):
                     )
                 )
 
-                want_pp = explicit or natural
+                start_verb = bool(
+                    re.search(
+                        r"\b(iniciar|inicia|empecemos|empezar|arrancar|activar|hazme\s+una\s+nueva|nueva\s+evaluaci[oó]n|"
+                        r"nueva\s+medici[oó]n|volver\s+a\s+medir|repetir\s+evaluaci[oó]n|tomar\s+fotos|adjuntar\s+fotos)\b",
+                        msg_norm,
+                    )
+                )
+
+                read_verb = bool(
+                    re.search(
+                        r"\b(muestrame|mu[eé]strame|mostrar|mostrarme|dame|ver|consulta|ensename|enséñame|quiero\s+ver)\b",
+                        msg_norm,
+                    )
+                )
+                result_noun = bool(
+                    re.search(
+                        r"\b(resultado|resultados|ultima\s+evaluacion|[uú]ltima\s+evaluaci[oó]n|evaluacion\s+anterior|evaluaci[oó]n\s+anterior)\b",
+                        msg_norm,
+                    )
+                )
+                posture_domain = bool(
+                    re.search(
+                        r"\b(arquitectura\s+corporal|postura|proporci[oó]n|proporcion|shape|presence|presencia|musculo|m[uú]sculo)\b",
+                        msg_norm,
+                    )
+                )
+
+                want_pp_results = posture_domain and (result_noun or (read_verb and ("ultima" in msg_norm or "última" in msg_low)))
+                if pp_intent_action in ('show_last', 'view_last', 'last_result'):
+                    want_pp_results = True
+
+                want_pp = explicit or start_verb
+                if pp_intent_action in ('start_new', 'new_eval', 'start'):
+                    want_pp = True
+
+                want_confirmation = (
+                    (not isinstance(pp_req, dict))
+                    and posture_domain
+                    and (not want_pp_results)
+                    and (not want_pp)
+                    and (natural or read_verb or result_noun)
+                )
+
+                if want_confirmation:
+                    return Response(
+                        {
+                            'output': "¿Quieres ver tu último resultado o iniciar una evaluación nueva de Arquitectura Corporal?",
+                            'quick_actions': [
+                                {
+                                    'label': 'Ver último resultado',
+                                    'type': 'message',
+                                    'text': 'Ver último resultado de Arquitectura Corporal',
+                                    'payload': {'posture_proportion_intent': {'action': 'show_last'}},
+                                },
+                                {
+                                    'label': 'Iniciar evaluación nueva',
+                                    'type': 'message',
+                                    'text': 'Iniciar evaluación nueva de Arquitectura Corporal',
+                                    'payload': {'posture_proportion_intent': {'action': 'start_new'}},
+                                },
+                                {'label': 'Cancelar', 'type': 'pp_cancel'},
+                            ],
+                        }
+                    )
+
+                if (not isinstance(pp_req, dict)) and want_pp_results:
+                    from .qaf_posture_proportion.engine import render_professional_summary
+
+                    latest_result = None
+                    latest_week_id = ""
+                    latest_updated_at = ""
+                    try:
+                        pp_map = weekly_state.get('posture_proportion') if isinstance(weekly_state.get('posture_proportion'), dict) else {}
+                        if isinstance(pp_map, dict) and pp_map:
+                            candidate_keys = sorted([k for k in pp_map.keys() if isinstance(k, str)])
+                            for key in reversed(candidate_keys):
+                                row = pp_map.get(key)
+                                if not isinstance(row, dict):
+                                    continue
+                                r = row.get('result') if isinstance(row.get('result'), dict) else None
+                                if isinstance(r, dict):
+                                    latest_result = r
+                                    latest_week_id = key
+                                    latest_updated_at = str(row.get('updated_at') or '').strip()
+                                    break
+                    except Exception:
+                        latest_result = None
+
+                    if isinstance(latest_result, dict):
+                        summary = render_professional_summary(latest_result)
+                        header_lines = ["**Tu última evaluación de Arquitectura Corporal**"]
+                        if latest_week_id:
+                            header_lines.append(f"Semana: {latest_week_id}")
+                        if latest_updated_at:
+                            header_lines.append(f"Actualizada: {latest_updated_at}")
+
+                        return Response(
+                            {
+                                'output': "\n".join(header_lines) + "\n\n" + (summary or "No encontré detalles de la evaluación."),
+                                'qaf_posture_proportion': latest_result,
+                                'quick_actions': [
+                                    {'label': 'Finalizar', 'type': 'pp_cancel'},
+                                ],
+                            }
+                        )
+
+                    return Response(
+                        {
+                            'output': (
+                                "No encuentro una evaluación previa de Arquitectura Corporal para mostrarte.\n\n"
+                                "Si quieres, la hacemos ahora y en menos de un minuto te doy el resultado."
+                            ),
+                            'quick_actions': [
+                                {
+                                    'label': 'Iniciar evaluación nueva',
+                                    'type': 'message',
+                                    'text': 'Iniciar evaluación nueva de Arquitectura Corporal',
+                                    'payload': {'posture_proportion_intent': {'action': 'start_new'}},
+                                },
+                                {'label': 'Tomar foto frente', 'type': 'pp_capture', 'view': 'front_relaxed', 'source': 'camera'},
+                                {'label': 'Adjuntar foto frente', 'type': 'pp_capture', 'view': 'front_relaxed', 'source': 'attach'},
+                                {'label': 'Cancelar', 'type': 'pp_cancel'},
+                            ],
+                        }
+                    )
+
 
                 if (not isinstance(pp_req, dict)) and want_pp:
                     out = (
@@ -4875,9 +5007,6 @@ def chat_n8n(request):
 
                 if isinstance(pp_req, dict):
                     from .qaf_posture_proportion.engine import evaluate_posture_proportion, render_professional_summary
-
-                    week_id_now = _week_id()
-                    weekly_state = getattr(user, 'coach_weekly_state', {}) or {}
 
                     baseline = None
                     try:
