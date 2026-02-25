@@ -1897,8 +1897,8 @@ function buildQuickActions(context) {
   // Servicios (catálogo)
   actions.push({ label: 'Servicios GoToGym (13)', type: 'services_menu', page: 'core' });
 
-  // Tercer botón: impulsar una experiencia “ancla” (arquitectura corporal) sin quitar acceso al catálogo.
-  actions.push({ label: 'Arquitectura Corporal', type: 'pp_start' });
+  // Tercer botón: arquitectura corporal con desambiguación (ver último vs iniciar nuevo).
+  actions.push({ label: 'Arquitectura Corporal', type: 'message', text: 'Arquitectura Corporal' });
 
   return actions.slice(0, 3);
 }
@@ -1918,11 +1918,11 @@ function showServicesMenu(page = 'core') {
 
   if (page === 'more') {
     appendQuickActions([
-      { label: 'Menú semanal', type: 'message', text: 'Menú semanal', payload: { meal_plan_request: { variety: 'normal', meals_per_day: 3 } } },
+      { label: 'Menú semanal', type: 'message', text: 'Menú semanal' },
       { label: 'Perfil metabólico', type: 'message', text: 'Perfil metabólico' },
-      { label: 'Tendencia 6 semanas', type: 'message', text: 'Tendencia 6 semanas', payload: { body_trend_request: {} } },
-      { label: 'Evolución entrenamiento', type: 'message', text: 'Evolución de entrenamiento', payload: { progression_request: {} } },
-      { label: 'Motivación', type: 'message', text: 'Motivación', payload: { motivation_request: { preferences: { pressure: 'suave' } } } },
+      { label: 'Tendencia 6 semanas', type: 'message', text: 'Tendencia 6 semanas' },
+      { label: 'Evolución entrenamiento', type: 'message', text: 'Evolución de entrenamiento' },
+      { label: 'Motivación', type: 'message', text: 'Motivación' },
       { label: '◀ Volver', type: 'services_menu', page: 'core' },
     ]);
     return;
@@ -1930,11 +1930,11 @@ function showServicesMenu(page = 'core') {
 
   // core
   appendQuickActions([
-    { label: 'Arquitectura Corporal', type: 'pp_start' },
-    { label: 'Alta Costura Inteligente', type: 'shape_start' },
-    { label: 'Vitalidad de la Piel', type: 'skin_start' },
-    { label: 'Corrección de postura', type: 'posture_start' },
-    { label: 'Progreso muscular', type: 'muscle_start' },
+    { label: 'Arquitectura Corporal', type: 'message', text: 'Arquitectura Corporal' },
+    { label: 'Alta Costura Inteligente', type: 'message', text: 'Alta Costura Inteligente' },
+    { label: 'Vitalidad de la Piel', type: 'message', text: 'Vitalidad de la Piel' },
+    { label: 'Corrección de postura', type: 'message', text: 'Corrección de postura' },
+    { label: 'Progreso muscular', type: 'message', text: 'Progreso muscular' },
     { label: 'Más ▶', type: 'services_menu', page: 'more' },
   ]);
 }
@@ -3345,6 +3345,18 @@ function appendQuickActions(actions) {
           const ppIntent = action.payload && action.payload.posture_proportion_intent && action.payload.posture_proportion_intent.action;
           if (ppIntent) {
             cancelPpFlow();
+          }
+        } catch (e) {
+          // ignore
+        }
+        try {
+          const svcIntent = action.payload && action.payload.service_intent;
+          if (svcIntent) {
+            cancelPostureFlow();
+            cancelMuscleFlow();
+            cancelShapeFlow();
+            cancelPpFlow();
+            cancelSkinFlow();
           }
         } catch (e) {
           // ignore

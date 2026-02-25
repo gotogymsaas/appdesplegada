@@ -39,7 +39,7 @@ from .serializers import UserSerializer
 # Importar el servicio ML
 from .serializers import UserSerializer
 # Importar el servicio ML
-from .gamification_service import update_user_streak, build_gamification_status
+from .gamification_service import update_user_streak, build_gamification_status, claim_daily_wow_reward, award_wow_event
 from datetime import date, datetime, timedelta, timezone as dt_timezone
 from django.utils import timezone
 from django.db.models import Avg, Q, Count
@@ -1432,6 +1432,36 @@ def gamification_status(request):
         return Response(build_gamification_status(user))
     except Exception as exc:
         return Response({"ok": False, "error": str(exc)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['POST', 'OPTIONS'])
+@authentication_classes([JWTAuthentication])
+@permission_classes([IsAuthenticatedOrOptions])
+def gamification_claim_daily(request):
+    if request.method == 'OPTIONS':
+        return Response(status=status.HTTP_200_OK)
+
+    user, auth_error = _require_authenticated_user(request)
+    if auth_error:
+        return auth_error
+
+    try:
+        return Response(claim_daily_wow_reward(user))
+    except Exception as exc:
+        return Response({"ok": False, "error": str(exc)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+def _attach_wow_event_payload(user, payload: Any, *, event_key: str, label: str | None = None) -> dict[str, Any]:
+    base = payload if isinstance(payload, dict) else {"result": payload}
+    out = dict(base)
+    try:
+        wow_event = award_wow_event(user, event_key=event_key, label=label)
+        out["wow_event"] = wow_event
+        if isinstance(wow_event, dict) and isinstance(wow_event.get("gamification"), dict):
+            out["gamification"] = wow_event.get("gamification")
+    except Exception:
+        pass
+    return out
 
 
 @api_view(['GET', 'OPTIONS'])
@@ -3985,6 +4015,313 @@ def chat_n8n(request):
             session_id = _safe_session_id(user)
         elif not session_id or session_id == 'invitado':
             session_id = f"guest_{uuid.uuid4().hex}"
+
+        # Router UX transversal (13 experiencias):
+        # - confirmar intención (ver último vs iniciar nuevo)
+        # - resolver "ver último" sin activar flujo de captura/medición
+        # - devolver CTA de inicio explícito cuando corresponde
+        try:
+            data_in = request.data if isinstance(request.data, dict) else {}
+            msg_low_router = str(message or '').strip().lower()
+
+            service_intent = data_in.get('service_intent') if isinstance(data_in.get('service_intent'), dict) else {}
+            service_exp = str(service_intent.get('experience') or '').strip().lower()
+            service_action = str(service_intent.get('action') or '').strip().lower()
+
+            explicit_start = bool(re.search(r"\b(iniciar|inicia|empezar|empecemos|activar|nuevo|nueva|arrancar|hacer)\b", msg_low_router or ""))
+            explicit_last = bool(re.search(r"\b(ultimo|último|ultimos|últimos|resultado|resultados|anterior|semana pasada|ver|mostrar|muestrame|muéstrame)\b", msg_low_router or ""))
+
+            def _service_spec(exp_code: str) -> dict:
+                specs = {
+                    'exp-001_calories': {
+                        'label': 'Calorías Inteligentes (QAF)',
+                        'aliases': [r"calor[ií]a", r"qaf", r"comida", r"foto\s+de\s+comida"],
+                        'start_actions': [
+                            {'label': 'Tomar foto de comida', 'type': 'open_camera'},
+                            {'label': 'Adjuntar foto de comida', 'type': 'open_attach'},
+                            {'label': 'Cancelar', 'type': 'services_menu', 'page': 'core'},
+                        ],
+                    },
+                    'exp-002_meal_coherence': {
+                        'label': 'Coherencia Nutricional',
+                        'aliases': [r"coherencia\s+nutricional", r"coherencia\s+de\s+comida", r"meal\s+coherence"],
+                        'start_actions': [
+                            {'label': 'Evaluar coherencia de comida', 'type': 'message', 'text': 'Quiero evaluar la coherencia de esta comida'},
+                            {'label': 'Cancelar', 'type': 'services_menu', 'page': 'core'},
+                        ],
+                    },
+                    'exp-003_metabolic_profile': {
+                        'label': 'Perfil Metabólico',
+                        'aliases': [r"perfil\s+metab[oó]lico", r"metab[oó]lico", r"tdee", r"tmb"],
+                        'start_actions': [
+                            {'label': 'Iniciar perfil metabólico', 'type': 'message', 'text': 'Perfil metabólico'},
+                            {'label': 'Cancelar', 'type': 'services_menu', 'page': 'core'},
+                        ],
+                    },
+                    'exp-004_meal_plan': {
+                        'label': 'Menú Semanal',
+                        'aliases': [r"men[uú]\s+semanal", r"meal\s+plan", r"plan\s+de\s+comidas"],
+                        'start_actions': [
+                            {'label': 'Generar menú semanal', 'type': 'message', 'text': 'Menú semanal', 'payload': {'meal_plan_request': {'variety': 'normal', 'meals_per_day': 3}}},
+                            {'label': 'Cancelar', 'type': 'services_menu', 'page': 'core'},
+                        ],
+                    },
+                    'exp-005_body_trend': {
+                        'label': 'Tendencia 6 Semanas',
+                        'aliases': [r"tendencia", r"6\s+semanas", r"body\s+trend"],
+                        'start_actions': [
+                            {'label': 'Calcular tendencia 6 semanas', 'type': 'message', 'text': 'Tendencia 6 semanas', 'payload': {'body_trend_request': {}}},
+                            {'label': 'Cancelar', 'type': 'services_menu', 'page': 'core'},
+                        ],
+                    },
+                    'exp-006_posture': {
+                        'label': 'Corrección de Postura',
+                        'aliases': [r"postura", r"posture", r"correcci[oó]n\s+de\s+postura"],
+                        'start_actions': [
+                            {'label': 'Tomar foto frontal', 'type': 'posture_capture', 'view': 'front', 'source': 'camera'},
+                            {'label': 'Adjuntar foto frontal', 'type': 'posture_capture', 'view': 'front', 'source': 'attach'},
+                            {'label': 'Cancelar', 'type': 'posture_cancel'},
+                        ],
+                    },
+                    'exp-007_lifestyle': {
+                        'label': 'Estado de Hoy (Lifestyle)',
+                        'aliases': [r"estado\s+de\s+hoy", r"lifestyle", r"energ[ií]a\s+de\s+hoy"],
+                        'start_actions': [
+                            {'label': 'Iniciar estado de hoy', 'type': 'message', 'text': 'Estado de hoy', 'payload': {'lifestyle_request': {'days': 14}}},
+                            {'label': 'Cancelar', 'type': 'services_menu', 'page': 'core'},
+                        ],
+                    },
+                    'exp-008_motivation': {
+                        'label': 'Motivación',
+                        'aliases': [r"motivaci[oó]n", r"motivacion"],
+                        'start_actions': [
+                            {'label': 'Iniciar motivación', 'type': 'message', 'text': 'Motivación', 'payload': {'motivation_request': {'preferences': {'pressure': 'suave'}}}},
+                            {'label': 'Cancelar', 'type': 'services_menu', 'page': 'core'},
+                        ],
+                    },
+                    'exp-009_progression': {
+                        'label': 'Evolución de Entrenamiento',
+                        'aliases': [r"evoluci[oó]n\s+de\s+entrenamiento", r"progresi[oó]n", r"progression"],
+                        'start_actions': [
+                            {'label': 'Iniciar evolución', 'type': 'message', 'text': 'Evolución de entrenamiento', 'payload': {'progression_request': {}}},
+                            {'label': 'Cancelar', 'type': 'services_menu', 'page': 'core'},
+                        ],
+                    },
+                    'exp-010_muscle_measure': {
+                        'label': 'Progreso Muscular',
+                        'aliases': [r"progreso\s+muscular", r"medici[oó]n\s+muscular", r"muscle"],
+                        'start_actions': [
+                            {'label': 'Tomar foto frontal', 'type': 'muscle_capture', 'view': 'front_relaxed', 'source': 'camera'},
+                            {'label': 'Adjuntar foto frontal', 'type': 'muscle_capture', 'view': 'front_relaxed', 'source': 'attach'},
+                            {'label': 'Cancelar', 'type': 'muscle_cancel'},
+                        ],
+                    },
+                    'exp-011_skin_health': {
+                        'label': 'Vitalidad de la Piel',
+                        'aliases': [r"vitalidad\s+de\s+la\s+piel", r"skin\s+health", r"piel"],
+                        'start_actions': [
+                            {'label': 'Tomar foto', 'type': 'open_camera'},
+                            {'label': 'Adjuntar foto', 'type': 'open_attach'},
+                            {'label': 'Cancelar', 'type': 'skin_cancel'},
+                        ],
+                    },
+                    'exp-012_shape_presence': {
+                        'label': 'Alta Costura Inteligente',
+                        'aliases': [r"alta\s+costura", r"shape", r"presence", r"presencia"],
+                        'start_actions': [
+                            {'label': 'Tomar foto frontal', 'type': 'shape_capture', 'view': 'front_relaxed', 'source': 'camera'},
+                            {'label': 'Adjuntar foto frontal', 'type': 'shape_capture', 'view': 'front_relaxed', 'source': 'attach'},
+                            {'label': 'Cancelar', 'type': 'shape_cancel'},
+                        ],
+                    },
+                    'exp-013_body_architecture': {
+                        'label': 'Arquitectura Corporal',
+                        'aliases': [r"arquitectura\s+corporal", r"postura\s+y\s+proporci[oó]n", r"postura\s*&\s*proporci[oó]n"],
+                        'start_actions': [
+                            {'label': 'Tomar foto frente', 'type': 'pp_capture', 'view': 'front_relaxed', 'source': 'camera'},
+                            {'label': 'Adjuntar foto frente', 'type': 'pp_capture', 'view': 'front_relaxed', 'source': 'attach'},
+                            {'label': 'Cancelar', 'type': 'pp_cancel'},
+                        ],
+                    },
+                }
+                return specs.get(exp_code) or {}
+
+            def _detect_service_from_message(msg_low: str) -> str:
+                for code in (
+                    'exp-013_body_architecture', 'exp-012_shape_presence', 'exp-011_skin_health', 'exp-010_muscle_measure',
+                    'exp-009_progression', 'exp-008_motivation', 'exp-007_lifestyle', 'exp-006_posture',
+                    'exp-005_body_trend', 'exp-004_meal_plan', 'exp-003_metabolic_profile', 'exp-002_meal_coherence', 'exp-001_calories'
+                ):
+                    spec = _service_spec(code)
+                    aliases = spec.get('aliases') if isinstance(spec.get('aliases'), list) else []
+                    for pat in aliases:
+                        try:
+                            if re.search(pat, msg_low or ""):
+                                return code
+                        except Exception:
+                            continue
+                return ""
+
+            def _latest_week_result(weekly_root: dict, key: str):
+                try:
+                    root = weekly_root.get(key) if isinstance(weekly_root.get(key), dict) else {}
+                    if not isinstance(root, dict) or not root:
+                        return None, ""
+                    cand = sorted([k for k in root.keys() if isinstance(k, str)])
+                    for wk in reversed(cand):
+                        row = root.get(wk)
+                        if not isinstance(row, dict):
+                            continue
+                        res = row.get('result') if isinstance(row.get('result'), dict) else None
+                        if isinstance(res, dict):
+                            return res, str(row.get('updated_at') or "").strip()
+                except Exception:
+                    return None, ""
+                return None, ""
+
+            def _resolve_last_result(exp_code: str, usr):
+                if not usr:
+                    return None, ""
+                cs_loc = getattr(usr, 'coach_state', {}) or {}
+                ws_loc = getattr(usr, 'coach_weekly_state', {}) or {}
+
+                if exp_code == 'exp-013_body_architecture':
+                    return _latest_week_result(ws_loc, 'posture_proportion')
+                if exp_code == 'exp-012_shape_presence':
+                    blob = cs_loc.get('couture_last_result') if isinstance(cs_loc.get('couture_last_result'), dict) else None
+                    res = (blob or {}).get('result') if isinstance((blob or {}).get('result'), dict) else None
+                    if isinstance(res, dict):
+                        return res, str((blob or {}).get('updated_at') or "").strip()
+                    return _latest_week_result(ws_loc, 'shape_presence')
+                if exp_code == 'exp-011_skin_health':
+                    blob = cs_loc.get('skin_last_result') if isinstance(cs_loc.get('skin_last_result'), dict) else None
+                    res = (blob or {}).get('result') if isinstance((blob or {}).get('result'), dict) else None
+                    return (res, str((blob or {}).get('updated_at') or "").strip()) if isinstance(res, dict) else _latest_week_result(ws_loc, 'skin_health')
+                if exp_code == 'exp-010_muscle_measure':
+                    blob = cs_loc.get('muscle_measure_last') if isinstance(cs_loc.get('muscle_measure_last'), dict) else None
+                    res = (blob or {}).get('result') if isinstance((blob or {}).get('result'), dict) else None
+                    return (res, str((blob or {}).get('updated_at') or "").strip()) if isinstance(res, dict) else _latest_week_result(ws_loc, 'muscle_measure')
+                if exp_code == 'exp-009_progression':
+                    blob = cs_loc.get('progression_last') if isinstance(cs_loc.get('progression_last'), dict) else None
+                    res = (blob or {}).get('result') if isinstance((blob or {}).get('result'), dict) else None
+                    return (res, str((blob or {}).get('updated_at') or "").strip()) if isinstance(res, dict) else (None, "")
+                if exp_code == 'exp-008_motivation':
+                    blob = cs_loc.get('motivation_last') if isinstance(cs_loc.get('motivation_last'), dict) else None
+                    res = (blob or {}).get('result') if isinstance((blob or {}).get('result'), dict) else None
+                    return (res, str((blob or {}).get('updated_at') or "").strip()) if isinstance(res, dict) else (None, "")
+                if exp_code == 'exp-007_lifestyle':
+                    blob = cs_loc.get('lifestyle_last') if isinstance(cs_loc.get('lifestyle_last'), dict) else None
+                    res = (blob or {}).get('result') if isinstance((blob or {}).get('result'), dict) else None
+                    return (res, str((blob or {}).get('updated_at') or "").strip()) if isinstance(res, dict) else (None, "")
+                if exp_code == 'exp-006_posture':
+                    hist = cs_loc.get('posture_measurements') if isinstance(cs_loc.get('posture_measurements'), list) else []
+                    if hist:
+                        row = hist[-1] if isinstance(hist[-1], dict) else {}
+                        return row, str(row.get('ts') or "").strip()
+                    return None, ""
+                if exp_code == 'exp-005_body_trend':
+                    blob = ws_loc.get('body_trend_last') if isinstance(ws_loc.get('body_trend_last'), dict) else None
+                    res = (blob or {}).get('result') if isinstance((blob or {}).get('result'), dict) else None
+                    return (res, str((blob or {}).get('updated_at') or "").strip()) if isinstance(res, dict) else (None, "")
+                if exp_code == 'exp-004_meal_plan':
+                    return _latest_week_result(ws_loc, 'meal_plan')
+                if exp_code == 'exp-003_metabolic_profile':
+                    res = ws_loc.get('metabolic_last') if isinstance(ws_loc.get('metabolic_last'), dict) else None
+                    if isinstance(res, dict):
+                        return res, str(res.get('updated_at') or "").strip()
+                    return None, ""
+                return None, ""
+
+            if not service_exp:
+                service_exp = _detect_service_from_message(msg_low_router)
+
+            known_payload_keys = {
+                'posture_request', 'muscle_measure_request', 'posture_proportion_request',
+                'meal_plan_request', 'body_trend_request', 'lifestyle_request', 'motivation_request',
+                'progression_request', 'skin_habits_request', 'skin_cancel', 'pp_cancel'
+            }
+            has_direct_payload = any(k in data_in for k in known_payload_keys)
+
+            if user and service_exp and not attachment_url and not has_direct_payload:
+                spec = _service_spec(service_exp)
+                label = str(spec.get('label') or 'Experiencia').strip()
+
+                want_last = service_action in ('show_last', 'view_last', 'last_result') or explicit_last
+                want_start = service_action in ('start_new', 'new_eval', 'start') or explicit_start
+
+                if want_last:
+                    last_res, updated_at = _resolve_last_result(service_exp, user)
+                    if isinstance(last_res, dict):
+                        try:
+                            body = json.dumps(last_res, ensure_ascii=False, indent=2)
+                        except Exception:
+                            body = str(last_res)
+                        if len(body) > 3400:
+                            body = body[:3400] + "\n..."
+                        header = [f"**Tu último resultado — {label}**"]
+                        if updated_at:
+                            header.append(f"Actualizado: {updated_at}")
+                        return Response(
+                            {
+                                'output': "\n".join(header) + "\n\n```json\n" + body + "\n```",
+                                'quick_actions': [
+                                    {
+                                        'label': 'Iniciar evaluación nueva',
+                                        'type': 'message',
+                                        'text': f'Iniciar {label}',
+                                        'payload': {'service_intent': {'experience': service_exp, 'action': 'start_new'}},
+                                    },
+                                    {'label': 'Servicios GoToGym (13)', 'type': 'services_menu', 'page': 'core'},
+                                ],
+                            }
+                        )
+
+                    return Response(
+                        {
+                            'output': f"No encuentro un resultado previo para **{label}**.",
+                            'quick_actions': [
+                                {
+                                    'label': 'Iniciar evaluación nueva',
+                                    'type': 'message',
+                                    'text': f'Iniciar {label}',
+                                    'payload': {'service_intent': {'experience': service_exp, 'action': 'start_new'}},
+                                },
+                                {'label': 'Servicios GoToGym (13)', 'type': 'services_menu', 'page': 'core'},
+                            ],
+                        }
+                    )
+
+                if want_start:
+                    start_actions = spec.get('start_actions') if isinstance(spec.get('start_actions'), list) else []
+                    return Response(
+                        {
+                            'output': f"Perfecto, iniciemos **{label}**.",
+                            'quick_actions': start_actions[:6],
+                        }
+                    )
+
+                return Response(
+                    {
+                        'output': f"¿Quieres ver tu último resultado o iniciar una evaluación nueva de **{label}**?",
+                        'quick_actions': [
+                            {
+                                'label': 'Ver último resultado',
+                                'type': 'message',
+                                'text': f'Ver último resultado de {label}',
+                                'payload': {'service_intent': {'experience': service_exp, 'action': 'show_last'}},
+                            },
+                            {
+                                'label': 'Iniciar evaluación nueva',
+                                'type': 'message',
+                                'text': f'Iniciar {label}',
+                                'payload': {'service_intent': {'experience': service_exp, 'action': 'start_new'}},
+                            },
+                            {'label': 'Cancelar', 'type': 'services_menu', 'page': 'core'},
+                        ],
+                    }
+                )
+        except Exception:
+            pass
 
         # =========================
         # FAST-PATH (determinista): Exp-011 Vitalidad de la Piel
