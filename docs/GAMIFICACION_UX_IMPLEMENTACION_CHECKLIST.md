@@ -26,6 +26,6 @@
 - [ ] Validar manual en móvil (flujo completo de claim + misiones + badges).
 
 ## Fusión y despliegue
-- [ ] Commit único de esta implementación UX.
-- [ ] Push a `main` para disparar despliegues automáticos (API + Frontend).
+- [x] Commit único de esta implementación UX.
+- [x] Push a `main` para disparar despliegues automáticos (API + Frontend).
 - [ ] Confirmar en teléfono URL productiva con hard refresh.
