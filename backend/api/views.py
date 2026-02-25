@@ -4252,18 +4252,81 @@ def chat_n8n(request):
                 if want_last:
                     last_res, updated_at = _resolve_last_result(service_exp, user)
                     if isinstance(last_res, dict):
+                        interpreted = ""
                         try:
-                            body = json.dumps(last_res, ensure_ascii=False, indent=2)
+                            prompt = (
+                                "Interpreta el último resultado del usuario para la experiencia solicitada.\n"
+                                "Responde en español, en tono de coach, con coherencia y enfoque en la intención del usuario.\n"
+                                "NO muestres JSON crudo ni campos técnicos irrelevantes.\n"
+                                "Formato: 1) Resumen breve 2) Qué significa 3) Próximo paso recomendado.\n"
+                                "Máximo 8 viñetas y sin pedir información que ya existe en el resultado.\n"
+                                f"Experiencia: {label}.\n"
+                                f"Mensaje del usuario: {str(message or '').strip()}\n"
+                                f"Actualizado: {updated_at or 'N/D'}\n"
+                            )
+                            n8n_payload = {
+                                "chatInput": prompt,
+                                "message": prompt,
+                                "sessionId": session_id,
+                                "username": (getattr(user, 'username', '') or ''),
+                                "auth_header": auth_header,
+                                "attachment": "",
+                                "attachment_text": "",
+                                "service_context": {
+                                    "experience": service_exp,
+                                    "label": label,
+                                    "updated_at": updated_at,
+                                },
+                                "qaf": {
+                                    "type": service_exp,
+                                    "result": last_res,
+                                },
+                                "system_rules": {
+                                    "module": "service_last_result_interpreter",
+                                    "no_raw_json": True,
+                                    "strict_scope": True,
+                                },
+                            }
+                            resp = _bench_n8n_post(request, n8n_url, n8n_payload, timeout=45)
+                            if resp.status_code == 200:
+                                try:
+                                    data = resp.json()
+                                except Exception:
+                                    data = {"output": resp.text}
+                                if isinstance(data, dict) and isinstance(data.get('output'), str):
+                                    interpreted = (data.get('output') or '').strip()
+                                elif isinstance(data, str):
+                                    interpreted = data.strip()
                         except Exception:
-                            body = str(last_res)
-                        if len(body) > 3400:
-                            body = body[:3400] + "\n..."
-                        header = [f"**Tu último resultado — {label}**"]
-                        if updated_at:
-                            header.append(f"Actualizado: {updated_at}")
+                            interpreted = ""
+
+                        # Fallback determinista (sin JSON crudo)
+                        if not interpreted:
+                            _bench_event_note(request, fallback_used=True)
+                            key_takeaways = []
+                            try:
+                                if isinstance(last_res.get('insights'), list):
+                                    key_takeaways = [str(x).strip() for x in last_res.get('insights') if str(x).strip()][:3]
+                            except Exception:
+                                key_takeaways = []
+
+                            lines = [f"**Tu último resultado — {label}**"]
+                            if updated_at:
+                                lines.append(f"Actualizado: {updated_at}")
+                            lines.append("")
+                            lines.append("**Resumen**")
+                            if key_takeaways:
+                                for it in key_takeaways:
+                                    lines.append(f"- {it}")
+                            else:
+                                lines.append("- Ya tengo tu última evaluación registrada y lista para usar en tu seguimiento.")
+                            lines.append("\n**Próximo paso recomendado**")
+                            lines.append(f"- Si quieres, iniciamos una nueva evaluación de {label} para comparar progreso.")
+                            interpreted = "\n".join(lines).strip()
+
                         return Response(
                             {
-                                'output': "\n".join(header) + "\n\n```json\n" + body + "\n```",
+                                'output': interpreted,
                                 'quick_actions': [
                                     {
                                         'label': 'Iniciar evaluación nueva',
@@ -8728,7 +8791,7 @@ def qaf_cognition_evaluate(request):
         locale=locale,
     )
 
-    return Response(result)
+    return Response(_attach_wow_event_payload(user, result, event_key='qaf_cognition', label='Motor de cognición activado'))
 
 
 @api_view(['POST', 'OPTIONS'])
@@ -8767,7 +8830,7 @@ def qaf_meal_coherence(request):
     }
 
     result = evaluate_meal(user_ctx, meal)
-    return Response(result)
+    return Response(_attach_wow_event_payload(user, result, event_key='qaf_meal_coherence', label='Coherencia nutricional evaluada'))
 
 
 @api_view(['POST', 'OPTIONS'])
@@ -8882,7 +8945,7 @@ def qaf_metabolic_profile(request):
         except Exception:
             pass
 
-    return Response({'success': True, 'result': res.payload})
+    return Response(_attach_wow_event_payload(user, {'success': True, 'result': res.payload}, event_key='qaf_metabolic_profile', label='Perfil metabólico actualizado'))
 
 
 @api_view(['POST', 'OPTIONS'])
@@ -9034,7 +9097,7 @@ def qaf_meal_plan(request):
         except Exception:
             pass
 
-    return Response({'success': True, 'result': result, 'text': text, 'quick_actions': quick_actions})
+    return Response(_attach_wow_event_payload(user, {'success': True, 'result': result, 'text': text, 'quick_actions': quick_actions}, event_key='qaf_meal_plan', label='Menú inteligente generado'))
 
 
 @api_view(['POST', 'OPTIONS'])
@@ -9060,7 +9123,7 @@ def qaf_meal_plan_apply(request):
     user.coach_weekly_state = ws2
     user.coach_weekly_updated_at = timezone.now()
     user.save(update_fields=['coach_weekly_state', 'coach_weekly_updated_at'])
-    return Response({'success': True, 'week_id': week_id})
+    return Response(_attach_wow_event_payload(user, {'success': True, 'week_id': week_id}, event_key='qaf_meal_plan_apply', label='Plan semanal aplicado'))
 
 
 @api_view(['POST', 'OPTIONS'])
@@ -9152,7 +9215,7 @@ def qaf_meal_plan_mutate(request):
         variety_level=str(((mutated.get('inputs') or {}).get('variety')) or 'normal'),
         is_applied=bool(is_applied),
     )
-    return Response({'success': True, 'result': mutated, 'text': text, 'quick_actions': quick_actions})
+    return Response(_attach_wow_event_payload(user, {'success': True, 'result': mutated, 'text': text, 'quick_actions': quick_actions}, event_key='qaf_meal_plan_mutate', label='Plan semanal ajustado'))
 
 
 @api_view(['POST', 'OPTIONS'])
@@ -9319,7 +9382,7 @@ def qaf_body_trend(request):
         except Exception:
             pass
 
-    return Response({'success': True, 'result': res.payload, 'text': text, 'quick_actions': quick_actions})
+    return Response(_attach_wow_event_payload(user, {'success': True, 'result': res.payload, 'text': text, 'quick_actions': quick_actions}, event_key='qaf_body_trend', label='Tendencia corporal analizada'))
 
 
 @api_view(['POST', 'OPTIONS'])
@@ -9351,7 +9414,7 @@ def qaf_posture(request):
     }).payload
 
     text = render_professional_summary(res)
-    return Response({'success': True, 'result': res, 'text': text})
+    return Response(_attach_wow_event_payload(user, {'success': True, 'result': res, 'text': text}, event_key='qaf_posture', label='Postura evaluada'))
 
 
 @api_view(['POST', 'OPTIONS'])
@@ -9426,7 +9489,7 @@ def qaf_lifestyle(request):
     except Exception:
         pass
 
-    return Response({'success': True, 'result': res, 'text': text, 'daily_metrics': daily_metrics[-7:]})
+    return Response(_attach_wow_event_payload(user, {'success': True, 'result': res, 'text': text, 'daily_metrics': daily_metrics[-7:]}, event_key='qaf_lifestyle', label='Lifestyle actualizado'))
 
 
 @api_view(['POST', 'OPTIONS'])
@@ -9490,7 +9553,7 @@ def qaf_motivation(request):
     except Exception:
         pass
 
-    return Response({'success': True, 'result': res, 'text': text})
+    return Response(_attach_wow_event_payload(user, {'success': True, 'result': res, 'text': text}, event_key='qaf_motivation', label='Motivación personalizada'))
 
 
 @api_view(['POST', 'OPTIONS'])
@@ -9592,7 +9655,7 @@ def qaf_progression(request):
     except Exception:
         pass
 
-    return Response({'success': True, 'result': res, 'text': text})
+    return Response(_attach_wow_event_payload(user, {'success': True, 'result': res, 'text': text}, event_key='qaf_progression', label='Progresión de entrenamiento'))
 
 
 @api_view(['POST', 'OPTIONS'])
@@ -9677,7 +9740,7 @@ def qaf_muscle_measure(request):
     except Exception:
         pass
 
-    return Response({'success': True, 'result': res, 'text': text})
+    return Response(_attach_wow_event_payload(user, {'success': True, 'result': res, 'text': text}, event_key='qaf_muscle_measure', label='Medición muscular'))
 
 
 @api_view(['POST', 'OPTIONS'])
@@ -9745,7 +9808,7 @@ def qaf_shape_presence(request):
     except Exception:
         pass
 
-    return Response({'success': True, 'result': res, 'text': text})
+    return Response(_attach_wow_event_payload(user, {'success': True, 'result': res, 'text': text}, event_key='qaf_shape_presence', label='Shape & Presence actualizado'))
 
 
 @api_view(['POST', 'OPTIONS'])
@@ -9814,7 +9877,7 @@ def qaf_posture_proportion(request):
     except Exception:
         pass
 
-    return Response({'success': True, 'result': res, 'text': text})
+    return Response(_attach_wow_event_payload(user, {'success': True, 'result': res, 'text': text}, event_key='qaf_posture_proportion', label='Arquitectura corporal evaluada'))
 
 
 @api_view(['POST', 'OPTIONS'])
@@ -9962,6 +10025,6 @@ def qaf_skin_health(request):
     except Exception:
         qas = []
 
-    return Response({'success': True, 'result': res, 'text': text, 'quick_actions': qas})
+    return Response(_attach_wow_event_payload(user, {'success': True, 'result': res, 'text': text, 'quick_actions': qas}, event_key='qaf_skin_health', label='Vitalidad de la piel analizada'))
 
 

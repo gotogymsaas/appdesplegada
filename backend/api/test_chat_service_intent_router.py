@@ -76,8 +76,8 @@ class ChatServiceIntentRouterTests(TestCase):
         data = resp.json() if hasattr(resp, "json") else {}
         out = str(data.get("output") or "")
         self.assertIn("Tu último resultado", out)
-        self.assertIn("skin_health_score", out)
-        self.assertFalse(mock_post.called)
+        self.assertIn("Vitalidad de la Piel", out)
+        self.assertNotIn("```json", out)
 
     @patch("api.views.requests.post")
     @override_settings(SECURE_SSL_REDIRECT=False)
