@@ -12,6 +12,8 @@ from devices.models import FitnessSync
 
 
 WEEKLY_TARGET_REGISTERS = 5
+WOW_DAILY_REWARD_POINTS = 20
+WOW_EVENT_REWARD_POINTS = 5
 
 
 STREAK_TIERS: list[tuple[int, str]] = [
@@ -393,4 +395,107 @@ def build_gamification_status(user: User, *, as_of: date | None = None) -> dict[
             "changed": identity_changed,
         },
         "documents": docs_map,
+    }
+
+
+def _today_iso() -> str:
+    return _today().isoformat()
+
+
+def _get_wow_state(user: User) -> dict[str, Any]:
+    coach_state = _get_coach_state(user)
+    wow = coach_state.get("wow") if isinstance(coach_state.get("wow"), dict) else {}
+    if not isinstance(wow.get("events_by_day"), dict):
+        wow["events_by_day"] = {}
+    return wow
+
+
+def _set_wow_state(user: User, wow_state: dict[str, Any]) -> None:
+    coach_state = _get_coach_state(user)
+    coach_state["wow"] = wow_state
+    _set_user_json_state(user, coach_state=coach_state)
+
+
+def _prune_wow_events(events_by_day: dict[str, Any], *, keep_days: int = 14) -> dict[str, Any]:
+    today_d = _today()
+    pruned: dict[str, Any] = {}
+    for k, v in events_by_day.items():
+        d = _parse_iso_date(k)
+        if d is None:
+            continue
+        if d < (today_d - timedelta(days=keep_days)):
+            continue
+        if isinstance(v, list):
+            pruned[k] = [str(x) for x in v]
+    return pruned
+
+
+def claim_daily_wow_reward(user: User) -> dict[str, Any]:
+    today_iso = _today_iso()
+    wow = _get_wow_state(user)
+    last_claim = wow.get("last_daily_claim_on")
+    points_total = int(wow.get("points_total") or 0)
+
+    claimed = str(last_claim or "") != today_iso
+    delta = WOW_DAILY_REWARD_POINTS if claimed else 0
+
+    if claimed:
+        wow["last_daily_claim_on"] = today_iso
+        wow["points_total"] = points_total + delta
+        wow["daily_claims"] = int(wow.get("daily_claims") or 0) + 1
+        _set_wow_state(user, wow)
+
+    return {
+        "ok": True,
+        "claimed": claimed,
+        "reward": delta,
+        "points_total": int((wow.get("points_total") if claimed else points_total) or 0),
+        "claimed_on": today_iso,
+        "gamification": build_gamification_status(user),
+    }
+
+
+def award_wow_event(user: User, *, event_key: str, label: str | None = None) -> dict[str, Any]:
+    key = str(event_key or "").strip().lower()
+    if not key:
+        return {
+            "ok": False,
+            "awarded": False,
+            "error": "event_key_required",
+            "gamification": build_gamification_status(user),
+        }
+
+    today_iso = _today_iso()
+    wow = _get_wow_state(user)
+    events_by_day = wow.get("events_by_day") if isinstance(wow.get("events_by_day"), dict) else {}
+    events_by_day = _prune_wow_events(events_by_day)
+
+    day_events = events_by_day.get(today_iso)
+    if not isinstance(day_events, list):
+        day_events = []
+
+    awarded = key not in day_events
+    delta = WOW_EVENT_REWARD_POINTS if awarded else 0
+
+    if awarded:
+        day_events.append(key)
+        events_by_day[today_iso] = day_events
+        wow["events_by_day"] = events_by_day
+        wow["points_total"] = int(wow.get("points_total") or 0) + delta
+        wow["events_total"] = int(wow.get("events_total") or 0) + 1
+        wow["last_event"] = {
+            "key": key,
+            "label": label or key,
+            "awarded_on": timezone.now().isoformat(),
+        }
+        _set_wow_state(user, wow)
+
+    return {
+        "ok": True,
+        "awarded": awarded,
+        "event_key": key,
+        "label": label or key,
+        "reward": delta,
+        "points_total": int(wow.get("points_total") or 0),
+        "gamification": build_gamification_status(user),
     }

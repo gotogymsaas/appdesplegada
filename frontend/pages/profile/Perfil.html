@@ -749,7 +749,20 @@
                 const res = await authFetch(`${API_URL}user_profile/?username=${encodeURIComponent(username)}`);
                 if (!res.ok) return null;
                 const data = await res.json();
-                const merged = mergeAndStoreUser(data);
+                let merged = mergeAndStoreUser(data);
+
+                if (!merged?.gamification) {
+                    try {
+                        const gsRes = await authFetch(`${API_URL}gamification/status/`);
+                        if (gsRes.ok) {
+                            const gsData = await gsRes.json();
+                            merged = mergeAndStoreUser({ gamification: gsData });
+                        }
+                    } catch (e) {
+                        if (window.GTG_DEBUG) console.warn('[Perfil] fallback gamification/status falló', e);
+                    }
+                }
+
                 applyUserToUI(merged, { silent });
                 return merged;
             } catch (e) {
