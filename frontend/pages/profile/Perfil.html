@@ -929,6 +929,7 @@
         }
 
         function runMissionAction(key) {
+            warmupAudio();
             const action = getMissionAction(key);
             if (!action) return;
             if (action.action === 'focus_happiness') {
@@ -960,6 +961,20 @@
             sfxBtn.style.opacity = gtgSfxEnabled ? '1' : '0.7';
         }
 
+        function warmupAudio() {
+            if (!gtgSfxEnabled) return;
+            try {
+                const AudioCtx = window.AudioContext || window.webkitAudioContext;
+                if (!AudioCtx) return;
+                if (!gtgAudioCtx) gtgAudioCtx = new AudioCtx();
+                if (gtgAudioCtx.state === 'suspended') {
+                    gtgAudioCtx.resume();
+                }
+            } catch (e) {
+                if (window.GTG_DEBUG) console.warn('[Perfil] warmupAudio falló', e);
+            }
+        }
+
         function toggleSfx() {
             gtgSfxEnabled = !gtgSfxEnabled;
             localStorage.setItem('gtg_sfx_enabled', gtgSfxEnabled ? '1' : '0');
@@ -967,6 +982,7 @@
             showSfxStatus(gtgSfxEnabled ? 'SFX ON' : 'SFX OFF');
             showToast(gtgSfxEnabled ? 'Sonidos activados' : 'Sonidos desactivados', 'success');
             if (gtgSfxEnabled) {
+                warmupAudio();
                 playPositiveSfx('claim');
             }
         }
@@ -1082,6 +1098,22 @@
             el.classList.remove('show');
             void el.offsetWidth;
             el.classList.add('show');
+        }
+
+        function wowRewardForKey(key, fallback = 5) {
+            const normalized = String(key || '').toLowerCase();
+            const map = {
+                checkins: 5,
+                sync: 5,
+                if_delta: 5,
+            };
+            return Number(map[normalized] || fallback || 0);
+        }
+
+        function showWowEventToast(message) {
+            const text = String(message || '').trim();
+            if (!text) return;
+            showFxToast(text);
         }
 
         function showSfxStatus(message) {
@@ -1244,6 +1276,8 @@
                                 row.classList.add('newly-completed');
                                 playPositiveSfx('mission');
                                 triggerSuccessHaptic();
+                                const reward = wowRewardForKey(key, 5);
+                                showWowEventToast(`Misión completada: ${label} (+${reward} WOW)`);
                             }
                                                         const action = completed ? null : getMissionAction(key);
                                                         const actionButton = action
@@ -1321,6 +1355,12 @@
                         streakTier.textContent = currentTier;
                     }
                     animateStreakIncrease(gtgPrevStreak, currentStreak);
+                    if (gtgPrevStreak !== null && currentStreak > gtgPrevStreak) {
+                        const streakLabel = (g.streak_tier && g.streak_tier.current && g.streak_tier.current.label)
+                            ? g.streak_tier.current.label
+                            : 'Racha activa';
+                        showWowEventToast(`Racha +${currentStreak - gtgPrevStreak} día — ${streakLabel}`);
+                    }
                     gtgPrevStreak = currentStreak;
 
                     const qafProgressNote = document.getElementById('qafProgressNote');
@@ -1360,7 +1400,7 @@
                         });
                         gtgPrevExperienceCompleted = nextExperienceCompleted;
                         if (hasNewExperience) {
-                            showFxToast('¡Nueva experiencia QAF completada!');
+                            showWowEventToast('Experiencia QAF completada (+5 WOW)');
                             playSfx('CHIME_GOAL');
                         }
                     }
@@ -1430,7 +1470,7 @@
                     });
                     gtgPrevBadges = nextBadges;
                     if (hasNewBadge) {
-                        showFxToast('¡Nuevo logro desbloqueado!');
+                        showWowEventToast('¡Nuevo logro desbloqueado!');
                         playSfx('CHIME_GOAL');
                         triggerSuccessHaptic();
                     }
@@ -1491,6 +1531,7 @@
 
         async function claimDailyReward() {
             if (!window.API_URL || typeof authFetch !== 'function') return;
+            warmupAudio();
             const claimBtn = document.getElementById('claimDailyBtn');
             if (claimBtn && claimBtn.disabled) return;
 
@@ -1521,12 +1562,12 @@
                     const merged = await syncDailyStateFallback();
                     const claimed = !!(merged && merged.gamification && merged.gamification.wow && merged.gamification.wow.daily_reward && merged.gamification.wow.daily_reward.claimed_today);
                     if (claimed) {
-                        showFxToast('Recompensa diaria ya reclamada');
+                        showWowEventToast('Recompensa diaria ya reclamada');
                         showToast('La recompensa de hoy ya fue reclamada.', 'success');
                         return;
                     }
                     if (res.status === 404) {
-                        showFxToast('Recompensa diaria no disponible en esta versión del backend');
+                        showWowEventToast('Recompensa diaria no disponible en esta versión del backend');
                         showToast('Recompensa diaria no disponible en este momento.', 'error');
                         return;
                     }
@@ -1539,10 +1580,10 @@
                     applyUserToUI(merged, { silent: true });
                 }
                 if (data && data.claimed) {
-                    showFxToast(`¡+${Number(data.reward || 0)} WOW! Recompensa diaria reclamada`);
+                    showWowEventToast(`¡+${Number(data.reward || 0)} WOW! Recompensa diaria reclamada`);
                     showToast(`+${Number(data.reward || 0)} puntos diarios`, 'success');
                 } else {
-                    showFxToast('Recompensa diaria ya reclamada');
+                    showWowEventToast('Recompensa diaria ya reclamada');
                     showToast('La recompensa de hoy ya fue reclamada.', 'success');
                 }
             } catch (e) {
@@ -1550,7 +1591,7 @@
                 const merged = await syncDailyStateFallback();
                 const claimed = !!(merged && merged.gamification && merged.gamification.wow && merged.gamification.wow.daily_reward && merged.gamification.wow.daily_reward.claimed_today);
                 if (claimed) {
-                    showFxToast('Recompensa diaria ya reclamada');
+                    showWowEventToast('Recompensa diaria ya reclamada');
                     showToast('La recompensa de hoy ya fue reclamada.', 'success');
                 } else {
                     showToast('No se pudo reclamar la recompensa diaria.', 'error');
@@ -1567,6 +1608,13 @@
         
         document.addEventListener('DOMContentLoaded', () => {
             syncSfxToggleUi();
+            const unlockAudioOnce = () => {
+                warmupAudio();
+                window.removeEventListener('pointerdown', unlockAudioOnce);
+                window.removeEventListener('touchstart', unlockAudioOnce);
+            };
+            window.addEventListener('pointerdown', unlockAudioOnce, { passive: true });
+            window.addEventListener('touchstart', unlockAudioOnce, { passive: true });
             const user = getStoredUser();
             
             if (!user) {
