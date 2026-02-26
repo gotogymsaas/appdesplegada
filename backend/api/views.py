@@ -5279,7 +5279,11 @@ def chat_n8n(request):
                 except Exception:
                     coach_output = ''
 
-                final_output = coach_output or text or 'Vitalidad de la Piel listo.'
+                final_output = coach_output or (
+                    "Listo. Ya procesé tu análisis de Vitalidad de la Piel, "
+                    "pero no pude generar la respuesta completa del Quantum Coach en este intento. "
+                    "Inténtalo de nuevo en unos segundos."
+                )
                 return Response(
                     _attach_wow_event_payload(
                         user,
@@ -6839,7 +6843,11 @@ def chat_n8n(request):
                     except Exception:
                         coach_output = ''
 
-                    final_output = coach_output or text or 'Vitalidad de la Piel listo.'
+                    final_output = coach_output or (
+                        "Listo. Ya procesé tu análisis de Vitalidad de la Piel, "
+                        "pero no pude generar la respuesta completa del Quantum Coach en este intento. "
+                        "Inténtalo de nuevo en unos segundos."
+                    )
                     return Response(
                         _attach_wow_event_payload(
                             user,
