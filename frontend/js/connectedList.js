@@ -354,6 +354,14 @@
     return;
     }
     const data = await res.json().catch(() => ({}));
+    if (res.status === 402) {
+      const premiumMsg = data.error || "Esta función requiere Premium.";
+      showToast(premiumMsg, "error");
+      setTimeout(() => {
+        window.location.href = "../../pages/plans/Planes.html";
+      }, 700);
+      return;
+    }
     if (!res.ok) {
       let msg = data.error || data.detail || `No se pudo sincronizar (HTTP ${res.status}).`;
       // En errores de Fitbit, el backend adjunta detalle en data.fitbit
@@ -376,7 +384,8 @@
     } catch (e) {
     console.error(e);
     setStatus("Error");
-    showToast("No se pudo sincronizar.", "error");
+    const prettyError = (e && e.message) ? String(e.message) : "No se pudo sincronizar.";
+    showToast(prettyError, "error");
     } finally {
     setStatus("Listo");
     }

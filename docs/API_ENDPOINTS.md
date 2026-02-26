@@ -46,6 +46,12 @@ Nota: el handler puede enriquecer la respuesta con resultados QAF (exp-003/004/0
 - `GET /api/user_documents/`
 - `POST /api/user_documents/delete/`
 
+## Chat adjuntos
+
+- `POST /api/upload_chat_attachment/` (JWT)
+	- Plan Gratis: límite mensual configurable de imágenes (`FREE_IMAGE_MONTHLY_LIMIT`, default 15).
+	- Al exceder límite devuelve `402` con `premium_required=true` y CTA a Planes.
+
 ## Contacto
 
 - `POST /api/contact/`
@@ -71,6 +77,8 @@ Nota: el handler puede enriquecer la respuesta con resultados QAF (exp-003/004/0
 
 ## Billing
 
+- `POST /api/billing/telemetry/premium_event/` (JWT)
+- `POST /api/billing/checkout/mercadopago/` (JWT)
 - `POST /api/billing/webhook/mercadopago/`
 
 ## QAF (JWT)

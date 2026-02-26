@@ -250,6 +250,62 @@
             line-height: 1.5;
         }
 
+        .checkout-form {
+            background: rgba(15, 191, 176, 0.05);
+            border: 1px solid rgba(15, 191, 176, 0.2);
+            border-radius: var(--radius-md);
+            padding: 14px;
+            margin-bottom: 14px;
+        }
+
+        .checkout-title {
+            color: var(--text-main);
+            font-size: 14px;
+            margin-bottom: 10px;
+            font-weight: 600;
+        }
+
+        .checkout-row {
+            margin-bottom: 10px;
+        }
+
+        .checkout-label {
+            display: block;
+            color: var(--text-muted);
+            font-size: 12px;
+            margin-bottom: 6px;
+        }
+
+        .checkout-input {
+            width: 100%;
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            border-radius: var(--radius-md);
+            background: rgba(255, 255, 255, 0.04);
+            color: var(--text-main);
+            padding: 10px 12px;
+            font-size: 13px;
+        }
+
+        .checkout-summary {
+            color: var(--secondary);
+            font-size: 12px;
+            margin-top: 6px;
+        }
+
+        .checkout-check {
+            display: flex;
+            align-items: flex-start;
+            gap: 8px;
+            color: var(--text-muted);
+            font-size: 12px;
+            line-height: 1.35;
+            margin-top: 6px;
+        }
+
+        .checkout-check input {
+            margin-top: 2px;
+        }
+
         .cta-note {
             text-align: center;
             color: var(--text-muted);
@@ -375,6 +431,19 @@
                 <p>14 días de experiencia Premium completa, para que sientas cómo es tener tus datos conectados. No es una prueba de funciones. Es una experiencia de acompañamiento real.</p>
             </div>
 
+            <div class="checkout-form">
+                <div class="checkout-title">Confirma tu activación</div>
+                <div class="checkout-row">
+                    <label class="checkout-label" for="checkoutEmail">Cuenta de pago</label>
+                    <input id="checkoutEmail" class="checkout-input" type="email" readonly placeholder="Inicia sesión para continuar">
+                </div>
+                <div class="checkout-summary" id="selectedPlanSummary">Ciclo seleccionado: Mensual</div>
+                <label class="checkout-check">
+                    <input type="checkbox" id="premiumConsent">
+                    <span>Confirmo que seré redirigido a MercadoPago para completar la suscripción Premium.</span>
+                </label>
+            </div>
+
             <button class="plan-btn btn-premium" id="premiumCta">Activar mi bienestar inteligente</button>
             <div class="cta-note">Puedes cancelar cuando quieras. Tus datos siempre serán tuyos.</div>
         </div>
@@ -434,11 +503,33 @@
 
         const premiumCta = document.getElementById('premiumCta');
         const billingOptions = document.querySelectorAll('.billing-option');
+        const selectedPlanSummary = document.getElementById('selectedPlanSummary');
+        const checkoutEmail = document.getElementById('checkoutEmail');
+        const premiumConsent = document.getElementById('premiumConsent');
+
+        const resolveSessionEmail = () => {
+            const rawUser = localStorage.getItem('user');
+            if (rawUser) {
+                try {
+                    const parsed = JSON.parse(rawUser);
+                    return parsed?.email || parsed?.username || '';
+                } catch (error) {
+                    return '';
+                }
+            }
+            return localStorage.getItem('username') || '';
+        };
+
+        const isLoggedIn = () => {
+            return !!(localStorage.getItem('access') || localStorage.getItem('token'));
+        };
 
         const updateCtaLink = () => {
             const active = document.querySelector('.billing-option.active');
             const link = active?.dataset?.link || '';
             premiumCta.dataset.link = link;
+            const label = active?.dataset?.plan === 'annual' ? 'Anual' : 'Mensual';
+            selectedPlanSummary.textContent = `Ciclo seleccionado: ${label}`;
         };
 
         billingOptions.forEach(option => {
@@ -450,13 +541,72 @@
         });
 
         updateCtaLink();
+        checkoutEmail.value = resolveSessionEmail();
 
-        premiumCta.addEventListener('click', () => {
-            const link = premiumCta.dataset.link;
-            if (link) {
-                window.location.href = link;
-            } else {
-                showToast('Selecciona un plan', 'error');
+        premiumCta.addEventListener('click', async () => {
+            const selected = document.querySelector('.billing-option.active');
+            const cycle = selected?.dataset?.plan || 'monthly';
+
+            if (!isLoggedIn()) {
+                showToast('Inicia sesión para activar Premium', 'error');
+                setTimeout(() => {
+                    window.location.href = '../auth/indexInicioDeSesion.html';
+                }, 700);
+                return;
+            }
+
+            if (!premiumConsent.checked) {
+                showToast('Debes confirmar la redirección al pago', 'error');
+                return;
+            }
+
+            if (!window.API_URL || typeof authFetch !== 'function') {
+                showToast('No se pudo iniciar el checkout. Intenta de nuevo.', 'error');
+                return;
+            }
+
+            premiumCta.disabled = true;
+            const originalText = premiumCta.textContent;
+            premiumCta.textContent = 'Redirigiendo...';
+
+            try {
+                try {
+                    await authFetch(`${API_URL}billing/telemetry/premium_event/`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            event: 'premium_cta_click',
+                            source: 'plans_page',
+                            module: cycle === 'annual' ? 'premium_checkout_annual' : 'premium_checkout_monthly',
+                        }),
+                    });
+                } catch (error) {
+                }
+
+                const response = await authFetch(`${API_URL}billing/checkout/mercadopago/`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ cycle }),
+                });
+
+                const data = await response.json();
+                if (!response.ok) {
+                    showToast(data?.error || 'No se pudo generar el checkout de pago', 'error');
+                    return;
+                }
+
+                const checkoutUrl = data?.checkout_url;
+                if (!checkoutUrl) {
+                    showToast('Checkout no disponible. Contacta soporte.', 'error');
+                    return;
+                }
+
+                window.location.href = checkoutUrl;
+            } catch (error) {
+                showToast('No se pudo conectar para iniciar el pago', 'error');
+            } finally {
+                premiumCta.disabled = false;
+                premiumCta.textContent = originalText;
             }
         });
     </script>

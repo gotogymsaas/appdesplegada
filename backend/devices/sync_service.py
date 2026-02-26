@@ -5,6 +5,7 @@ import os
 import re
 from dataclasses import dataclass
 from typing import Any
+from zoneinfo import ZoneInfo
 
 import requests
 from django.conf import settings
@@ -56,6 +57,34 @@ def _score_from_sleep_minutes(minutes: Any) -> int:
         minutes_num = 0
     hours = minutes_num / 60.0
     return _clamp_score((hours / 8.0) * 10.0)
+
+
+def _user_timezone(user: User):
+    name = (getattr(user, "timezone", "") or "").strip()
+    if name:
+        try:
+            return ZoneInfo(name)
+        except Exception:
+            pass
+    return timezone.get_current_timezone()
+
+
+def _latest_non_zero_fitbit_steps_for_date(user: User, date_str: str) -> int:
+    recent = (
+        FitnessSync.objects.filter(user=user, provider="fitbit")
+        .order_by("-end_time")[:20]
+    )
+    for row in recent:
+        metrics = row.metrics if isinstance(row.metrics, dict) else {}
+        if str(metrics.get("date") or "") != date_str:
+            continue
+        try:
+            steps = int(float(metrics.get("steps") or 0))
+        except Exception:
+            steps = 0
+        if steps > 0:
+            return steps
+    return 0
 
 
 def _refresh_google_fit_token(conn: DeviceConnection) -> tuple[bool, dict[str, Any]]:
@@ -632,7 +661,7 @@ def sync_device(user: User, provider: str) -> SyncResult:
                 return SyncResult(False, 400, {"ok": False, **info})
 
         now = timezone.now()
-        tzinfo = timezone.get_current_timezone()
+        tzinfo = _user_timezone(user)
         now_local = timezone.localtime(now, tzinfo)
         start_local = now_local.replace(hour=0, minute=0, second=0, microsecond=0)
         date_str = now_local.date().isoformat()
@@ -681,30 +710,38 @@ def sync_device(user: User, provider: str) -> SyncResult:
             sleep_minutes = 0
             avg_hr = None
 
-            steps_data = _get(f"https://api.fitbit.com/1/user/-/activities/steps/date/{date_str}/1d.json")
+            # Usar "today" evita desalineación de fecha por timezone del servidor.
+            steps_data = _get("https://api.fitbit.com/1/user/-/activities/steps/date/today/1d.json")
             steps_arr = steps_data.get("activities-steps", [])
             if steps_arr:
                 steps = int(float(steps_arr[-1].get("value", 0) or 0))
 
-            cal_data = _get(f"https://api.fitbit.com/1/user/-/activities/calories/date/{date_str}/1d.json")
+            cal_data = _get("https://api.fitbit.com/1/user/-/activities/calories/date/today/1d.json")
             cal_arr = cal_data.get("activities-calories", [])
             if cal_arr:
                 calories = float(cal_arr[-1].get("value", 0) or 0)
 
-            dist_data = _get(f"https://api.fitbit.com/1/user/-/activities/distance/date/{date_str}/1d.json")
+            dist_data = _get("https://api.fitbit.com/1/user/-/activities/distance/date/today/1d.json")
             dist_arr = dist_data.get("activities-distance", [])
             if dist_arr:
                 distance = float(dist_arr[-1].get("value", 0) or 0)
 
-            sleep_data = _get(f"https://api.fitbit.com/1/user/-/sleep/date/{date_str}.json")
+            sleep_data = _get("https://api.fitbit.com/1/user/-/sleep/date/today.json")
             sleep_summary = sleep_data.get("summary", {})
             sleep_minutes = int(sleep_summary.get("totalMinutesAsleep", 0) or 0)
 
-            hr_data = _get(f"https://api.fitbit.com/1/user/-/activities/heart/date/{date_str}/1d.json")
+            hr_data = _get("https://api.fitbit.com/1/user/-/activities/heart/date/today/1d.json")
             hr_arr = hr_data.get("activities-heart", [])
             if hr_arr:
                 hr_val = hr_arr[-1].get("value", {})
                 avg_hr = hr_val.get("restingHeartRate")
+
+            steps_reused = False
+            if steps == 0:
+                previous_steps = _latest_non_zero_fitbit_steps_for_date(user, date_str)
+                if previous_steps > 0:
+                    steps = previous_steps
+                    steps_reused = True
 
             missing_fields: list[str] = []
             if steps == 0:
@@ -725,6 +762,7 @@ def sync_device(user: User, provider: str) -> SyncResult:
                 "timezone": tz_name,
                 "data_quality": "partial" if is_partial else "ok",
                 "missing_fields": missing_fields,
+                "steps_reused_from_previous_sync": steps_reused,
             }
 
             FitnessSync.objects.create(

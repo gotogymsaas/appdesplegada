@@ -2648,6 +2648,15 @@ async function processMessage(text, file, pendingId, extraPayload = null) {
       });
       const uploadData = await uploadResp.json().catch(() => ({}));
       if (!uploadResp.ok) {
+        if (uploadResp.status === 402 && uploadData && uploadData.premium_required) {
+          document.getElementById(loadingId)?.remove();
+          const gateMsg = uploadData.output || uploadData.error || 'Esta función requiere Premium.';
+          appendMessage(gateMsg, 'bot');
+          if (Array.isArray(uploadData.quick_actions) && uploadData.quick_actions.length) {
+            appendQuickActions(uploadData.quick_actions);
+          }
+          return;
+        }
         const msg = uploadData.error || uploadData.detail || `Error subiendo archivo (HTTP ${uploadResp.status}).`;
         throw new Error(msg);
       }
@@ -2655,6 +2664,9 @@ async function processMessage(text, file, pendingId, extraPayload = null) {
         attachmentUrl = uploadData.file_url;
         attachmentText = uploadData.extracted_text;
         attachmentTextDiagnostic = uploadData.extracted_text_diagnostic || '';
+        if (uploadData.quota_notice) {
+          appendMessage(uploadData.quota_notice, 'bot');
+        }
       } else {
         throw new Error('Error subiendo archivo: ' + uploadData.error);
       }
@@ -3416,7 +3428,34 @@ function appendQuickActions(actions) {
         return;
       }
       if (action.type === 'link' && action.href) {
-        window.location.href = action.href;
+        const telemetry = action?.payload && typeof action.payload === 'object'
+          ? action.payload.telemetry
+          : null;
+        const shouldTrackPremium = telemetry && telemetry.event === 'premium_cta_click';
+
+        if (!shouldTrackPremium || !window.API_URL || typeof authFetch !== 'function') {
+          window.location.href = action.href;
+          return;
+        }
+
+        let redirected = false;
+        const go = () => {
+          if (redirected) return;
+          redirected = true;
+          window.location.href = action.href;
+        };
+
+        authFetch(`${API_URL}billing/telemetry/premium_event/`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            event: 'premium_cta_click',
+            source: String(telemetry.source || 'chat_quick_action'),
+            module: String(telemetry.module || 'unknown'),
+          }),
+        }).finally(go);
+
+        setTimeout(go, 250);
         return;
       }
       if (action.type === 'message' && action.text) {

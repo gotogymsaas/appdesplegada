@@ -14,6 +14,7 @@ from typing import Any
 
 from devices.models import DeviceConnection, FitnessSync as DevicesFitnessSync
 from devices.scheduler_service import enqueue_sync_request
+from devices.sync_service import sync_device
 
 import requests
 import json
@@ -803,7 +804,8 @@ from if_model.service import predict_if_from_scores
 def _apply_trial_status(user):
     if user.trial_active and user.trial_ends_at and timezone.now() >= user.trial_ends_at:
         user.trial_active = False
-        if user.plan == "Premium":
+        # Si ya está activo por pasarela, no degradar plan al expirar trial.
+        if str(getattr(user, 'billing_status', '') or '').strip().lower() != "active" and user.plan == "Premium":
             user.plan = "Gratis"
         if user.billing_status == "trial":
             user.billing_status = "expired"
@@ -812,11 +814,153 @@ def _apply_trial_status(user):
 
 def _is_premium_active(user):
     _apply_trial_status(user)
-    if user.plan == "Premium":
+    billing_status = str(getattr(user, 'billing_status', '') or '').strip().lower()
+
+    # Premium por cobro activo
+    if billing_status == "active":
         return True
+
+    # Premium por trial vigente
     if user.trial_active and user.trial_ends_at and timezone.now() < user.trial_ends_at:
         return True
+
+    # Cualquier otro estado se considera no premium para bloquear funciones de pago.
     return False
+
+
+def _qaf_premium_gate_payload(
+    module_key: str,
+    module_title: str,
+    preview_text: str,
+    *,
+    request=None,
+    user=None,
+    source: str = "qaf",
+):
+    if request is not None:
+        _audit_log(
+            request,
+            action="billing.premium_gate.shown",
+            entity_type="qaf_module",
+            entity_id=str(module_key),
+            after={
+                "module": module_key,
+                "title": module_title,
+                "source": source,
+                "plan": getattr(user, "plan", None) if user else None,
+                "trial_active": bool(getattr(user, "trial_active", False)) if user else None,
+            },
+        )
+
+    output = (
+        f"**{module_title}**\n"
+        f"{preview_text}\n\n"
+        "Esta función completa está disponible en **Premium**."
+    )
+    return {
+        'success': False,
+        'premium_required': True,
+        'module': module_key,
+        'output': output,
+        'text': output,
+        'quick_actions': [
+            {
+                'label': 'Activar Premium',
+                'type': 'link',
+                'href': '/pages/plans/Planes.html',
+                'payload': {
+                    'telemetry': {
+                        'event': 'premium_cta_click',
+                        'source': source,
+                        'module': module_key,
+                    }
+                },
+            }
+        ],
+        'preview': {
+            'title': module_title,
+            'summary': preview_text,
+        },
+    }
+
+
+def _qaf_append_premium_cta(actions, module: str = 'unknown', source: str = 'qaf'):
+    actions = actions if isinstance(actions, list) else []
+    for action in actions:
+        if not isinstance(action, dict):
+            continue
+        if str(action.get('type') or '').strip().lower() == 'link' and str(action.get('href') or '').strip() == '/pages/plans/Planes.html':
+            return actions
+    actions.append({
+        'label': 'Activar Premium',
+        'type': 'link',
+        'href': '/pages/plans/Planes.html',
+        'payload': {
+            'telemetry': {
+                'event': 'premium_cta_click',
+                'source': source,
+                'module': module,
+            }
+        },
+    })
+    return actions
+
+
+def _free_image_monthly_limit() -> int:
+    try:
+        value = int(os.getenv('FREE_IMAGE_MONTHLY_LIMIT', '15') or 15)
+    except Exception:
+        value = 15
+    return max(1, min(value, 500))
+
+
+def _image_quota_month_key() -> str:
+    now_local = timezone.localtime(timezone.now())
+    return f"{now_local.year:04d}-{now_local.month:02d}"
+
+
+def _get_image_quota_status(user):
+    limit = _free_image_monthly_limit()
+    month_key = _image_quota_month_key()
+    coach_state = getattr(user, 'coach_state', {}) or {}
+    counters = coach_state.get('image_upload_counts') if isinstance(coach_state.get('image_upload_counts'), dict) else {}
+    used = 0
+    try:
+        used = int(counters.get(month_key) or 0)
+    except Exception:
+        used = 0
+    used = max(0, used)
+    remaining = max(0, limit - used)
+    return {
+        'month_key': month_key,
+        'limit': int(limit),
+        'used': int(used),
+        'remaining': int(remaining),
+    }
+
+
+def _increment_image_quota_usage(user):
+    status_now = _get_image_quota_status(user)
+    month_key = status_now['month_key']
+
+    coach_state = getattr(user, 'coach_state', {}) or {}
+    counters = coach_state.get('image_upload_counts') if isinstance(coach_state.get('image_upload_counts'), dict) else {}
+    counters2 = dict(counters)
+    counters2[month_key] = int(status_now['used']) + 1
+
+    # Mantener solo últimos 6 meses para no crecer indefinidamente.
+    keys_sorted = sorted([k for k in counters2.keys() if isinstance(k, str)])
+    if len(keys_sorted) > 6:
+        for old_key in keys_sorted[:-6]:
+            counters2.pop(old_key, None)
+
+    coach_state2 = dict(coach_state)
+    coach_state2['image_upload_counts'] = counters2
+    user.coach_state = coach_state2
+    user.coach_state_updated_at = timezone.now()
+    user.save(update_fields=['coach_state', 'coach_state_updated_at'])
+
+    return _get_image_quota_status(user)
 
 def _week_id(dt=None):
     dt = dt or date.today()
@@ -1667,6 +1811,8 @@ def get_user_profile(request):
     if auth_error:
         return auth_error
 
+    _apply_trial_status(user)
+
     try:
         profile_picture = _profile_picture_db_value(user)
         profile_picture_url = _canonical_profile_picture_url(request, user)
@@ -1750,6 +1896,8 @@ def coach_context(request):
     if auth_error:
         return auth_error
 
+    _apply_trial_status(user)
+
     def _dt_iso(value):
         return value.isoformat() if value else None
 
@@ -1781,6 +1929,53 @@ def coach_context(request):
     connected_providers = [
         d["provider"] for d in devices_payload if d["status"] == "connected"
     ]
+
+    # Auto-sync al abrir app (vía coach_context), no solo en pantalla de dispositivos.
+    # Encola sync invisible si la última sync está vieja (>=3h) y evita duplicados recientes.
+    # Fast-on-open opcional: ejecuta 1 sync inmediato para mejorar frescura percibida.
+    try:
+        now = timezone.now()
+        stale_after = timezone.timedelta(hours=3)
+        fast_on_open = (os.getenv("AUTO_SYNC_FAST_ON_OPEN", "1") or "").strip().lower() in ("1", "true", "yes", "y", "on")
+        try:
+            fast_max = int(os.getenv("AUTO_SYNC_FAST_ON_OPEN_MAX_PROVIDERS", "1") or 1)
+        except Exception:
+            fast_max = 1
+        if fast_max < 0:
+            fast_max = 0
+        if fast_max > 2:
+            fast_max = 2
+
+        fast_candidates: list[str] = []
+        for d in device_qs:
+            if d.status != "connected":
+                continue
+            if d.last_sync_at and (now - d.last_sync_at) < stale_after:
+                continue
+            recently = (
+                user.sync_requests.filter(
+                    status="pending",
+                    provider=d.provider,
+                    requested_at__gte=now - timezone.timedelta(minutes=30),
+                ).exists()
+            )
+            if not recently:
+                enqueue_sync_request(
+                    user,
+                    provider=d.provider,
+                    reason="app_open_context",
+                    priority=6,
+                )
+                fast_candidates.append(d.provider)
+
+        if fast_on_open and fast_max > 0 and fast_candidates:
+            for provider in fast_candidates[:fast_max]:
+                try:
+                    sync_device(user, provider)
+                except Exception:
+                    pass
+    except Exception:
+        pass
 
     fitness_by_provider = {}
     recent_syncs = DevicesFitnessSync.objects.filter(user=user).order_by('-created_at')[:50]
@@ -3545,11 +3740,67 @@ def mercadopago_checkout_link(request):
     })
     checkout_url = f'{base_url}?{query}'
 
+    _audit_log(
+        request,
+        action='billing.checkout_link.generated',
+        entity_type='user',
+        entity_id=str(user.id),
+        after={
+            'provider': 'mercadopago',
+            'cycle': cycle,
+            'source': 'plans_page',
+        },
+    )
+
     return Response({
         'success': True,
         'checkout_url': checkout_url,
         'cycle': cycle,
     })
+
+
+@api_view(['POST', 'OPTIONS'])
+@authentication_classes([JWTAuthentication])
+@permission_classes([IsAuthenticatedOrOptions])
+def premium_telemetry_event(request):
+    if request.method == 'OPTIONS':
+        response = Response()
+        response['Access-Control-Allow-Origin'] = '*'
+        response['Access-Control-Allow-Methods'] = 'POST, OPTIONS'
+        response['Access-Control-Allow-Headers'] = 'Content-Type, Authorization'
+        return response
+
+    user = _resolve_request_user(request)
+    if not user:
+        return Response({'error': 'Autenticacion requerida'}, status=401)
+
+    payload = request.data if isinstance(request.data, dict) else {}
+    event = str(payload.get('event') or '').strip().lower()
+    source = str(payload.get('source') or '').strip().lower() or 'unknown'
+    module = str(payload.get('module') or '').strip().lower() or 'unknown'
+
+    allowed_events = {
+        'premium_cta_click',
+        'premium_gate_shown_client',
+    }
+    if event not in allowed_events:
+        return Response({'error': 'Evento no soportado'}, status=400)
+
+    _audit_log(
+        request,
+        action=f'billing.{event}',
+        entity_type='qaf_module',
+        entity_id=module[:120],
+        after={
+            'event': event,
+            'source': source,
+            'module': module,
+            'plan': getattr(user, 'plan', None),
+            'trial_active': bool(getattr(user, 'trial_active', False)),
+            'billing_status': getattr(user, 'billing_status', None),
+        },
+    )
+    return Response({'success': True})
 
 
 def _validate_mercadopago_webhook_secret(request) -> bool:
@@ -3907,6 +4158,30 @@ def update_user_admin(request, user_id):
                 return Response({'error': 'reason requerido para cambio de plan'}, status=status.HTTP_400_BAD_REQUEST)
             user.plan = requested_plan
 
+            if requested_plan == "Premium":
+                # Extensión de prueba desde dashboard: 14 días, excepto si ya está en cobro activo.
+                current_billing = str(getattr(user, 'billing_status', '') or '').strip().lower()
+                if current_billing != 'active':
+                    now = timezone.now()
+                    base_start = now
+                    try:
+                        if user.trial_active and user.trial_ends_at and user.trial_ends_at > now:
+                            base_start = user.trial_ends_at
+                    except Exception:
+                        base_start = now
+
+                    user.trial_active = True
+                    if not user.trial_started_at:
+                        user.trial_started_at = now
+                    user.trial_ends_at = base_start + timedelta(days=14)
+                    user.billing_status = 'trial'
+            elif requested_plan == "Gratis":
+                # Revocación manual: bloquear premium inmediatamente.
+                user.trial_active = False
+                user.trial_started_at = None
+                user.trial_ends_at = None
+                user.billing_status = 'free'
+
         user.save()
         after = {"id": user.id, "username": user.username, "email": user.email, "plan": user.plan, "is_active": getattr(user, "is_active", True)}
 
@@ -4127,6 +4402,51 @@ def upload_chat_attachment(request):
         if extension not in allowed_ext:
             return Response({'error': 'Tipo de archivo no permitido'}, status=400)
 
+        is_image_attachment = extension in ('.png', '.jpg', '.jpeg', '.webp', '.heic', '.heif')
+
+        if is_image_attachment and not _is_premium_active(user):
+            quota = _get_image_quota_status(user)
+            if quota['used'] >= quota['limit']:
+                _audit_log(
+                    request,
+                    action='billing.image_quota.exceeded',
+                    entity_type='user',
+                    entity_id=str(user.id),
+                    after={
+                        'month': quota['month_key'],
+                        'used': quota['used'],
+                        'limit': quota['limit'],
+                    },
+                )
+                return Response(
+                    {
+                        'success': False,
+                        'premium_required': True,
+                        'error': f"Has usado {quota['used']}/{quota['limit']} imágenes este mes. Activa Premium para continuar.",
+                        'output': (
+                            f"**Límite mensual alcanzado**\n"
+                            f"Ya usaste {quota['used']}/{quota['limit']} imágenes en tu plan Gratis.\n\n"
+                            "Activa Premium para seguir usando servicios con imágenes sin este límite."
+                        ),
+                        'quick_actions': [
+                            {
+                                'label': 'Activar Premium',
+                                'type': 'link',
+                                'href': '/pages/plans/Planes.html',
+                                'payload': {
+                                    'telemetry': {
+                                        'event': 'premium_cta_click',
+                                        'source': 'image_quota',
+                                        'module': 'chat_image_upload_limit',
+                                    }
+                                },
+                            }
+                        ],
+                        'image_quota': quota,
+                    },
+                    status=402,
+                )
+
         safe_base = get_valid_filename(os.path.splitext(original_name)[0]) or "adjunto"
         safe_name = f"{safe_base}_{uuid.uuid4().hex[:8]}{extension}"
 
@@ -4157,6 +4477,27 @@ def upload_chat_attachment(request):
 
         signed_url = _build_signed_blob_url(file_url)
         payload = {'success': True, 'file_url': signed_url, 'file_url_raw': file_url}
+
+        if is_image_attachment:
+            quota_after = _increment_image_quota_usage(user)
+            payload['image_quota'] = quota_after
+            if (not _is_premium_active(user)) and quota_after['used'] in (10, 14):
+                payload['quota_notice'] = (
+                    f"Llevas {quota_after['used']}/{quota_after['limit']} imágenes este mes en plan Gratis."
+                )
+            _audit_log(
+                request,
+                action='billing.image_quota.uploaded',
+                entity_type='user',
+                entity_id=str(user.id),
+                after={
+                    'month': quota_after['month_key'],
+                    'used': quota_after['used'],
+                    'limit': quota_after['limit'],
+                    'remaining': quota_after['remaining'],
+                },
+            )
+
         if include_text:
             payload['extracted_text'] = extracted_text or ''
             if extracted_text_diagnostic and not (extracted_text or '').strip():
@@ -7294,6 +7635,20 @@ def chat_n8n(request):
                     kcal_in_from_text = None
 
                 if want_trend:
+                    if not _is_premium_active(user):
+                        gate_payload = _qaf_premium_gate_payload(
+                            'exp-005_body_trend',
+                            'Tendencia corporal (6 semanas)',
+                            'Preview: lectura inicial de tu tendencia. Para escenarios completos y ajuste fino por calorías, activa Premium.',
+                            request=request,
+                            user=user,
+                            source='chat_qaf',
+                        )
+                        body_trend_result = gate_payload
+                        body_trend_text_for_output_override = gate_payload.get('text')
+                        quick_actions_out = _qaf_append_premium_cta(quick_actions_out, module='exp-005_body_trend', source='chat_qaf')
+                        raise StopIteration()
+
                     week_id_now = _week_id()
                     weekly_state = getattr(user, 'coach_weekly_state', {}) or {}
 
@@ -7439,6 +7794,8 @@ def chat_n8n(request):
                         )
                     except Exception:
                         pass
+        except StopIteration:
+            pass
         except Exception as ex:
             print(f"QAF body trend warning: {ex}")
 
@@ -7464,6 +7821,20 @@ def chat_n8n(request):
                     pass
 
                 if want_posture:
+                    if not _is_premium_active(user):
+                        gate_payload = _qaf_premium_gate_payload(
+                            'exp-006_posture',
+                            'Postura correctiva',
+                            'Preview: guía base de captura y postura. El análisis técnico completo y plan correctivo personalizado requieren Premium.',
+                            request=request,
+                            user=user,
+                            source='chat_qaf',
+                        )
+                        posture_result = gate_payload
+                        posture_text_for_output_override = gate_payload.get('text')
+                        posture_quick_actions_out = _qaf_append_premium_cta(posture_quick_actions_out, module='exp-006_posture', source='chat_qaf')
+                        raise StopIteration()
+
                     from .qaf_posture.engine import evaluate_posture, render_professional_summary
 
                     def _posture_extract_metrics(res: dict[str, Any]) -> dict[str, float]:
@@ -7647,6 +8018,8 @@ def chat_n8n(request):
                             "También puedo darte un análisis parcial con 1 foto, pero no es 100% fiable sin la segunda vista.\n"
                             "Cuerpo completo, buena luz, cámara a la altura del pecho, 2–3m."
                         )
+        except StopIteration:
+            pass
         except Exception as ex:
             print(f"QAF posture warning: {ex}")
 
@@ -7739,6 +8112,20 @@ def chat_n8n(request):
                 lifestyle_requested = bool(want_lifestyle)
 
                 if want_lifestyle:
+                    if not _is_premium_active(user):
+                        gate_payload = _qaf_premium_gate_payload(
+                            'exp-007_lifestyle',
+                            'Estado de hoy (Lifestyle)',
+                            'Preview: estado general del día. Para DHSS completo y micro-hábitos personalizados en continuidad, activa Premium.',
+                            request=request,
+                            user=user,
+                            source='chat_qaf',
+                        )
+                        lifestyle_result = gate_payload
+                        lifestyle_text_for_output_override = gate_payload.get('text')
+                        lifestyle_quick_actions_out = _qaf_append_premium_cta(lifestyle_quick_actions_out, module='exp-007_lifestyle', source='chat_qaf')
+                        raise StopIteration()
+
                     from datetime import timedelta
                     from .qaf_lifestyle.engine import evaluate_lifestyle, render_professional_summary
 
@@ -8095,6 +8482,8 @@ def chat_n8n(request):
                             lifestyle_quick_actions_out = lifestyle_quick_actions_out[:6]
                     except Exception:
                         pass
+        except StopIteration:
+            pass
         except Exception as ex:
             print(f"QAF lifestyle warning: {ex}")
 
@@ -8271,6 +8660,20 @@ def chat_n8n(request):
                     renacer_mode_active = False
 
                 if want_motivation:
+                    if not _is_premium_active(user):
+                        gate_payload = _qaf_premium_gate_payload(
+                            'exp-008_motivation',
+                            'Motivación psicológica',
+                            'Preview: impulso inicial para hoy. El perfil motivacional adaptativo, continuidad y retos personalizados requieren Premium.',
+                            request=request,
+                            user=user,
+                            source='chat_qaf',
+                        )
+                        motivation_result = gate_payload
+                        motivation_text_for_output_override = gate_payload.get('text')
+                        motivation_quick_actions_out = _qaf_append_premium_cta(motivation_quick_actions_out, module='exp-008_motivation', source='chat_qaf')
+                        raise StopIteration()
+
                     # Nombre amigable para copy (sin depender de n8n)
                     user_display_name = None
                     try:
@@ -8456,6 +8859,8 @@ def chat_n8n(request):
                             )
                     except Exception:
                         pass
+        except StopIteration:
+            pass
         except Exception as ex:
             print(f"QAF motivation warning: {ex}")
 
@@ -8479,6 +8884,20 @@ def chat_n8n(request):
                 from_prog_button_text = msg_low in ("evolución de entrenamiento", "evolucion de entrenamiento")
 
                 if want_prog:
+                    if not _is_premium_active(user):
+                        gate_payload = _qaf_premium_gate_payload(
+                            'exp-009_progression',
+                            'Evolución de entrenamiento',
+                            'Preview: sugerencia inicial del siguiente paso. Para progresión inteligente completa por historial y señales, activa Premium.',
+                            request=request,
+                            user=user,
+                            source='chat_qaf',
+                        )
+                        progression_result = gate_payload
+                        progression_text_for_output_override = gate_payload.get('text')
+                        progression_quick_actions_out = _qaf_append_premium_cta(progression_quick_actions_out, module='exp-009_progression', source='chat_qaf')
+                        raise StopIteration()
+
                     from .qaf_progression.engine import evaluate_progression, render_professional_summary, parse_strength_line
 
                     cs = getattr(user, 'coach_state', {}) or {}
@@ -10683,6 +11102,18 @@ def qaf_body_trend(request):
     user = _resolve_request_user(request)
     if not user:
         return Response({'error': 'Autenticacion requerida'}, status=status.HTTP_401_UNAUTHORIZED)
+    if not _is_premium_active(user):
+        return Response(
+            _qaf_premium_gate_payload(
+                'exp-005_body_trend',
+                'Tendencia corporal (6 semanas)',
+                'Preview: te mostramos una lectura inicial y el tipo de escenario recomendado. Para simulaciones completas y ajustes por ingesta, activa Premium.',
+                request=request,
+                user=user,
+                source='api_qaf_endpoint',
+            ),
+            status=200,
+        )
 
     payload = request.data if isinstance(request.data, dict) else {}
     scenario = None
@@ -10853,6 +11284,18 @@ def qaf_posture(request):
     user = _resolve_request_user(request)
     if not user:
         return Response({'error': 'Autenticacion requerida'}, status=status.HTTP_401_UNAUTHORIZED)
+    if not _is_premium_active(user):
+        return Response(
+            _qaf_premium_gate_payload(
+                'exp-006_posture',
+                'Postura correctiva',
+                'Preview: puedes recibir una guía general de captura y criterios básicos. El análisis postural completo y rutina correctiva detallada es Premium.',
+                request=request,
+                user=user,
+                source='api_qaf_endpoint',
+            ),
+            status=200,
+        )
 
     payload = request.data if isinstance(request.data, dict) else {}
     user_ctx = payload.get('user_context') if isinstance(payload.get('user_context'), dict) else {}
@@ -10882,6 +11325,18 @@ def qaf_lifestyle(request):
     user = _resolve_request_user(request)
     if not user:
         return Response({'error': 'Autenticacion requerida'}, status=status.HTTP_401_UNAUTHORIZED)
+    if not _is_premium_active(user):
+        return Response(
+            _qaf_premium_gate_payload(
+                'exp-007_lifestyle',
+                'Estado de hoy (Lifestyle)',
+                'Preview: vista rápida del estado general. Para lectura DHSS completa, patrones y micro-hábitos personalizados, activa Premium.',
+                request=request,
+                user=user,
+                source='api_qaf_endpoint',
+            ),
+            status=200,
+        )
 
     payload = request.data if isinstance(request.data, dict) else {}
     days = payload.get('days')
@@ -10957,6 +11412,18 @@ def qaf_motivation(request):
     user = _resolve_request_user(request)
     if not user:
         return Response({'error': 'Autenticacion requerida'}, status=status.HTTP_401_UNAUTHORIZED)
+    if not _is_premium_active(user):
+        return Response(
+            _qaf_premium_gate_payload(
+                'exp-008_motivation',
+                'Motivación psicológica',
+                'Preview: mensaje breve de impulso para hoy. El perfil motivacional adaptativo y retos personalizados en continuidad requieren Premium.',
+                request=request,
+                user=user,
+                source='api_qaf_endpoint',
+            ),
+            status=200,
+        )
 
     payload = request.data if isinstance(request.data, dict) else {}
     message = str(payload.get('message') or payload.get('text') or '').strip() or 'Necesito motivación.'
@@ -11025,6 +11492,18 @@ def qaf_progression(request):
     user = _resolve_request_user(request)
     if not user:
         return Response({'error': 'Autenticacion requerida'}, status=status.HTTP_401_UNAUTHORIZED)
+    if not _is_premium_active(user):
+        return Response(
+            _qaf_premium_gate_payload(
+                'exp-009_progression',
+                'Evolución de entrenamiento',
+                'Preview: recomendación inicial del siguiente paso. La progresión inteligente completa con ajuste por historial y señales requiere Premium.',
+                request=request,
+                user=user,
+                source='api_qaf_endpoint',
+            ),
+            status=200,
+        )
 
     payload = request.data if isinstance(request.data, dict) else {}
     message = str(payload.get('message') or payload.get('text') or '').strip()
