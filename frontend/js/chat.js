@@ -3388,8 +3388,25 @@ function appendQuickActions(actions) {
         return;
       }
       if (action.type === 'message' && action.text) {
+        let actionPayload = (action.payload && typeof action.payload === 'object') ? action.payload : null;
         try {
-          const ppIntent = action.payload && action.payload.posture_proportion_intent && action.payload.posture_proportion_intent.action;
+          const txt = String(action.text || '').trim().toLowerCase();
+          const isMetabolicStart = (
+            /\b(iniciar|inicia|empezar|activar)\b/.test(txt)
+            && /\bperfil\s+metab[oó]lico\b/.test(txt)
+          );
+          if (isMetabolicStart) {
+            actionPayload = {
+              ...(actionPayload && typeof actionPayload === 'object' ? actionPayload : {}),
+              metabolic_profile_request: { start: true },
+              service_intent: { experience: 'exp-003_metabolic_profile', action: 'start_new' },
+            };
+          }
+        } catch (e) {
+          // ignore
+        }
+        try {
+          const ppIntent = actionPayload && actionPayload.posture_proportion_intent && actionPayload.posture_proportion_intent.action;
           if (ppIntent) {
             cancelPpFlow();
           }
@@ -3397,7 +3414,7 @@ function appendQuickActions(actions) {
           // ignore
         }
         try {
-          const svcIntent = action.payload && action.payload.service_intent;
+          const svcIntent = actionPayload && actionPayload.service_intent;
           if (svcIntent) {
             cancelPostureFlow();
             cancelMuscleFlow();
@@ -3410,7 +3427,7 @@ function appendQuickActions(actions) {
         }
         // Si es un CTA de enfoque muscular, persistirlo en el flujo.
         try {
-          const fx = action.payload && action.payload.muscle_measure_request && action.payload.muscle_measure_request.focus;
+          const fx = actionPayload && actionPayload.muscle_measure_request && actionPayload.muscle_measure_request.focus;
           if (fx && muscleFlow && muscleFlow.active) {
             muscleFlow.focus = String(fx);
             saveMuscleState();
@@ -3418,7 +3435,7 @@ function appendQuickActions(actions) {
         } catch (e) {
           // ignore
         }
-        sendQuickMessage(action.text, action.payload || null);
+        sendQuickMessage(action.text, actionPayload || null);
         return;
       }
       if (action.type === 'qaf_confirm_portion' && action.payload) {
