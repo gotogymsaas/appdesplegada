@@ -938,7 +938,20 @@
             if (normalized === 'if_delta') {
                 return { label: 'Ver evolución IF', action: 'focus_happiness' };
             }
+            if (normalized === 'upload_plans') {
+                return { label: 'Subir planes', action: 'open_missing_plan' };
+            }
             return null;
+        }
+
+        function resolveMissingPlanHref() {
+            const user = getStoredUser() || {};
+            const docs = user?.gamification?.documents || {};
+            const hasNutrition = !!(docs?.nutrition_plan && docs.nutrition_plan.uploaded);
+            const hasTraining = !!(docs?.training_plan && docs.training_plan.uploaded);
+            if (!hasNutrition) return '../../pages/settings/PlanNutricion.html';
+            if (!hasTraining) return '../../pages/settings/PlanEntrenamiento.html';
+            return '../../pages/settings/Configuracion.html';
         }
 
         function runMissionAction(key) {
@@ -947,6 +960,10 @@
             if (!action) return;
             if (action.action === 'focus_happiness') {
                 focusHappinessSection();
+                return;
+            }
+            if (action.action === 'open_missing_plan') {
+                window.location.href = resolveMissingPlanHref();
                 return;
             }
             if (!action.href) return;
@@ -1134,6 +1151,7 @@
                 checkins: 5,
                 sync: 5,
                 if_delta: 5,
+                upload_plans: 10,
             };
             return Number(map[normalized] || fallback || 0);
         }
@@ -1295,6 +1313,8 @@
                                 howTo = 'Ve a Dispositivos y sincroniza (cuenta solo si trae datos reales).';
                             } else if (key === 'if_delta') {
                                 howTo = 'Mejora tu IF esta semana: ajusta hábitos y vuelve a calcular.';
+                            } else if (key === 'upload_plans') {
+                                howTo = 'Sube tu Plan de Nutrición y tu Plan de Entrenamiento para personalizar tu evolución.';
                             }
 
                             const row = document.createElement('div');

@@ -281,9 +281,10 @@ def ensure_weekly_missions(user: User, *, week_of: date | None = None) -> dict[s
             "week_start": _iso(start),
             "created_at": timezone.now().isoformat(),
             "items": [
-                {"key": "checkins", "label": "Completa 4 check-ins", "target": 4},
-                {"key": "sync", "label": "Sincroniza 3 días", "target": 3},
-                {"key": "if_delta", "label": "Mejora +0.5 tu IF", "target": 0.5},
+                {"key": "checkins", "label": "Check-ins de enfoque (4)", "target": 4},
+                {"key": "sync", "label": "Sincroniza 3 días reales", "target": 3},
+                {"key": "if_delta", "label": "Sube +0.5 tu IF", "target": 0.5},
+                {"key": "upload_plans", "label": "Activa tus 2 planes base", "target": 2},
             ],
         }
         _set_user_json_state(user, weekly_state=weekly_state)
@@ -386,10 +387,15 @@ def build_gamification_status(user: User, *, as_of: date | None = None) -> dict[
     if_delta = _compute_if_delta(user, start=start)
     if_delta_progress = round(max(0.0, float(if_delta)), 2)
 
+    uploaded_nutrition = UserDocument.objects.filter(user=user, doc_type="nutrition_plan").exists()
+    uploaded_training = UserDocument.objects.filter(user=user, doc_type="training_plan").exists()
+    plans_uploaded_count = int(uploaded_nutrition) + int(uploaded_training)
+
     missions_progress = {
         "checkins": len(if_dates),
         "sync": len(sync_days),
         "if_delta": if_delta_progress,
+        "upload_plans": plans_uploaded_count,
     }
 
     # Produce missions with progress/completion
