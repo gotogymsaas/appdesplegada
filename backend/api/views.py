@@ -76,7 +76,7 @@ import uuid
 import tempfile
 import base64
 from pathlib import Path
-from urllib.parse import quote, unquote, urlparse
+from urllib.parse import quote, unquote, urlparse, urlencode
 from django.conf import settings
 from django.core import signing
 from django.core.mail import EmailMessage, EmailMultiAlternatives
@@ -3520,7 +3520,67 @@ def submit_if_answer(request):
 
 
 @api_view(['POST'])
+@authentication_classes([JWTAuthentication])
+@permission_classes([IsAuthenticated])
+def mercadopago_checkout_link(request):
+    user = _resolve_request_user(request)
+    if not user:
+        return Response({'error': 'Autenticacion requerida'}, status=401)
+
+    cycle = (request.data.get('cycle') or 'monthly').strip().lower()
+    if cycle not in ('monthly', 'annual'):
+        return Response({'error': 'Ciclo invalido. Usa monthly o annual'}, status=400)
+
+    monthly_plan_id = (os.getenv('MERCADOPAGO_PREAPPROVAL_PLAN_ID_MONTHLY') or '').strip()
+    annual_plan_id = (os.getenv('MERCADOPAGO_PREAPPROVAL_PLAN_ID_ANNUAL') or '').strip()
+    plan_id = monthly_plan_id if cycle == 'monthly' else annual_plan_id
+
+    if not plan_id:
+        return Response({'error': 'Plan de suscripcion no configurado'}, status=500)
+
+    base_url = 'https://www.mercadopago.com.co/subscriptions/checkout'
+    query = urlencode({
+        'preapproval_plan_id': plan_id,
+        'external_reference': user.username,
+    })
+    checkout_url = f'{base_url}?{query}'
+
+    return Response({
+        'success': True,
+        'checkout_url': checkout_url,
+        'cycle': cycle,
+    })
+
+
+def _validate_mercadopago_webhook_secret(request) -> bool:
+    expected = (os.getenv('MERCADOPAGO_WEBHOOK_SECRET') or '').strip()
+    if not expected:
+        return True
+
+    candidates = [
+        request.headers.get('X-Webhook-Secret'),
+        request.headers.get('X-MercadoPago-Webhook-Secret'),
+        request.headers.get('X-Mercadopago-Webhook-Secret'),
+    ]
+
+    try:
+        query_secret = request.query_params.get('secret') if hasattr(request, 'query_params') else None
+    except Exception:
+        query_secret = None
+    if query_secret:
+        candidates.append(query_secret)
+
+    for value in candidates:
+        if value and secrets.compare_digest(str(value).strip(), expected):
+            return True
+    return False
+
+
+@api_view(['POST'])
 def mercadopago_webhook(request):
+    if not _validate_mercadopago_webhook_secret(request):
+        return Response({'error': 'Unauthorized webhook'}, status=401)
+
     access_token = os.getenv("MERCADOPAGO_ACCESS_TOKEN")
     if not access_token:
         return Response({'error': 'Webhook no configurado'}, status=500)
@@ -5183,11 +5243,48 @@ def chat_n8n(request):
                         {'label': 'Cancelar', 'type': 'skin_cancel'},
                     ]
 
+                coach_output = ''
+                try:
+                    skin_context_text = (text or '').strip()
+                    if skin_context_text:
+                        skin_context_text = f"[VITALIDAD DE LA PIEL]\n{skin_context_text}"
+
+                    n8n_payload = {
+                        'chatInput': str(message or 'Vitalidad de la Piel').strip() or 'Vitalidad de la Piel',
+                        'message': str(message or 'Vitalidad de la Piel').strip() or 'Vitalidad de la Piel',
+                        'sessionId': session_id,
+                        'username': username_for_payload,
+                        'auth_header': auth_header,
+                        'attachment': '',
+                        'attachment_text': skin_context_text,
+                        'attachment_text_diagnostic': '',
+                        'qaf': {'type': 'exp-011_skin_health', 'result': res},
+                        'qaf_skin_health': res,
+                        'system_rules': {
+                            'module': 'exp-011_skin_health',
+                            'llm_role': 'coach_full_response',
+                            'respond_from_qaf_result': True,
+                        },
+                    }
+                    n8n_resp = _bench_n8n_post(request, n8n_url, n8n_payload, timeout=45)
+                    if n8n_resp.status_code == 200:
+                        try:
+                            n8n_data = n8n_resp.json()
+                        except Exception:
+                            n8n_data = {'output': n8n_resp.text}
+                        if isinstance(n8n_data, dict):
+                            coach_output = str(n8n_data.get('output') or '').strip()
+                        elif isinstance(n8n_data, str):
+                            coach_output = n8n_data.strip()
+                except Exception:
+                    coach_output = ''
+
+                final_output = coach_output or text or 'Vitalidad de la Piel listo.'
                 return Response(
                     _attach_wow_event_payload(
                         user,
                         {
-                            'output': text or 'Vitalidad de la Piel listo.',
+                            'output': final_output,
                             'qaf_skin_health': res,
                             'quick_actions': qas,
                             'skin_flow_stage': 'analysis_done',
@@ -6706,11 +6803,48 @@ def chat_n8n(request):
                     except Exception:
                         qas2 = qas
 
+                    coach_output = ''
+                    try:
+                        skin_context_text = (text or '').strip()
+                        if skin_context_text:
+                            skin_context_text = f"[VITALIDAD DE LA PIEL]\n{skin_context_text}"
+
+                        n8n_payload = {
+                            'chatInput': str(message or 'Vitalidad de la Piel').strip() or 'Vitalidad de la Piel',
+                            'message': str(message or 'Vitalidad de la Piel').strip() or 'Vitalidad de la Piel',
+                            'sessionId': session_id,
+                            'username': username_for_payload,
+                            'auth_header': auth_header,
+                            'attachment': '',
+                            'attachment_text': skin_context_text,
+                            'attachment_text_diagnostic': '',
+                            'qaf': {'type': 'exp-011_skin_health', 'result': res},
+                            'qaf_skin_health': res,
+                            'system_rules': {
+                                'module': 'exp-011_skin_health',
+                                'llm_role': 'coach_full_response',
+                                'respond_from_qaf_result': True,
+                            },
+                        }
+                        n8n_resp = _bench_n8n_post(request, n8n_url, n8n_payload, timeout=45)
+                        if n8n_resp.status_code == 200:
+                            try:
+                                n8n_data = n8n_resp.json()
+                            except Exception:
+                                n8n_data = {'output': n8n_resp.text}
+                            if isinstance(n8n_data, dict):
+                                coach_output = str(n8n_data.get('output') or '').strip()
+                            elif isinstance(n8n_data, str):
+                                coach_output = n8n_data.strip()
+                    except Exception:
+                        coach_output = ''
+
+                    final_output = coach_output or text or 'Vitalidad de la Piel listo.'
                     return Response(
                         _attach_wow_event_payload(
                             user,
                             {
-                                'output': text or 'Vitalidad de la Piel listo.',
+                                'output': final_output,
                                 'qaf_skin_health': res,
                                 'quick_actions': qas2,
                                 'skin_flow_stage': 'analysis_done',
@@ -7254,48 +7388,47 @@ def chat_n8n(request):
                     # Quick-actions
                     try:
                         has_intake = (kcal_in_avg is not None)
-
-                        # UX: apagar botones de simulación en la segunda simulación (para no eternizar el flujo).
                         show_sim_actions = True
-                        if has_intake and isinstance(bt_req, dict):
-                            scen = str(bt_req.get('scenario') or '').strip().lower()
-                            if scen in ('follow_plan', 'minus_200', 'plus_200'):
-                                try:
-                                    cs0 = getattr(user, 'coach_state', {}) or {}
-                                    cs1 = dict(cs0)
-                                    by_sess = cs1.get('body_trend_sim_count')
-                                    by_sess = by_sess if isinstance(by_sess, dict) else {}
-                                    by_sess2 = dict(by_sess)
+                        if has_intake:
+                            try:
+                                cs0 = getattr(user, 'coach_state', {}) or {}
+                                cs1 = dict(cs0)
+                                by_sess = cs1.get('body_trend_sim_locked')
+                                by_sess = by_sess if isinstance(by_sess, dict) else {}
+                                by_sess2 = dict(by_sess)
 
-                                    sess_key = str(session_id or '').strip() or 'default'
-                                    row = by_sess2.get(sess_key)
-                                    row = row if isinstance(row, dict) else {}
-                                    row_week = str(row.get('week_id') or '')
-                                    row_count = int(row.get('count') or 0)
-                                    if row_week != str(week_id_now):
-                                        row_count = 0
-                                    row_count += 1
-                                    by_sess2[sess_key] = {'week_id': str(week_id_now), 'count': int(row_count)}
+                                sess_key = str(session_id or '').strip() or 'default'
+                                row = by_sess2.get(sess_key)
+                                row = row if isinstance(row, dict) else {}
+                                row_week = str(row.get('week_id') or '')
+                                locked = bool(row.get('locked')) if row_week == str(week_id_now) else False
 
-                                    cs1['body_trend_sim_count'] = by_sess2
-                                    user.coach_state = cs1
-                                    user.coach_state_updated_at = timezone.now()
-                                    user.save(update_fields=['coach_state', 'coach_state_updated_at'])
+                                scen = str((bt_req or {}).get('scenario') or '').strip().lower() if isinstance(bt_req, dict) else ''
 
-                                    # Metadata de historial para copy (sin afectar el motor)
-                                    try:
-                                        posture_result = {**posture_result, 'history': {'count': int(len(hist_list))}}
-                                    except Exception:
-                                        posture_result = {**posture_result}
+                                # Si arranca nueva evaluación, desbloqueamos para volver a mostrar simulaciones.
+                                if isinstance(bt_req, dict) and not scen:
+                                    locked = False
 
-                                    # En la segunda simulación, apagamos los botones.
-                                    if row_count >= 2:
-                                        show_sim_actions = False
-                                except Exception:
-                                    pass
+                                # Si seleccionó una simulación, bloqueamos inmediatamente para evitar loop.
+                                if scen in ('follow_plan', 'minus_200', 'plus_200'):
+                                    locked = True
 
-                        if (not has_intake) or show_sim_actions:
-                            quick_actions_out.extend(build_quick_actions_for_trend(has_intake=bool(has_intake)))
+                                by_sess2[sess_key] = {'week_id': str(week_id_now), 'locked': bool(locked)}
+                                cs1['body_trend_sim_locked'] = by_sess2
+                                user.coach_state = cs1
+                                user.coach_state_updated_at = timezone.now()
+                                user.save(update_fields=['coach_state', 'coach_state_updated_at'])
+
+                                show_sim_actions = not locked
+                            except Exception:
+                                show_sim_actions = True
+
+                        quick_actions_out.extend(
+                            build_quick_actions_for_trend(
+                                has_intake=bool(has_intake),
+                                allow_simulations=bool(show_sim_actions),
+                            )
+                        )
                     except Exception:
                         pass
         except Exception as ex:

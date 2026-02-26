@@ -30,11 +30,11 @@ class ChatBodyTrendButtonsTests(TestCase):
 
     @patch("api.views.requests.post")
     @override_settings(SECURE_SSL_REDIRECT=False)
-    def test_sim_buttons_turn_off_on_second_simulation(self, mock_post):
+    def test_sim_buttons_turn_off_on_first_simulation_and_show_finalize(self, mock_post):
         # Evitar dependencia de n8n
         mock_post.return_value = Mock(status_code=200, json=lambda: {"output": "ok"})
 
-        # 1ra simulación: debe devolver botones (Simular...)
+        # 1ra simulación: no debe reinyectar Simular..., solo finalizar.
         r1 = self.client.post(
             "/api/chat/",
             {
@@ -50,9 +50,10 @@ class ChatBodyTrendButtonsTests(TestCase):
         self.assertEqual(r1.status_code, 200)
         qa1 = (r1.json() or {}).get("quick_actions") or []
         labels1 = [str(x.get("label") or "") for x in qa1 if isinstance(x, dict)]
-        self.assertTrue(any("simular" in (l or "").lower() for l in labels1))
+        self.assertFalse(any("simular" in (l or "").lower() for l in labels1))
+        self.assertIn("Finalizar", labels1)
 
-        # 2da simulación: botones se apagan
+        # 2da simulación: se mantiene sin botones de simulación.
         r2 = self.client.post(
             "/api/chat/",
             {
@@ -69,3 +70,42 @@ class ChatBodyTrendButtonsTests(TestCase):
         qa2 = (r2.json() or {}).get("quick_actions") or []
         labels2 = [str(x.get("label") or "") for x in qa2 if isinstance(x, dict)]
         self.assertFalse(any("simular" in (l or "").lower() for l in labels2))
+        self.assertIn("Finalizar", labels2)
+
+    @patch("api.views.requests.post")
+    @override_settings(SECURE_SSL_REDIRECT=False)
+    def test_start_new_trend_reenables_sim_buttons(self, mock_post):
+        mock_post.return_value = Mock(status_code=200, json=lambda: {"output": "ok"})
+
+        # Bloquea simulaciones al ejecutar una.
+        self.client.post(
+            "/api/chat/",
+            {
+                "message": "Simular recomendación",
+                "sessionId": "sbt2",
+                "attachment": "",
+                "attachment_text": "",
+                "username": "juan",
+                "body_trend_request": {"scenario": "follow_plan"},
+            },
+            format="json",
+        )
+
+        # Nueva evaluación (sin escenario) vuelve a habilitar los 3 botones + finalizar.
+        r = self.client.post(
+            "/api/chat/",
+            {
+                "message": "Tendencia 6 semanas",
+                "sessionId": "sbt2",
+                "attachment": "",
+                "attachment_text": "",
+                "username": "juan",
+                "body_trend_request": {},
+            },
+            format="json",
+        )
+        self.assertEqual(r.status_code, 200)
+        qa = (r.json() or {}).get("quick_actions") or []
+        labels = [str(x.get("label") or "") for x in qa if isinstance(x, dict)]
+        self.assertTrue(any("simular" in (l or "").lower() for l in labels))
+        self.assertIn("Finalizar", labels)

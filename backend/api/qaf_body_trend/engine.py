@@ -188,8 +188,7 @@ def render_professional_summary(result: dict[str, Any], *, preferred_scenario: s
     return "\n".join(lines).strip()
 
 
-def build_quick_actions_for_trend(*, has_intake: bool) -> list[dict[str, Any]]:
-    # Mantener máximo 3 botones como el resto de la UX.
+def build_quick_actions_for_trend(*, has_intake: bool, allow_simulations: bool = True) -> list[dict[str, Any]]:
     actions: list[dict[str, Any]] = []
     if not has_intake:
         # WOW: 1 tap para registrar ingesta promedio (sin UI extra)
@@ -201,22 +200,25 @@ def build_quick_actions_for_trend(*, has_intake: bool) -> list[dict[str, Any]]:
                 'payload': {'body_trend_request': {'kcal_in_avg_day': float(kcal)}},
             })
     else:
-        actions.append({
-            'label': 'Simular recomendación',
-            'type': 'message',
-            'text': 'Simular recomendación',
-            'payload': {'body_trend_request': {'scenario': 'follow_plan'}},
-        })
-        actions.append({
-            'label': 'Simular -200 kcal',
-            'type': 'message',
-            'text': 'Simular -200 kcal',
-            'payload': {'body_trend_request': {'scenario': 'minus_200'}},
-        })
-        actions.append({
-            'label': 'Simular +200 kcal',
-            'type': 'message',
-            'text': 'Simular +200 kcal',
-            'payload': {'body_trend_request': {'scenario': 'plus_200'}},
-        })
-    return actions[:3]
+        if allow_simulations:
+            actions.append({
+                'label': 'Simular recomendación',
+                'type': 'message',
+                'text': 'Simular recomendación',
+                'payload': {'body_trend_request': {'scenario': 'follow_plan'}},
+            })
+            actions.append({
+                'label': 'Simular -200 kcal',
+                'type': 'message',
+                'text': 'Simular -200 kcal',
+                'payload': {'body_trend_request': {'scenario': 'minus_200'}},
+            })
+            actions.append({
+                'label': 'Simular +200 kcal',
+                'type': 'message',
+                'text': 'Simular +200 kcal',
+                'payload': {'body_trend_request': {'scenario': 'plus_200'}},
+            })
+
+    actions.append({'label': 'Finalizar', 'type': 'services_menu', 'page': 'core'})
+    return actions[:6]
