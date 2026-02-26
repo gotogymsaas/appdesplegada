@@ -6740,7 +6740,32 @@ def chat_n8n(request):
                             elif isinstance(stored, dict) and 'plan' in stored:
                                 current_result = stored
                             if isinstance(current_result, dict):
-                                from .qaf_meal_planner.engine import mutate_plan_slot, render_professional_summary
+                                from .qaf_meal_planner.engine import mutate_plan_slot
+
+                                before_names = []
+                                before_slot_kcal = None
+                                before_day_total = None
+                                try:
+                                    plan0 = current_result.get('plan') if isinstance(current_result.get('plan'), dict) else {}
+                                    days0 = plan0.get('days') if isinstance(plan0.get('days'), list) else []
+                                    if 0 <= int(day_index) < len(days0):
+                                        d0 = days0[int(day_index)] if isinstance(days0[int(day_index)], dict) else {}
+                                        before_day_total = float(d0.get('total_kcal')) if d0.get('total_kcal') is not None else None
+                                        meals0 = d0.get('meals') if isinstance(d0.get('meals'), list) else []
+                                        for mm in meals0:
+                                            if not isinstance(mm, dict):
+                                                continue
+                                            if str(mm.get('slot') or '').strip().lower() != slot:
+                                                continue
+                                            items0 = mm.get('items') if isinstance(mm.get('items'), list) else []
+                                            before_names = [str(it.get('name') or '').strip() for it in items0 if isinstance(it, dict) and str(it.get('name') or '').strip()]
+                                            before_slot_kcal = float(mm.get('kcal')) if mm.get('kcal') is not None else None
+                                            break
+                                except Exception:
+                                    before_names = []
+                                    before_slot_kcal = None
+                                    before_day_total = None
+
                                 seed = (hash(f"{user.id}:{week_id_now}:{direction}:{day_index}:{slot}") & 0xFFFFFFFF)
                                 mutated = mutate_plan_slot(
                                     result=current_result,
@@ -6752,10 +6777,65 @@ def chat_n8n(request):
                                     exclude_item_ids=[],
                                 )
                                 meal_plan_result = mutated
-                                menu_text = render_professional_summary(mutated)
-                                if menu_text:
-                                    meal_plan_text_for_output_override = menu_text
-                                    attachment_text = ((attachment_text or '').strip() + "\n\n" if (attachment_text or '').strip() else "") + f"[MENÚ ACTUALIZADO]\n{menu_text}".strip()
+
+                                after_names = []
+                                after_slot_kcal = None
+                                after_day_total = None
+                                kcal_target = None
+                                micro_cov_pct = None
+                                variety_health_pct = None
+                                try:
+                                    inp = mutated.get('inputs') if isinstance(mutated.get('inputs'), dict) else {}
+                                    kcal_target = float(inp.get('kcal_day')) if inp.get('kcal_day') is not None else None
+
+                                    scores = mutated.get('scores') if isinstance(mutated.get('scores'), dict) else {}
+                                    if scores.get('micro_coverage') is not None:
+                                        micro_cov_pct = int(round(float(scores.get('micro_coverage')) * 100.0))
+                                    if scores.get('variety_penalty') is not None:
+                                        variety_health_pct = int(round((1.0 - float(scores.get('variety_penalty'))) * 100.0))
+
+                                    plan1 = mutated.get('plan') if isinstance(mutated.get('plan'), dict) else {}
+                                    days1 = plan1.get('days') if isinstance(plan1.get('days'), list) else []
+                                    if 0 <= int(day_index) < len(days1):
+                                        d1 = days1[int(day_index)] if isinstance(days1[int(day_index)], dict) else {}
+                                        after_day_total = float(d1.get('total_kcal')) if d1.get('total_kcal') is not None else None
+                                        meals1 = d1.get('meals') if isinstance(d1.get('meals'), list) else []
+                                        for mm in meals1:
+                                            if not isinstance(mm, dict):
+                                                continue
+                                            if str(mm.get('slot') or '').strip().lower() != slot:
+                                                continue
+                                            items1 = mm.get('items') if isinstance(mm.get('items'), list) else []
+                                            after_names = [str(it.get('name') or '').strip() for it in items1 if isinstance(it, dict) and str(it.get('name') or '').strip()]
+                                            after_slot_kcal = float(mm.get('kcal')) if mm.get('kcal') is not None else None
+                                            break
+                                except Exception:
+                                    pass
+
+                                day_label = int(day_index) + 1
+                                slot_label = slot.capitalize()
+                                lines = []
+                                lines.append(f"✅ **{slot_label} actualizada (Día {day_label}).**")
+                                if before_names or after_names:
+                                    lines.append("")
+                                    lines.append(f"Antes: {', '.join(before_names) if before_names else 'N/D'}")
+                                    lines.append(f"Ahora: {', '.join(after_names) if after_names else 'N/D'}")
+                                if (before_slot_kcal is not None) and (after_slot_kcal is not None):
+                                    diff_slot = float(after_slot_kcal) - float(before_slot_kcal)
+                                    lines.append(f"Impacto en {slot}: {after_slot_kcal:.0f} kcal ({diff_slot:+.0f} kcal vs antes).")
+                                if (after_day_total is not None) and (kcal_target is not None) and float(kcal_target) > 0:
+                                    dev_pct = ((float(after_day_total) - float(kcal_target)) / float(kcal_target)) * 100.0
+                                    lines.append(f"Día {day_label}: {after_day_total:.0f}/{kcal_target:.0f} kcal ({dev_pct:+.1f}% vs objetivo).")
+                                if micro_cov_pct is not None:
+                                    lines.append(f"Cobertura micro estimada: {micro_cov_pct}%.")
+                                if variety_health_pct is not None:
+                                    lines.append(f"Variedad del plan: {variety_health_pct}%." )
+                                lines.append("")
+                                lines.append("Este ajuste sí cuenta en el algoritmo: actualiza tu plan guardado, la lista de compras y los puntajes de calidad del menú.")
+
+                                mutate_text = "\n".join(lines).strip()
+                                meal_plan_text_for_output_override = mutate_text
+                                attachment_text = ((attachment_text or '').strip() + "\n\n" if (attachment_text or '').strip() else "") + f"[MENÚ ACTUALIZADO]\n{mutate_text}".strip()
                                 try:
                                     ws2 = dict(weekly_state)
                                     mp2 = dict(mp)
@@ -6766,6 +6846,22 @@ def chat_n8n(request):
                                     user.save(update_fields=['coach_weekly_state', 'coach_weekly_updated_at'])
                                 except Exception:
                                     pass
+
+                                try:
+                                    ws_now = getattr(user, 'coach_weekly_state', {}) or {}
+                                    is_applied = str(ws_now.get('meal_plan_active_week_id') or '') == str(week_id_now)
+                                except Exception:
+                                    is_applied = False
+
+                                qa = [
+                                    {'label': 'Lista de compras', 'type': 'message', 'text': 'Lista de compras', 'payload': {'meal_plan_view': 'shopping_list'}},
+                                    {'label': 'Ver menú completo', 'type': 'message', 'text': 'Menú semanal', 'payload': {'meal_plan_request': {'variety': 'normal', 'meals_per_day': 3}}},
+                                    {'label': 'Finalizar', 'type': 'services_menu', 'page': 'close'},
+                                ]
+                                if not bool(is_applied):
+                                    qa[0] = {'label': 'Aplicar menú', 'type': 'message', 'text': 'Aplicar menú', 'payload': {'meal_plan_apply': True}}
+
+                                return Response({'output': mutate_text, 'quick_actions': qa[:3], 'qaf_meal_plan': mutated}, status=200)
                     except Exception:
                         pass
 
