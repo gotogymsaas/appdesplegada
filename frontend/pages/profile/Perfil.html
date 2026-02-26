@@ -179,6 +179,10 @@
                     margin-bottom: 40px;
                 }
 
+                .badges-grid.badge-celebrate {
+                    animation: badge-grid-celebrate 920ms ease;
+                }
+
                 /* EVOLUCIÓN (Gamificación minimalista) */
                 .evolution-section {
                     width: 90%;
@@ -619,6 +623,13 @@
                     50% { transform: translateY(-5px) rotate(6deg); filter: drop-shadow(0 0 10px rgba(212, 180, 106, 0.52)); }
                     75% { transform: translateY(-2px) rotate(-4deg); filter: drop-shadow(0 0 8px rgba(212, 180, 106, 0.45)); }
                     100% { transform: translateY(0) rotate(0deg); filter: none; }
+                }
+
+                @keyframes badge-grid-celebrate {
+                    0% { transform: translateY(0) scale(1); }
+                    30% { transform: translateY(-2px) scale(1.02); }
+                    55% { transform: translateY(1px) scale(1.01); }
+                    100% { transform: translateY(0) scale(1); }
                 }
                 
                 .badge-icon {
@@ -1162,6 +1173,27 @@
             showFxToast(text);
         }
 
+        async function postClaimDailyWithFallback() {
+            const candidatePaths = [
+                'gamification/claim_daily/',
+                'gamification/claim_daily',
+                'gamification/claim/',
+            ];
+            let lastResponse = null;
+            for (const path of candidatePaths) {
+                try {
+                    const res = await authFetch(`${API_URL}${path}`, { method: 'POST' });
+                    if (res.status !== 404) {
+                        return res;
+                    }
+                    lastResponse = res;
+                } catch (e) {
+                    continue;
+                }
+            }
+            return lastResponse;
+        }
+
         function showSfxStatus(message) {
             const el = document.getElementById('sfxStatus');
             if (!el || !message) return;
@@ -1466,14 +1498,16 @@
                         const needTraining = !(docs.training_plan && docs.training_plan.uploaded);
                         let docsText = '';
                         if (needNutrition && needTraining) {
-                            docsText = 'Extra: Sube tu Plan de Nutrición y tu Plan de Entrenamiento (Configuración) para activar recomendaciones más coherentes.';
+                            docsText = 'Pendiente: sube Plan de Nutrición y Plan de Entrenamiento.';
                         } else if (needNutrition) {
-                            docsText = 'Extra: Sube tu Plan de Nutrición (Configuración) para activar recomendaciones más coherentes.';
+                            docsText = 'Pendiente: sube Plan de Nutrición.';
                         } else if (needTraining) {
-                            docsText = 'Extra: Sube tu Plan de Entrenamiento (Configuración) para activar recomendaciones más coherentes.';
+                            docsText = 'Pendiente: sube Plan de Entrenamiento.';
+                        } else {
+                            docsText = 'Completado: planes de nutrición y entrenamiento cargados.';
                         }
 
-                        help.textContent = `Cómo activar: 1) Check-in IF (responder el cuestionario) 2) Actualizar un indicador (sueño, pasos, estrés...) 3) Sincronizar un dispositivo. ${docsText} ${nextText}`.replace(/\s+/g, ' ').trim();
+                        help.textContent = `Cómo activar: 1) Check-in IF (responder el cuestionario) 2) Actualizar un indicador (sueño, pasos, estrés...) 3) Sincronizar un dispositivo 4) Subir Plan de Nutrición y Plan de Entrenamiento. ${docsText} ${nextText}`.replace(/\s+/g, ' ').trim();
                     }
                 }
             } catch (e) {
@@ -1518,9 +1552,14 @@
                     });
                     gtgPrevBadges = nextBadges;
                     if (hasNewBadge) {
+                        badgesContainer.classList.remove('badge-celebrate');
+                        void badgesContainer.offsetWidth;
+                        badgesContainer.classList.add('badge-celebrate');
+                        setTimeout(() => badgesContainer.classList.remove('badge-celebrate'), 1100);
                         showWowEventToast('¡Nuevo logro desbloqueado!');
                         playSfx('BADGE_UNLOCK');
                         triggerSuccessHaptic();
+                        burstFxParticles();
                     }
                 } else {
                     badgesContainer.innerHTML = `<p style="color:#666;font-size:12px;">Aún no tienes logros.</p>`;
@@ -1613,7 +1652,18 @@
             };
 
             try {
-                const res = await authFetch(`${API_URL}gamification/claim_daily/`, { method: 'POST' });
+                const res = await postClaimDailyWithFallback();
+                if (!res) {
+                    const merged = await syncDailyStateFallback();
+                    const claimed = !!(merged && merged.gamification && merged.gamification.wow && merged.gamification.wow.daily_reward && merged.gamification.wow.daily_reward.claimed_today);
+                    if (claimed) {
+                        showWowEventToast('La recompensa diaria ya fue entregada hoy');
+                        showToast('Recompensa de hoy ya entregada.', 'success');
+                    } else {
+                        showToast('No se pudo confirmar la recompensa diaria.', 'error');
+                    }
+                    return;
+                }
                 if (!res.ok) {
                     const merged = await syncDailyStateFallback();
                     const claimed = !!(merged && merged.gamification && merged.gamification.wow && merged.gamification.wow.daily_reward && merged.gamification.wow.daily_reward.claimed_today);
