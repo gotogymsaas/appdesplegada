@@ -9059,17 +9059,22 @@ def chat_n8n(request):
                 # o cuando explícitamente pidió perfil metabólico.
                 should_prompt = (
                     (cur_avg is None)
-                    and (prompted_week != week_id_now)
-                    and (snoozed_week != week_id_now)
                     and (
-                        user_asked_metabolic
+                        explicit_metabolic_start
                         or (
-                            not (str(message or '').strip())
-                            and not attachment_url
-                            and not isinstance(request.data.get('posture_request') if isinstance(request.data, dict) else None, dict)
-                            and not isinstance(request.data.get('muscle_measure_request') if isinstance(request.data, dict) else None, dict)
-                            and not isinstance(request.data.get('shape_presence_request') if isinstance(request.data, dict) else None, dict)
-                            and not isinstance(request.data.get('posture_proportion_request') if isinstance(request.data, dict) else None, dict)
+                            (prompted_week != week_id_now)
+                            and (snoozed_week != week_id_now)
+                            and (
+                                user_asked_metabolic
+                                or (
+                                    not (str(message or '').strip())
+                                    and not attachment_url
+                                    and not isinstance(request.data.get('posture_request') if isinstance(request.data, dict) else None, dict)
+                                    and not isinstance(request.data.get('muscle_measure_request') if isinstance(request.data, dict) else None, dict)
+                                    and not isinstance(request.data.get('shape_presence_request') if isinstance(request.data, dict) else None, dict)
+                                    and not isinstance(request.data.get('posture_proportion_request') if isinstance(request.data, dict) else None, dict)
+                                )
+                            )
                         )
                     )
                 )
