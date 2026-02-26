@@ -3190,6 +3190,38 @@ function appendQuickActions(actions) {
   const wrapper = document.createElement('div');
   wrapper.className = 'quick-actions';
   actions.forEach((action) => {
+    try {
+      const rawText = String(action?.text || '').trim();
+      const rawLabel = String(action?.label || '').trim();
+      const lowText = rawText.toLowerCase();
+      const lowLabel = rawLabel.toLowerCase();
+      const svcIntent = action?.payload && typeof action.payload === 'object' ? action.payload.service_intent : null;
+      const svcExp = String(svcIntent?.experience || '').trim().toLowerCase();
+      const svcAct = String(svcIntent?.action || '').trim().toLowerCase();
+      const looksLikeOldMetabolicStart = (
+        (/\biniciar\b/.test(lowText) && /\bperfil\s+metab[oó]lico\b/.test(lowText))
+        || (/\biniciar\b/.test(lowLabel) && /\bperfil\s+metab[oó]lico\b/.test(lowLabel))
+      );
+      const isMetabolicStart = (
+        (svcExp === 'exp-003_metabolic_profile' && ['start_new', 'start', 'new_eval'].includes(svcAct))
+        || looksLikeOldMetabolicStart
+      );
+      if (isMetabolicStart) {
+        action = {
+          ...action,
+          type: 'message',
+          label: 'Ejecutar evaluación metabólica',
+          text: 'Ejecutar evaluación metabólica',
+          payload: {
+            ...(action.payload && typeof action.payload === 'object' ? action.payload : {}),
+            metabolic_profile_request: { start: true },
+            service_intent: { experience: 'exp-003_metabolic_profile', action: 'start_new' },
+          },
+        };
+      }
+    } catch (e) {
+      // ignore
+    }
     const btn = document.createElement('button');
     btn.type = 'button';
     btn.className = 'quick-action-btn';
