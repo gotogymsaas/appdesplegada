@@ -4538,6 +4538,20 @@ def chat_n8n(request):
             }
             has_direct_payload = any(k in data_in for k in known_payload_keys)
 
+            force_metabolic_start = False
+            force_metabolic_show_last = False
+            try:
+                if service_exp == 'exp-003_metabolic_profile' and service_action in ('start_new', 'start', 'new_eval'):
+                    force_metabolic_start = True
+                if service_exp == 'exp-003_metabolic_profile' and service_action in ('show_last', 'view_last', 'last_result'):
+                    force_metabolic_show_last = True
+            except Exception:
+                force_metabolic_start = False
+                force_metabolic_show_last = False
+
+            if force_metabolic_start or force_metabolic_show_last:
+                has_direct_payload = True
+
             skip_service_router = False
             try:
                 skip_service_router = bool(
@@ -8991,6 +9005,15 @@ def chat_n8n(request):
                             re.search(r"\b(iniciar|inicia|empezar|activar)\b", msg_low_met)
                             and re.search(r"\b(perfil\s+metab[oó]lico|metab[oó]lic)\b", msg_low_met)
                         )
+                    except Exception:
+                        explicit_metabolic_start = False
+
+                if not explicit_metabolic_start:
+                    try:
+                        svc_int = request.data.get('service_intent') if isinstance(request.data, dict) and isinstance(request.data.get('service_intent'), dict) else {}
+                        svc_exp = str(svc_int.get('experience') or '').strip().lower()
+                        svc_act = str(svc_int.get('action') or '').strip().lower()
+                        explicit_metabolic_start = bool(svc_exp == 'exp-003_metabolic_profile' and svc_act in ('start_new', 'start', 'new_eval'))
                     except Exception:
                         explicit_metabolic_start = False
 
