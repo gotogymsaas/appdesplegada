@@ -938,7 +938,9 @@
         let gtgGamificationRendered = false;
         let gtgAudioCtx = null;
         let gtgSfxEnabled = localStorage.getItem('gtg_sfx_enabled') !== '0';
+        let gtgAudioUnlocked = false;
         let gtgLastTapSfxAt = 0;
+        let gtgClaimEndpointUnavailableUntil = Number(localStorage.getItem('gtg_claim_endpoint_unavailable_until') || 0);
 
         function getStoredUser() {
             const raw = localStorage.getItem("user");
@@ -1031,11 +1033,15 @@
             sfxBtn.style.opacity = gtgSfxEnabled ? '1' : '0.7';
         }
 
-        function warmupAudio() {
+        function warmupAudio(forceUnlock = false) {
             if (!gtgSfxEnabled) return;
             try {
                 const AudioCtx = window.AudioContext || window.webkitAudioContext;
                 if (!AudioCtx) return;
+                if (forceUnlock) {
+                    gtgAudioUnlocked = true;
+                }
+                if (!gtgAudioUnlocked) return;
                 if (!gtgAudioCtx) gtgAudioCtx = new AudioCtx();
                 if (gtgAudioCtx.state === 'suspended') {
                     gtgAudioCtx.resume();
@@ -1052,7 +1058,7 @@
             showSfxStatus(gtgSfxEnabled ? 'SFX ON' : 'SFX OFF');
             showToast(gtgSfxEnabled ? 'Sonidos activados' : 'Sonidos desactivados', 'success');
             if (gtgSfxEnabled) {
-                warmupAudio();
+                warmupAudio(true);
                 playPositiveSfx('claim');
             }
         }
@@ -1078,7 +1084,7 @@
             const now = Date.now();
             if (now - gtgLastTapSfxAt < 110) return;
             gtgLastTapSfxAt = now;
-            warmupAudio();
+            warmupAudio(true);
             playPositiveSfx(kind);
         }
 
@@ -1087,6 +1093,7 @@
             try {
                 const AudioCtx = window.AudioContext || window.webkitAudioContext;
                 if (!AudioCtx) return;
+                if (!gtgAudioUnlocked) return;
                 if (!gtgAudioCtx) gtgAudioCtx = new AudioCtx();
                 if (gtgAudioCtx.state === 'suspended') {
                     gtgAudioCtx.resume();
@@ -1221,6 +1228,10 @@
         }
 
         async function postClaimDailyWithFallback() {
+            const now = Date.now();
+            if (gtgClaimEndpointUnavailableUntil && now < gtgClaimEndpointUnavailableUntil) {
+                return null;
+            }
             const candidatePaths = [
                 'gamification/claim_daily/',
                 'gamification/claim_daily',
@@ -1237,6 +1248,10 @@
                 } catch (e) {
                     continue;
                 }
+            }
+            if (lastResponse && lastResponse.status === 404) {
+                gtgClaimEndpointUnavailableUntil = Date.now() + (60 * 60 * 1000);
+                localStorage.setItem('gtg_claim_endpoint_unavailable_until', String(gtgClaimEndpointUnavailableUntil));
             }
             return lastResponse;
         }
@@ -1381,9 +1396,16 @@
                             const progress = (m.progress !== undefined && m.progress !== null) ? m.progress : 0;
                             const targetVal = (m.target !== undefined && m.target !== null) ? m.target : 0;
                             const completed = !!m.completed;
-                            const status = completed ? '✓' : `${progress}/${targetVal}`;
-
                             const key = String(m.key || '').toLowerCase();
+                            let status = completed ? '✓' : `${progress}/${targetVal}`;
+                            if (key === 'if_delta') {
+                                const progressNum = Number(progress || 0);
+                                const targetNum = Number(targetVal || 0);
+                                const pctIf = targetNum > 0
+                                    ? Math.max(0, Math.min(100, Math.round((progressNum / targetNum) * 100)))
+                                    : 0;
+                                status = completed ? '✓' : `${pctIf}%`;
+                            }
                             const progressBarHtml = buildMissionProgressBar(key, progress, targetVal, completed);
                             nextMissionCompleted[key] = completed;
                             let howTo = 'Haz 1 acción válida hoy para activar tu evolución.';
@@ -1777,7 +1799,8 @@
         document.addEventListener('DOMContentLoaded', () => {
             syncSfxToggleUi();
             const unlockAudioOnce = () => {
-                warmupAudio();
+                gtgAudioUnlocked = true;
+                warmupAudio(true);
                 window.removeEventListener('pointerdown', unlockAudioOnce);
                 window.removeEventListener('touchstart', unlockAudioOnce);
             };
