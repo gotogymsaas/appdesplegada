@@ -4337,7 +4337,7 @@ def chat_n8n(request):
                         'label': 'Perfil Metabólico',
                         'aliases': [r"perfil\s+metab[oó]lico", r"metab[oó]lico", r"tdee", r"tmb"],
                         'start_actions': [
-                            {'label': 'Iniciar perfil metabólico', 'type': 'message', 'text': 'Perfil metabólico'},
+                            {'label': 'Iniciar perfil metabólico', 'type': 'message', 'text': 'Iniciar perfil metabólico', 'payload': {'metabolic_profile_request': {'start': True}}},
                             {'label': 'Cancelar', 'type': 'services_menu', 'page': 'core'},
                         ],
                     },
@@ -4531,6 +4531,7 @@ def chat_n8n(request):
                 service_exp = _detect_service_from_message(msg_low_router)
 
             known_payload_keys = {
+                'metabolic_profile_request',
                 'posture_request', 'muscle_measure_request', 'posture_proportion_request',
                 'meal_plan_request', 'body_trend_request', 'lifestyle_request', 'motivation_request',
                 'progression_request', 'skin_habits_request', 'skin_cancel', 'pp_cancel'
@@ -5188,6 +5189,11 @@ def chat_n8n(request):
         except Exception:
             _msg_low_flags = ''
         user_asked_metabolic = bool(re.search(r"\b(perfil\s+metab|metab[oó]lic|tdee|tmb|kcal|calor[ií]as)\b", _msg_low_flags or ""))
+        try:
+            if isinstance(request.data, dict) and isinstance(request.data.get('metabolic_profile_request'), dict):
+                user_asked_metabolic = True
+        except Exception:
+            pass
         user_explicit_image_experience = bool(re.search(
             r"\b(vitalidad\s+de\s+la\s+pi?e?l|skin\s*health|skincare|postura|posture|arquitectura\s+corporal|proporci[oó]n|shape|presence|presencia|progreso\s+muscular|medici[oó]n\s+muscular)\b",
             _msg_low_flags or "",
