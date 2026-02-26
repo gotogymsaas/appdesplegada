@@ -7472,11 +7472,61 @@ def chat_n8n(request):
                             }
                             benefit = benefit_map.get(hid_done) or 'Te ayuda a sostener constancia hoy sin sobrecargar el sistema.'
 
+                            dhss_last = None
+                            try:
+                                d0 = last_res.get('dhss') if isinstance(last_res.get('dhss'), dict) else {}
+                                dhss_last = int(d0.get('score')) if d0.get('score') is not None else None
+                            except Exception:
+                                dhss_last = None
+
                             done_text = (
                                 f"✅ Listo. Registré: **{label_done}**.\n"
-                                f"**¿Para qué sirve hoy?** {benefit}\n\n"
-                                "Pequeño hábito, gran impacto acumulado cuando lo repites con constancia."
+                                f"**¿Para qué sirve hoy?** {benefit}\n"
+                                "**¿Cómo usa esto el sistema?** Lo guardo en tu historial de hoy para ajustar tu lectura de Estado de Hoy y afinar tus próximas recomendaciones sin sobrecargarte."
                             )
+
+                            try:
+                                qc_done = ""
+                                prompt_done = (
+                                    "Eres Quantum Coach. El usuario acaba de marcar un micro-hábito como completado en Estado de Hoy (Lifestyle).\n"
+                                    "Responde en español, tono cercano y con contexto (máx 5 líneas, sin formato rígido).\n"
+                                    "Incluye: 1) confirmación breve, 2) para qué sirve hoy, 3) cómo usamos este dato en el sistema (DHSS y ajuste de recomendaciones), 4) siguiente paso de 1 línea.\n"
+                                    "No pidas foto ni datos adicionales. No uses HTML.\n\n"
+                                    f"Micro-hábito registrado: {label_done}\n"
+                                    f"Beneficio base: {benefit}\n"
+                                    f"DHSS actual (si existe): {dhss_last if dhss_last is not None else 'N/D'}/100\n"
+                                    f"Mensaje del usuario: {str(message or '').strip()}\n"
+                                )
+                                n8n_payload_done = {
+                                    'chatInput': prompt_done,
+                                    'message': prompt_done,
+                                    'sessionId': session_id,
+                                    'username': (getattr(user, 'username', '') or ''),
+                                    'auth_header': auth_header,
+                                    'attachment': '',
+                                    'attachment_text': '',
+                                    'qaf': {'type': 'exp-007_lifestyle_habit_ack', 'result': {'habit_id': hid_done, 'habit_label': label_done, 'benefit': benefit, 'dhss': dhss_last}},
+                                    'system_rules': {
+                                        'module': 'exp-007_lifestyle_habit_ack',
+                                        'no_medical': True,
+                                    },
+                                }
+                                resp_done = _bench_n8n_post(request, n8n_url, n8n_payload_done, timeout=35)
+                                if resp_done.status_code == 200:
+                                    try:
+                                        data_done = resp_done.json()
+                                    except Exception:
+                                        data_done = {'output': resp_done.text}
+                                    if isinstance(data_done, dict) and isinstance(data_done.get('output'), str):
+                                        qc_done = (data_done.get('output') or '').strip()
+                                    elif isinstance(data_done, str):
+                                        qc_done = data_done.strip()
+                                low_done = str(qc_done or '').lower()
+                                if qc_done and '<iframe' not in low_done:
+                                    done_text = qc_done
+                            except Exception:
+                                pass
+
                             return Response({'output': done_text}, status=200)
                         except Exception:
                             return Response({'output': '✅ Listo. Registré ese micro-hábito para hoy.'}, status=200)
@@ -7518,11 +7568,96 @@ def chat_n8n(request):
                     lifestyle_result = evaluate_lifestyle({'daily_metrics': daily_metrics, 'self_report': self_report, 'memory': mem}).payload
                     ltext = render_professional_summary(lifestyle_result)
 
-                    # Prefacio breve para explicar el examen en su primera activación del flujo.
-                    lifestyle_intro = (
-                        "**Estado de Hoy (Lifestyle)**\n"
-                        "Acabo de evaluar sueño, movimiento y carga diaria para definir tu foco de hoy con el mínimo riesgo de sobrecarga.\n"
+                    dhss_obj = lifestyle_result.get('dhss') if isinstance(lifestyle_result.get('dhss'), dict) else {}
+                    dhss_score = None
+                    try:
+                        dhss_score = int(dhss_obj.get('score')) if dhss_obj.get('score') is not None else None
+                    except Exception:
+                        dhss_score = None
+                    band = str(dhss_obj.get('band') or '').strip().lower()
+                    band_label = (
+                        'Recuperación' if band == 'recovery' else
+                        'Fatiga' if band == 'fatigue' else
+                        'Capacidad moderada' if band == 'moderate' else
+                        'Alta capacidad' if band == 'high_capacity' else
+                        'Estado'
                     )
+
+                    def _lifestyle_contextual_fallback(res: dict) -> str:
+                        if not isinstance(res, dict):
+                            return ltext or ''
+
+                        conf = res.get('confidence') if isinstance(res.get('confidence'), dict) else {}
+                        conf_pct = None
+                        try:
+                            conf_pct = int(round(float(conf.get('score')) * 100.0)) if conf.get('score') is not None else None
+                        except Exception:
+                            conf_pct = None
+
+                        sig = res.get('signals') if isinstance(res.get('signals'), dict) else {}
+                        patterns = res.get('patterns') if isinstance(res.get('patterns'), list) else []
+                        micro = res.get('microhabits') if isinstance(res.get('microhabits'), list) else []
+
+                        sleep_val = (sig.get('sleep') or {}).get('value') if isinstance(sig.get('sleep'), dict) else None
+                        steps_val = (sig.get('steps') or {}).get('value') if isinstance(sig.get('steps'), dict) else None
+
+                        lines = []
+                        lines.append('Hoy ya tengo una lectura integrada de tu sistema para ayudarte a decidir con criterio y sin sobrecargarte.')
+                        if dhss_score is not None:
+                            lines.append(f"DHSS de hoy: **{dhss_score}/100 ({dhss_score}%)** — {band_label}.")
+
+                        if conf_pct is not None:
+                            if conf_pct >= 70:
+                                lines.append(f"Precisión estimada: **{conf_pct}% (alta)**.")
+                            elif conf_pct >= 45:
+                                lines.append(f"Precisión estimada: **{conf_pct}% (media)**.")
+                            else:
+                                lines.append(f"Precisión estimada: **{conf_pct}% (baja)**; conviene completar 1–2 datos para afinar.")
+
+                        quick = []
+                        try:
+                            if sleep_val is None or float(sleep_val) < 30:
+                                quick.append('Sueño: sin dato')
+                            else:
+                                quick.append(f"Sueño: {int(round(float(sleep_val)/60.0))}h")
+                        except Exception:
+                            quick.append('Sueño: sin dato')
+                        try:
+                            if steps_val is None or float(steps_val) < 50:
+                                quick.append('Pasos: sin dato')
+                            else:
+                                quick.append(f"Pasos: {int(round(float(steps_val)))}")
+                        except Exception:
+                            quick.append('Pasos: sin dato')
+                        lines.append('Señales base de hoy: ' + ' | '.join(quick[:2]) + '.')
+
+                        msgs = []
+                        for p in patterns[:2]:
+                            if isinstance(p, dict) and p.get('message'):
+                                msgs.append(str(p.get('message')).strip())
+                        if msgs:
+                            lines.append('Lectura estratégica: ' + ' '.join(msgs))
+
+                        if band in ('recovery', 'fatigue'):
+                            lines.append('Enfoque recomendado: baja carga y alta consistencia (caminata suave o movilidad) para recuperar margen hoy y rendir mejor mañana.')
+                        elif band == 'moderate':
+                            lines.append('Enfoque recomendado: carga moderada, cuidando técnica y recuperaciones.')
+                        else:
+                            lines.append('Enfoque recomendado: puedes progresar hoy, manteniendo control de la técnica y la fatiga.')
+
+                        if micro:
+                            names = [str(x.get('label')).strip() for x in micro if isinstance(x, dict) and str(x.get('label') or '').strip()]
+                            if names:
+                                lines.append('Micro-hábitos sugeridos para mover la aguja hoy: ' + '; '.join(names[:3]) + '.')
+
+                        lines.append('Si quieres, te lo ajusto en 10 segundos con Sueño 1/5, Movimiento 1/5 y Estrés 1/5 (equivale a 20%-100%).')
+                        return '\n\n'.join([x for x in lines if str(x).strip()]).strip()
+
+                    # Prefacio breve para explicar el examen en su primera activación del flujo.
+                    lifestyle_intro = "**Estado de Hoy (Lifestyle)**\n"
+                    if dhss_score is not None:
+                        lifestyle_intro += f"DHSS: {dhss_score}/100 ({dhss_score}%) — {band_label}.\n"
+                    lifestyle_intro += "Acabo de integrar sueño, movimiento y carga diaria para definir tu foco de hoy con el menor riesgo de sobrecarga.\n"
 
                     # Pasar el resultado a Quantum Coach para una narrativa más natural/humana.
                     try:
@@ -7531,13 +7666,16 @@ def chat_n8n(request):
                             "Eres Quantum Coach. Convierte este resultado técnico de 'Estado de Hoy' en una explicación clara, cercana y accionable.\n"
                             "Responde SOLO en texto plano (sin HTML, sin <iframe>).\n"
                             "No diagnóstico médico. No promesas absolutas.\n"
-                            "Formato:\n"
-                            "1) Qué detecté hoy (2-3 bullets)\n"
-                            "2) Qué hago hoy (2-4 acciones)\n"
-                            "3) Por qué ese enfoque hoy (1 párrafo corto)\n"
-                            "4) Micro-hábitos (máx 3) con para qué sirve cada uno en una frase\n"
-                            "5) Cierre breve y motivador\n"
+                            "No uses plantilla rígida numerada; escribe en tono conversacional con bloques cortos y contexto.\n"
+                            "Reglas de salida obligatorias:\n"
+                            "- Incluye la línea exacta: DHSS: X/100 (Y%) — [banda].\n"
+                            "- Si aparece escala 1/5, conviértela también a porcentaje (20%, 40%, 60%, 80%, 100%).\n"
+                            "- Explica qué significa para hoy y cómo impacta mañana.\n"
+                            "- Si faltan datos, explica qué falta y por qué mejora la precisión.\n"
+                            "- Micro-hábitos: máximo 3, indicando para qué sirve cada uno en una frase breve.\n"
                             "Si faltan datos, dilo sin dramatizar y pide solo lo mínimo.\n\n"
+                            f"DHSS calculado: {dhss_score if dhss_score is not None else 'N/D'}/100 ({(str(dhss_score) + '%') if dhss_score is not None else 'N/D'})\n"
+                            f"Banda: {band_label}\n"
                             f"Mensaje del usuario: {str(message or '').strip()}\n"
                             f"Resultado Lifestyle: {json.dumps(lifestyle_result, ensure_ascii=False)}\n"
                         )
@@ -7578,8 +7716,10 @@ def chat_n8n(request):
                             ltext = qc_text
                         else:
                             _bench_event_note(request, fallback_used=True)
+                            ltext = _lifestyle_contextual_fallback(lifestyle_result)
                     except Exception:
                         _bench_event_note(request, fallback_used=True)
+                        ltext = _lifestyle_contextual_fallback(lifestyle_result)
 
                     if ltext:
                         lifestyle_text_for_output_override = (lifestyle_intro + "\n" + ltext).strip()
@@ -7609,10 +7749,11 @@ def chat_n8n(request):
                             def _mk_scale_actions(prefix_label: str, key: str):
                                 out = []
                                 for i in range(1, 6):
+                                    pct_i = i * 20
                                     out.append({
-                                        'label': f"{prefix_label} {i}/5",
+                                        'label': f"{prefix_label} {i}/5 ({pct_i}%)",
                                         'type': 'message',
-                                        'text': f"{prefix_label} {i}/5",
+                                        'text': f"{prefix_label} {i}/5 ({pct_i}%)",
                                         'payload': {
                                             'lifestyle_request': {
                                                 'days': days_i,
