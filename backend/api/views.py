@@ -4284,6 +4284,16 @@ def chat_n8n(request):
 
         # Resolver usuario temprano (para fallback de adjuntos y sessionId seguro)
         user = _resolve_request_user(request)
+        if not user:
+            try:
+                username_hint = str(request.data.get('username') or '').strip()
+                if username_hint:
+                    user = User.objects.filter(
+                        Q(username__iexact=username_hint) | Q(email__iexact=username_hint)
+                    ).first()
+            except Exception:
+                user = None
+
         if user:
             session_id = _safe_session_id(user)
         elif not session_id or session_id == 'invitado':
