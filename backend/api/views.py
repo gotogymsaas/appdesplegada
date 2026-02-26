@@ -4556,10 +4556,7 @@ def chat_n8n(request):
             try:
                 skip_service_router = bool(
                     service_exp == 'exp-003_metabolic_profile'
-                    and (
-                        explicit_start
-                        or service_action in ('start_new', 'start', 'new_eval')
-                    )
+                    and service_action not in ('show_last', 'view_last', 'last_result')
                 )
             except Exception:
                 skip_service_router = False
