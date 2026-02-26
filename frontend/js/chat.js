@@ -1933,7 +1933,11 @@ function showServicesMenu(page = 'core') {
       svc('Motivación', 'exp-008_motivation', 'Motivación'),
       svc('Calorías Inteligentes (QAF)', 'exp-001_calories', 'Calorías Inteligentes'),
       svc('Coherencia Nutricional', 'exp-002_meal_coherence', 'Coherencia Nutricional'),
-      { label: '◀ Volver', type: 'services_menu', page: 'more' },
+      {
+        label: 'Explícame las 13 experiencias',
+        type: 'message',
+        text: 'Explícame las 13 experiencias de GoToGym y qué hace cada una de forma clara y breve.',
+      },
       { label: 'Finalizar', type: 'services_close' },
     ]);
     return;
