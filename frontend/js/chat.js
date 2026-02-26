@@ -1952,14 +1952,7 @@ function showServicesMenu(page = 'core') {
   }
 
   if (page === 'onboarding') {
-    appendQuickActions([
-      svc('Arquitectura Corporal', 'exp-013_body_architecture', 'Arquitectura Corporal'),
-      svc('Alta Costura Inteligente', 'exp-012_shape_presence', 'Alta Costura Inteligente'),
-      svc('Vitalidad de la Piel', 'exp-011_skin_health', 'Vitalidad de la Piel'),
-      svc('Progreso muscular', 'exp-010_muscle_measure', 'Progreso muscular'),
-      { label: 'Más servicios (13)', type: 'services_menu', page: 'core' },
-      { label: 'Finalizar', type: 'services_close' },
-    ]);
+    showServicesMenu('more');
     return;
   }
 
@@ -3529,7 +3522,7 @@ async function sendQuickMessage(text, extraPayload = null) {
       { label: 'Alta Costura Inteligente', type: 'message', text: 'Alta Costura Inteligente', payload: { service_intent: { experience: 'exp-012_shape_presence', action: 'start_new' } } },
       { label: 'Vitalidad de la Piel', type: 'message', text: 'Vitalidad de la Piel', payload: { service_intent: { experience: 'exp-011_skin_health', action: 'start_new' } } },
       { label: 'Progreso muscular', type: 'message', text: 'Progreso muscular', payload: { service_intent: { experience: 'exp-010_muscle_measure', action: 'start_new' } } },
-      { label: 'Más servicios (13)', type: 'services_menu', page: 'onboarding' },
+      { label: 'Más servicios (13)', type: 'services_menu', page: 'more' },
     );
     appendQuickActions(curated.slice(0, 6));
   } else {
