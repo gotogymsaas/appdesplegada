@@ -76,6 +76,18 @@ def _parse_iso_date(value: Any) -> date | None:
     return None
 
 
+def _parse_iso_datetime_to_date(value: Any) -> date | None:
+    if not value:
+        return None
+    if isinstance(value, datetime):
+        return value.date()
+    if isinstance(value, date):
+        return value
+    if isinstance(value, str):
+        return _parse_iso_date(value)
+    return None
+
+
 def _week_start(d: date) -> date:
     # Monday as week start
     return d - timedelta(days=d.weekday())
@@ -317,6 +329,8 @@ def _resolve_qaf_experiences_progress(
     wow_events_by_day: dict[str, Any],
     week_start: date,
     week_end: date,
+    coach_state: dict[str, Any],
+    weekly_state: dict[str, Any],
 ) -> dict[str, Any]:
     all_events: set[str] = set()
     week_events: set[str] = set()
@@ -334,10 +348,105 @@ def _resolve_qaf_experiences_progress(
     completed_total = 0
     completed_week = 0
 
+    def _row_has_result(row: Any) -> bool:
+        return isinstance(row, dict) and isinstance(row.get("result"), dict) and bool(row.get("result"))
+
+    def _bucket_has_result(bucket: Any) -> bool:
+        if not isinstance(bucket, dict):
+            return False
+        for _, row in bucket.items():
+            if _row_has_result(row):
+                return True
+        return False
+
+    def _bucket_has_result_in_week(bucket: Any) -> bool:
+        if not isinstance(bucket, dict):
+            return False
+        for _, row in bucket.items():
+            if not _row_has_result(row):
+                continue
+            d = _parse_iso_datetime_to_date((row or {}).get("updated_at"))
+            if d is not None and week_start <= d <= week_end:
+                return True
+        return False
+
+    def _blob_done(blob: Any) -> tuple[bool, bool]:
+        if not _row_has_result(blob):
+            return False, False
+        d = _parse_iso_datetime_to_date((blob or {}).get("updated_at"))
+        return True, bool(d is not None and week_start <= d <= week_end)
+
+    def _exp_state_done(exp_code: str) -> tuple[bool, bool]:
+        code = str(exp_code or "").strip().lower()
+        if code == "exp-003_metabolic_profile":
+            row = weekly_state.get("metabolic_last") if isinstance(weekly_state.get("metabolic_last"), dict) else None
+            return _blob_done({"result": row or {}, "updated_at": (row or {}).get("updated_at") if isinstance(row, dict) else None})
+
+        if code == "exp-004_meal_plan":
+            bucket = weekly_state.get("meal_plan") if isinstance(weekly_state.get("meal_plan"), dict) else {}
+            return _bucket_has_result(bucket), _bucket_has_result_in_week(bucket)
+
+        if code == "exp-005_body_trend":
+            row = weekly_state.get("body_trend_last") if isinstance(weekly_state.get("body_trend_last"), dict) else None
+            return _blob_done(row)
+
+        if code == "exp-006_posture":
+            rows = coach_state.get("posture_measurements") if isinstance(coach_state.get("posture_measurements"), list) else []
+            if not rows:
+                return False, False
+            done_all = any(isinstance(r, dict) and bool(r) for r in rows)
+            done_week = False
+            for r in rows:
+                if not isinstance(r, dict):
+                    continue
+                d = _parse_iso_datetime_to_date(r.get("ts") or r.get("updated_at"))
+                if d is not None and week_start <= d <= week_end:
+                    done_week = True
+                    break
+            return done_all, done_week
+
+        if code == "exp-007_lifestyle":
+            return _blob_done(coach_state.get("lifestyle_last"))
+
+        if code == "exp-008_motivation":
+            return _blob_done(coach_state.get("motivation_last"))
+
+        if code == "exp-009_progression":
+            return _blob_done(coach_state.get("progression_last"))
+
+        if code == "exp-010_muscle_measure":
+            return _blob_done(coach_state.get("muscle_measure_last"))
+
+        if code == "exp-011_skin_health":
+            done_blob_all, done_blob_week = _blob_done(coach_state.get("skin_last_result"))
+            if done_blob_all:
+                return done_blob_all, done_blob_week
+            bucket = weekly_state.get("skin_health") if isinstance(weekly_state.get("skin_health"), dict) else {}
+            return _bucket_has_result(bucket), _bucket_has_result_in_week(bucket)
+
+        if code == "exp-012_shape_presence":
+            done_blob_all, done_blob_week = _blob_done(coach_state.get("couture_last_result"))
+            if done_blob_all:
+                return done_blob_all, done_blob_week
+            bucket = weekly_state.get("shape_presence") if isinstance(weekly_state.get("shape_presence"), dict) else {}
+            return _bucket_has_result(bucket), _bucket_has_result_in_week(bucket)
+
+        if code == "exp-013_body_architecture":
+            done_blob_all, done_blob_week = _blob_done(coach_state.get("body_architecture_last_result"))
+            if done_blob_all:
+                return done_blob_all, done_blob_week
+            bucket = weekly_state.get("posture_proportion") if isinstance(weekly_state.get("posture_proportion"), dict) else {}
+            return _bucket_has_result(bucket), _bucket_has_result_in_week(bucket)
+
+        return False, False
+
     for exp in QAF_EXPERIENCES:
         keys = [str(k).strip().lower() for k in (exp.get("event_keys") or []) if str(k).strip()]
-        done_all = any(k in all_events for k in keys)
-        done_week = any(k in week_events for k in keys)
+        done_events_all = any(k in all_events for k in keys)
+        done_events_week = any(k in week_events for k in keys)
+        done_state_all, done_state_week = _exp_state_done(str(exp.get("code") or ""))
+        done_all = bool(done_events_all or done_state_all)
+        done_week = bool(done_events_week or done_state_week)
         if done_all:
             completed_total += 1
         if done_week:
@@ -464,6 +573,8 @@ def build_gamification_status(user: User, *, as_of: date | None = None) -> dict[
         wow_events_by_day=wow_events_by_day,
         week_start=week_start_d,
         week_end=week_end_d,
+        coach_state=coach_state,
+        weekly_state=_get_weekly_state(user),
     )
 
     return {
