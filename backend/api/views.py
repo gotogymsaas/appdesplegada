@@ -4538,7 +4538,16 @@ def chat_n8n(request):
             }
             has_direct_payload = any(k in data_in for k in known_payload_keys)
 
-            if user and service_exp and not attachment_url and not has_direct_payload:
+            skip_service_router = False
+            try:
+                skip_service_router = bool(
+                    service_exp == 'exp-003_metabolic_profile'
+                    and explicit_start
+                )
+            except Exception:
+                skip_service_router = False
+
+            if user and service_exp and not attachment_url and not has_direct_payload and (not skip_service_router):
                 spec = _service_spec(service_exp)
                 label = str(spec.get('label') or 'Experiencia').strip()
 
@@ -8972,6 +8981,15 @@ def chat_n8n(request):
                 coach_state = getattr(user, 'coach_state', {}) or {}
                 metabolic_start_payload = request.data.get('metabolic_profile_request') if isinstance(request.data, dict) else None
                 explicit_metabolic_start = isinstance(metabolic_start_payload, dict)
+                if not explicit_metabolic_start:
+                    try:
+                        msg_low_met = str(message or '').strip().lower()
+                        explicit_metabolic_start = bool(
+                            re.search(r"\b(iniciar|inicia|empezar|activar)\b", msg_low_met)
+                            and re.search(r"\b(perfil\s+metab[oó]lico|metab[oó]lic)\b", msg_low_met)
+                        )
+                    except Exception:
+                        explicit_metabolic_start = False
 
                 snoozed_week = str(coach_state.get('weekly_checkin_snoozed_week_id') or '')
                 prompted_week = str(coach_state.get('weekly_checkin_prompted_week_id') or '')
