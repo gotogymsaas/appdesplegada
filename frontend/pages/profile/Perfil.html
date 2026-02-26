@@ -296,6 +296,10 @@
                     color: var(--primary);
                 }
 
+                .qaf-experience-item.newly-done {
+                    animation: mission-complete-pop 540ms ease;
+                }
+
                 .mission-item {
                     display: flex;
                     align-items: center;
@@ -433,6 +437,10 @@
                     background: rgba(255, 255, 255, 0.03);
                 }
 
+                .streak-chip.streak-up {
+                    animation: streak-up-glow 520ms ease;
+                }
+
                 .streak-tier {
                     color: var(--secondary);
                     font-size: 11px;
@@ -532,6 +540,12 @@
                     100% { transform: scale(1); }
                 }
 
+                @keyframes streak-up-glow {
+                    0% { box-shadow: 0 0 0 rgba(212, 180, 106, 0); }
+                    45% { box-shadow: 0 0 14px rgba(212, 180, 106, 0.36); }
+                    100% { box-shadow: 0 0 0 rgba(212, 180, 106, 0); }
+                }
+
                 @keyframes evo-reveal {
                     0% { opacity: 0.72; transform: translateY(4px); }
                     100% { opacity: 1; transform: translateY(0); }
@@ -558,6 +572,7 @@
                 @media (prefers-reduced-motion: reduce) {
                     .mission-action-btn.claim-ready,
                     .mission-item.newly-completed,
+                    .qaf-experience-item.newly-done,
                     .wow-value.bump,
                     .wow-row.claim-success,
                     .evolution-section.reveal,
@@ -565,6 +580,9 @@
                     .progress-bar.progress-pulse,
                     .fx-toast.show,
                     .sfx-status.show,
+                    .streak-chip.streak-up,
+                    .badge-item.newly-unlocked,
+                    .happiness-section.mission-focus,
                     .fx-particle {
                         animation: none !important;
                     }
@@ -578,6 +596,17 @@
                     text-align: center;
                     width: 80px;
                     box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+                }
+
+                .badge-item.newly-unlocked {
+                    animation: badge-unlock-pop 640ms ease;
+                    border-color: rgba(212, 180, 106, 0.55);
+                }
+
+                @keyframes badge-unlock-pop {
+                    0% { transform: scale(0.96); }
+                    45% { transform: scale(1.06); }
+                    100% { transform: scale(1); }
                 }
                 
                 .badge-icon {
@@ -622,6 +651,16 @@
                 .happiness-section {
                     text-align: center;
                     margin-bottom: 60px;
+                }
+
+                .happiness-section.mission-focus {
+                    animation: happiness-focus-pulse 640ms ease;
+                }
+
+                @keyframes happiness-focus-pulse {
+                    0% { filter: none; }
+                    45% { filter: drop-shadow(0 0 10px rgba(15, 191, 176, 0.35)); }
+                    100% { filter: none; }
                 }
                 
                 .happiness-title {
@@ -839,8 +878,11 @@
         let gtgLastProfileFetchAt = 0;
         const GTG_PROFILE_FETCH_TTL_MS = 15000;
         let gtgPrevMissionCompleted = {};
+        let gtgPrevExperienceCompleted = {};
+        let gtgPrevBadges = [];
         let gtgPrevWowPoints = null;
         let gtgPrevWeeklyDone = null;
+        let gtgPrevStreak = null;
         let gtgGamificationRendered = false;
         let gtgAudioCtx = null;
         let gtgSfxEnabled = localStorage.getItem('gtg_sfx_enabled') !== '0';
@@ -881,15 +923,30 @@
                 return { label: 'Ir a dispositivos', href: '../../pages/settings/Dispositivos.html' };
             }
             if (normalized === 'if_delta') {
-                return { label: 'Mejorar IF', href: '../../pages/forms/CuestionarioIF.html' };
+                return { label: 'Ver evolución IF', action: 'focus_happiness' };
             }
             return null;
         }
 
         function runMissionAction(key) {
             const action = getMissionAction(key);
-            if (!action || !action.href) return;
+            if (!action) return;
+            if (action.action === 'focus_happiness') {
+                focusHappinessSection();
+                return;
+            }
+            if (!action.href) return;
             window.location.href = action.href;
+        }
+
+        function focusHappinessSection() {
+            const section = document.querySelector('.happiness-section');
+            if (!section) return;
+            section.classList.remove('mission-focus');
+            void section.offsetWidth;
+            section.classList.add('mission-focus');
+            section.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            showFxToast('Revisa tu evolución IF y registra un nuevo check-in');
         }
 
         function prefersReducedMotion() {
@@ -909,6 +966,9 @@
             syncSfxToggleUi();
             showSfxStatus(gtgSfxEnabled ? 'SFX ON' : 'SFX OFF');
             showToast(gtgSfxEnabled ? 'Sonidos activados' : 'Sonidos desactivados', 'success');
+            if (gtgSfxEnabled) {
+                playPositiveSfx('claim');
+            }
         }
 
         function playSfx(kind = 'PING_SOFT') {
@@ -940,15 +1000,26 @@
                 osc.frequency.setValueAtTime(baseFreq, now);
                 osc.frequency.exponentialRampToValueAtTime(baseFreq * 1.22, now + 0.09);
                 gain.gain.setValueAtTime(0.0001, now);
-                gain.gain.exponentialRampToValueAtTime(0.04, now + 0.015);
-                gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.12);
+                gain.gain.exponentialRampToValueAtTime(0.08, now + 0.02);
+                gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.16);
                 osc.connect(gain);
                 gain.connect(gtgAudioCtx.destination);
                 osc.start(now);
-                osc.stop(now + 0.13);
+                osc.stop(now + 0.17);
             } catch (e) {
                 if (window.GTG_DEBUG) console.warn('[Perfil] playPositiveSfx falló', e);
             }
+        }
+
+        function animateStreakIncrease(previousStreak, currentStreak) {
+            if (previousStreak === null || currentStreak <= previousStreak) return;
+            const streakChip = document.getElementById('streakChip');
+            if (!streakChip) return;
+            streakChip.classList.remove('streak-up');
+            void streakChip.offsetWidth;
+            streakChip.classList.add('streak-up');
+            playSfx('CHIME_GOAL');
+            triggerSuccessHaptic();
         }
 
         function triggerSuccessHaptic() {
@@ -1243,11 +1314,14 @@
 
                     const streakValue = document.getElementById('streakValue');
                     const streakTier = document.getElementById('streakTier');
-                    if (streakValue) streakValue.textContent = String(Number(g.streak || user.current_streak || 0));
+                    const currentStreak = Number(g.streak || user.current_streak || 0);
+                    if (streakValue) streakValue.textContent = String(currentStreak);
                     if (streakTier) {
                         const currentTier = g.streak_tier && g.streak_tier.current ? g.streak_tier.current.label : '—';
                         streakTier.textContent = currentTier;
                     }
+                    animateStreakIncrease(gtgPrevStreak, currentStreak);
+                    gtgPrevStreak = currentStreak;
 
                     const qafProgressNote = document.getElementById('qafProgressNote');
                     const qafContainer = document.getElementById('qafExperiencesContainer');
@@ -1262,20 +1336,33 @@
                     }
                     if (qafContainer) {
                         qafContainer.innerHTML = '';
+                        const nextExperienceCompleted = {};
+                        let hasNewExperience = false;
                         expItems.forEach((exp) => {
                             if (!exp) return;
                             const label = escapeHtml(exp.label || exp.code || 'Experiencia');
                             const done = !!exp.completed;
                             const doneWeek = !!exp.completed_week;
                             const status = done ? (doneWeek ? '✓ semana' : '✓') : '○';
+                            const expKey = String(exp.code || exp.label || '').toLowerCase();
+                            nextExperienceCompleted[expKey] = done;
                             const row = document.createElement('div');
                             row.className = `qaf-experience-item ${done ? 'done' : ''}`.trim();
+                            if (done && gtgPrevExperienceCompleted[expKey] === false && gtgGamificationRendered) {
+                                row.classList.add('newly-done');
+                                hasNewExperience = true;
+                            }
                             row.innerHTML = `
                               <div class="qaf-experience-label">${label}</div>
                               <div class="qaf-experience-status">${status}</div>
                             `;
                             qafContainer.appendChild(row);
                         });
+                        gtgPrevExperienceCompleted = nextExperienceCompleted;
+                        if (hasNewExperience) {
+                            showFxToast('¡Nueva experiencia QAF completada!');
+                            playSfx('CHIME_GOAL');
+                        }
                     }
 
                     const help = document.getElementById('evolutionHelp');
@@ -1320,23 +1407,36 @@
             } else {
                 if (user.badges && user.badges.length > 0) {
                     badgesContainer.innerHTML = "";
+                    const prevBadgesSet = new Set((gtgPrevBadges || []).map((x) => String(x)));
+                    const nextBadges = [];
+                    let hasNewBadge = false;
                     const badgeConfig = {
                         "iniciado": { icon: "🚀", label: "Iniciado" },
                         "on_fire": { icon: "🔥", label: "On Fire" },
                         "zen_master": { icon: "🧘", label: "Zen Master" }
                     };
                     user.badges.forEach(badgeKey => {
+                        nextBadges.push(String(badgeKey));
                         const config = badgeConfig[badgeKey] || { icon: "🏅", label: badgeKey };
+                        const isNew = !prevBadgesSet.has(String(badgeKey)) && gtgGamificationRendered;
+                        if (isNew) hasNewBadge = true;
                         const badgeHTML = `
-                        <div class="badge-item">
+                        <div class="badge-item ${isNew ? 'newly-unlocked' : ''}">
                           <span class="badge-icon">${config.icon}</span>
                           <span class="badge-label">${config.label}</span>
                         </div>
                       `;
                         badgesContainer.innerHTML += badgeHTML;
                     });
+                    gtgPrevBadges = nextBadges;
+                    if (hasNewBadge) {
+                        showFxToast('¡Nuevo logro desbloqueado!');
+                        playSfx('CHIME_GOAL');
+                        triggerSuccessHaptic();
+                    }
                 } else {
                     badgesContainer.innerHTML = `<p style="color:#666;font-size:12px;">Aún no tienes logros.</p>`;
+                    gtgPrevBadges = [];
                 }
             }
 
@@ -1394,16 +1494,43 @@
             const claimBtn = document.getElementById('claimDailyBtn');
             if (claimBtn && claimBtn.disabled) return;
 
+            const prevText = claimBtn ? claimBtn.textContent : '';
+            if (claimBtn) {
+                claimBtn.disabled = true;
+                claimBtn.style.opacity = '0.7';
+                claimBtn.style.cursor = 'default';
+                claimBtn.textContent = 'Verificando...';
+            }
+
+            const syncDailyStateFallback = async () => {
+                try {
+                    const gsRes = await authFetch(`${API_URL}gamification/status/`);
+                    if (!gsRes.ok) return null;
+                    const gsData = await gsRes.json();
+                    const merged = mergeAndStoreUser({ gamification: gsData });
+                    applyUserToUI(merged, { silent: true });
+                    return merged;
+                } catch (e) {
+                    return null;
+                }
+            };
+
             try {
                 const res = await authFetch(`${API_URL}gamification/claim_daily/`, { method: 'POST' });
                 if (!res.ok) {
+                    const merged = await syncDailyStateFallback();
+                    const claimed = !!(merged && merged.gamification && merged.gamification.wow && merged.gamification.wow.daily_reward && merged.gamification.wow.daily_reward.claimed_today);
+                    if (claimed) {
+                        showFxToast('Recompensa diaria ya reclamada');
+                        showToast('La recompensa de hoy ya fue reclamada.', 'success');
+                        return;
+                    }
                     if (res.status === 404) {
                         showFxToast('Recompensa diaria no disponible en esta versión del backend');
                         showToast('Recompensa diaria no disponible en este momento.', 'error');
-                        await refreshProfile({ silent: true });
                         return;
                     }
-                    showToast('No se pudo reclamar la recompensa diaria.', 'error');
+                    showToast('No se pudo reclamar la recompensa diaria. Inténtalo de nuevo.', 'error');
                     return;
                 }
                 const data = await res.json();
@@ -1420,7 +1547,21 @@
                 }
             } catch (e) {
                 if (window.GTG_DEBUG) console.warn('[Perfil] claimDailyReward falló', e);
-                showToast('No se pudo reclamar la recompensa diaria.', 'error');
+                const merged = await syncDailyStateFallback();
+                const claimed = !!(merged && merged.gamification && merged.gamification.wow && merged.gamification.wow.daily_reward && merged.gamification.wow.daily_reward.claimed_today);
+                if (claimed) {
+                    showFxToast('Recompensa diaria ya reclamada');
+                    showToast('La recompensa de hoy ya fue reclamada.', 'success');
+                } else {
+                    showToast('No se pudo reclamar la recompensa diaria.', 'error');
+                }
+            } finally {
+                if (claimBtn && claimBtn.textContent === 'Verificando...') {
+                    claimBtn.textContent = prevText || 'Reclamar recompensa diaria';
+                    claimBtn.disabled = false;
+                    claimBtn.style.opacity = '1';
+                    claimBtn.style.cursor = 'pointer';
+                }
             }
         }
         

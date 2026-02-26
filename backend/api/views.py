@@ -8603,6 +8603,13 @@ def chat_n8n(request):
                     qaf_text_for_output_override = qaf_text
                     attachment_text = ((attachment_text or '').strip() + "\n\n" if (attachment_text or '').strip() else "") + f"[CALORÍAS ESTIMADAS]\n{qaf_text}".strip()
 
+                # Gamificación Exp-001: acreditar experiencia de calorías cuando se ejecuta.
+                try:
+                    if user:
+                        award_wow_event(user, event_key='qaf_calories', label='Calorías inteligentes evaluadas')
+                except Exception:
+                    pass
+
                 # 1.1) Exp-002: coherencia comida ↔ meta + alertas (si hay usuario)
                 try:
                     if user and isinstance(qaf_result, dict):

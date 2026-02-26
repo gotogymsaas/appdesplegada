@@ -511,7 +511,7 @@ def _set_wow_state(user: User, wow_state: dict[str, Any]) -> None:
     _set_user_json_state(user, coach_state=coach_state)
 
 
-def _prune_wow_events(events_by_day: dict[str, Any], *, keep_days: int = 14) -> dict[str, Any]:
+def _prune_wow_events(events_by_day: dict[str, Any], *, keep_days: int = 400) -> dict[str, Any]:
     today_d = _today()
     pruned: dict[str, Any] = {}
     for k, v in events_by_day.items():
