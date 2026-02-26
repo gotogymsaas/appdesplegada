@@ -1916,25 +1916,71 @@ function showServicesMenu(page = 'core') {
   const title = '**Servicios GoToGym**\nElige una experiencia y yo me encargo del resto.';
   try { appendMessage(title, 'bot'); } catch (e) { /* ignore */ }
 
+  const svc = (label, experience, text) => ({
+    label,
+    type: 'message',
+    text: text || label,
+    payload: {
+      service_intent: {
+        experience,
+        action: 'start_new',
+      },
+    },
+  });
+
+  if (page === 'final') {
+    appendQuickActions([
+      svc('Motivación', 'exp-008_motivation', 'Motivación'),
+      svc('Calorías Inteligentes (QAF)', 'exp-001_calories', 'Calorías Inteligentes'),
+      svc('Coherencia Nutricional', 'exp-002_meal_coherence', 'Coherencia Nutricional'),
+      { label: '◀ Volver', type: 'services_menu', page: 'more' },
+      { label: 'Finalizar', type: 'services_close' },
+    ]);
+    return;
+  }
+
   if (page === 'more') {
     appendQuickActions([
-      { label: 'Menú semanal', type: 'message', text: 'Menú semanal' },
-      { label: 'Perfil metabólico', type: 'message', text: 'Perfil metabólico' },
-      { label: 'Tendencia 6 semanas', type: 'message', text: 'Tendencia 6 semanas' },
-      { label: 'Evolución entrenamiento', type: 'message', text: 'Evolución de entrenamiento' },
-      { label: 'Motivación', type: 'message', text: 'Motivación' },
-      { label: '◀ Volver', type: 'services_menu', page: 'core' },
+      svc('Estado de hoy', 'exp-007_lifestyle', 'Estado de hoy'),
+      svc('Menú semanal', 'exp-004_meal_plan', 'Menú semanal'),
+      svc('Perfil metabólico', 'exp-003_metabolic_profile', 'Perfil metabólico'),
+      svc('Tendencia 6 semanas', 'exp-005_body_trend', 'Tendencia 6 semanas'),
+      svc('Evolución entrenamiento', 'exp-009_progression', 'Evolución de entrenamiento'),
+      { label: 'Más ▶', type: 'services_menu', page: 'final' },
+    ]);
+    return;
+  }
+
+  if (page === 'onboarding') {
+    appendQuickActions([
+      svc('Arquitectura Corporal', 'exp-013_body_architecture', 'Arquitectura Corporal'),
+      svc('Alta Costura Inteligente', 'exp-012_shape_presence', 'Alta Costura Inteligente'),
+      svc('Vitalidad de la Piel', 'exp-011_skin_health', 'Vitalidad de la Piel'),
+      svc('Progreso muscular', 'exp-010_muscle_measure', 'Progreso muscular'),
+      { label: 'Más servicios (13)', type: 'services_menu', page: 'core' },
+      { label: 'Finalizar', type: 'services_close' },
+    ]);
+    return;
+  }
+
+  if (page === 'close') {
+    clearQuickActions();
+    try { appendMessage('Perfecto. Cuando quieras, abrimos de nuevo los servicios GoToGym.', 'bot'); } catch (e) { /* ignore */ }
+    appendQuickActions([
+      { label: 'Servicios GoToGym (13)', type: 'services_menu', page: 'core' },
+      { label: 'Arquitectura Corporal', type: 'message', text: 'Arquitectura Corporal' },
+      { label: 'Estado de hoy', type: 'message', text: 'Estado de hoy', payload: { lifestyle_request: { days: 14 } } },
     ]);
     return;
   }
 
   // core
   appendQuickActions([
-    { label: 'Arquitectura Corporal', type: 'message', text: 'Arquitectura Corporal' },
-    { label: 'Alta Costura Inteligente', type: 'message', text: 'Alta Costura Inteligente' },
-    { label: 'Vitalidad de la Piel', type: 'message', text: 'Vitalidad de la Piel' },
-    { label: 'Corrección de postura', type: 'message', text: 'Corrección de postura' },
-    { label: 'Progreso muscular', type: 'message', text: 'Progreso muscular' },
+    svc('Arquitectura Corporal', 'exp-013_body_architecture', 'Arquitectura Corporal'),
+    svc('Alta Costura Inteligente', 'exp-012_shape_presence', 'Alta Costura Inteligente'),
+    svc('Vitalidad de la Piel', 'exp-011_skin_health', 'Vitalidad de la Piel'),
+    svc('Corrección de postura', 'exp-006_posture', 'Corrección de postura'),
+    svc('Progreso muscular', 'exp-010_muscle_measure', 'Progreso muscular'),
     { label: 'Más ▶', type: 'services_menu', page: 'more' },
   ]);
 }
@@ -3201,6 +3247,10 @@ function appendQuickActions(actions) {
         try { showServicesMenu(action.page || 'core'); } catch (e) { /* ignore */ }
         return;
       }
+      if (action.type === 'services_close') {
+        try { showServicesMenu('close'); } catch (e) { /* ignore */ }
+        return;
+      }
       if (action.type === 'posture_cancel') {
         cancelPostureFlow();
         return;
@@ -3475,11 +3525,11 @@ async function sendQuickMessage(text, extraPayload = null) {
     // Mantener el botón contextual primero
     if (Array.isArray(base) && base.length) curated.push(base[0]);
     curated.push(
-      { label: 'Arquitectura Corporal', type: 'pp_start' },
-      { label: 'Alta Costura Inteligente', type: 'shape_start' },
-      { label: 'Vitalidad de la Piel', type: 'skin_start' },
-      { label: 'Progreso muscular', type: 'muscle_start' },
-      { label: 'Más servicios', type: 'services_menu', page: 'core' },
+      { label: 'Arquitectura Corporal', type: 'message', text: 'Arquitectura Corporal', payload: { service_intent: { experience: 'exp-013_body_architecture', action: 'start_new' } } },
+      { label: 'Alta Costura Inteligente', type: 'message', text: 'Alta Costura Inteligente', payload: { service_intent: { experience: 'exp-012_shape_presence', action: 'start_new' } } },
+      { label: 'Vitalidad de la Piel', type: 'message', text: 'Vitalidad de la Piel', payload: { service_intent: { experience: 'exp-011_skin_health', action: 'start_new' } } },
+      { label: 'Progreso muscular', type: 'message', text: 'Progreso muscular', payload: { service_intent: { experience: 'exp-010_muscle_measure', action: 'start_new' } } },
+      { label: 'Más servicios (13)', type: 'services_menu', page: 'onboarding' },
     );
     appendQuickActions(curated.slice(0, 6));
   } else {

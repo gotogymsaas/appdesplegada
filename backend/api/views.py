@@ -4636,6 +4636,17 @@ def chat_n8n(request):
 
                 if want_start:
                     start_actions = spec.get('start_actions') if isinstance(spec.get('start_actions'), list) else []
+                    if service_exp == 'exp-007_lifestyle':
+                        return Response(
+                            {
+                                'output': (
+                                    "**Estado de Hoy (Lifestyle)**\n"
+                                    "En ~10 segundos evalúo tu sistema con señales de sueño, movimiento y carga diaria para definir tu foco del día sin sobreexigirte.\n\n"
+                                    "No es un diagnóstico médico: es una guía de decisión para entrenar mejor hoy."
+                                ),
+                                'quick_actions': start_actions[:6],
+                            }
+                        )
                     return Response(
                         {
                             'output': f"Perfecto, iniciemos **{label}**.",
@@ -7280,7 +7291,42 @@ def chat_n8n(request):
                     # UX: si el usuario solo está marcando un micro-hábito como hecho,
                     # no repetir el análisis completo en el chat.
                     if lifestyle_habit_only and (not isinstance(lr, dict)):
-                        return Response({'output': '✅ Listo. Registré ese micro-hábito para hoy.'}, status=200)
+                        try:
+                            hid_done = str((habit_done or {}).get('id') or '').strip()
+                            cs_last = getattr(user, 'coach_state', {}) or {}
+                            last_blob = cs_last.get('lifestyle_last') if isinstance(cs_last.get('lifestyle_last'), dict) else {}
+                            last_res = last_blob.get('result') if isinstance(last_blob.get('result'), dict) else {}
+                            micro_last = last_res.get('microhabits') if isinstance(last_res.get('microhabits'), list) else []
+
+                            chosen = None
+                            for mh in micro_last:
+                                if not isinstance(mh, dict):
+                                    continue
+                                if str(mh.get('id') or '').strip() == hid_done:
+                                    chosen = mh
+                                    break
+
+                            label_done = str((chosen or {}).get('label') or '').strip() or 'micro-hábito'
+                            benefit_map = {
+                                'breath_5': 'Baja activación del sistema nervioso y mejora tu sensación de control en pocos minutos.',
+                                'mobility_3': 'Libera tensión acumulada y mejora la calidad del movimiento para el resto del día.',
+                                'sleep_earlier_30': 'Mejora recuperación nocturna y eleva tu capacidad para entrenar mejor mañana.',
+                                'walk_3x5': 'Sube actividad diaria sin fatigar; mejora energía y adherencia.',
+                                'walk_5_postmeal': 'Ayuda a la regulación glucémica y reduce rigidez por sedentarismo.',
+                                'break_60': 'Reduce fatiga por sedentarismo y mejora enfoque físico/mental.',
+                                'water_500': 'Mejora hidratación útil para rendimiento, concentración y recuperación.',
+                                'sunlight_5': 'Refuerza ritmo circadiano y ayuda a estabilizar energía durante el día.',
+                            }
+                            benefit = benefit_map.get(hid_done) or 'Te ayuda a sostener constancia hoy sin sobrecargar el sistema.'
+
+                            done_text = (
+                                f"✅ Listo. Registré: **{label_done}**.\n"
+                                f"**¿Para qué sirve hoy?** {benefit}\n\n"
+                                "Pequeño hábito, gran impacto acumulado cuando lo repites con constancia."
+                            )
+                            return Response({'output': done_text}, status=200)
+                        except Exception:
+                            return Response({'output': '✅ Listo. Registré ese micro-hábito para hoy.'}, status=200)
 
                     days_i = 14
                     if isinstance(lr, dict) and lr.get('days') is not None:
@@ -7318,9 +7364,73 @@ def chat_n8n(request):
 
                     lifestyle_result = evaluate_lifestyle({'daily_metrics': daily_metrics, 'self_report': self_report, 'memory': mem}).payload
                     ltext = render_professional_summary(lifestyle_result)
+
+                    # Prefacio breve para explicar el examen en su primera activación del flujo.
+                    lifestyle_intro = (
+                        "**Estado de Hoy (Lifestyle)**\n"
+                        "Acabo de evaluar sueño, movimiento y carga diaria para definir tu foco de hoy con el mínimo riesgo de sobrecarga.\n"
+                    )
+
+                    # Pasar el resultado a Quantum Coach para una narrativa más natural/humana.
+                    try:
+                        qc_text = ""
+                        prompt = (
+                            "Eres Quantum Coach. Convierte este resultado técnico de 'Estado de Hoy' en una explicación clara, cercana y accionable.\n"
+                            "Responde SOLO en texto plano (sin HTML, sin <iframe>).\n"
+                            "No diagnóstico médico. No promesas absolutas.\n"
+                            "Formato:\n"
+                            "1) Qué detecté hoy (2-3 bullets)\n"
+                            "2) Qué hago hoy (2-4 acciones)\n"
+                            "3) Por qué ese enfoque hoy (1 párrafo corto)\n"
+                            "4) Micro-hábitos (máx 3) con para qué sirve cada uno en una frase\n"
+                            "5) Cierre breve y motivador\n"
+                            "Si faltan datos, dilo sin dramatizar y pide solo lo mínimo.\n\n"
+                            f"Mensaje del usuario: {str(message or '').strip()}\n"
+                            f"Resultado Lifestyle: {json.dumps(lifestyle_result, ensure_ascii=False)}\n"
+                        )
+                        n8n_payload = {
+                            'chatInput': prompt,
+                            'message': prompt,
+                            'sessionId': session_id,
+                            'username': (getattr(user, 'username', '') or ''),
+                            'auth_header': auth_header,
+                            'attachment': '',
+                            'attachment_text': '',
+                            'qaf': {'type': 'exp-007_lifestyle_explainer', 'result': lifestyle_result},
+                            'system_rules': {
+                                'module': 'exp-007_lifestyle_explainer',
+                                'no_new_buttons': True,
+                                'no_medical': True,
+                            },
+                        }
+                        resp = _bench_n8n_post(request, n8n_url, n8n_payload, timeout=45)
+                        if resp.status_code == 200:
+                            try:
+                                data = resp.json()
+                            except Exception:
+                                data = {'output': resp.text}
+                            if isinstance(data, dict) and isinstance(data.get('output'), str):
+                                qc_text = (data.get('output') or '').strip()
+                            elif isinstance(data, str):
+                                qc_text = data.strip()
+
+                        # Guardrails de salida
+                        low_qc = str(qc_text or '').lower()
+                        if '<iframe' in low_qc:
+                            qc_text = ""
+                        if re.search(r"\b(env[ií]a|adjunta|adjuntar)\b.*\b(foto|imagen)\b", low_qc):
+                            qc_text = ""
+
+                        if qc_text.strip():
+                            ltext = qc_text
+                        else:
+                            _bench_event_note(request, fallback_used=True)
+                    except Exception:
+                        _bench_event_note(request, fallback_used=True)
+
                     if ltext:
-                        lifestyle_text_for_output_override = ltext
-                        attachment_text = ((attachment_text or '').strip() + "\n\n" if (attachment_text or '').strip() else "") + f"[ESTADO DE HOY]\n{ltext}".strip()
+                        lifestyle_text_for_output_override = (lifestyle_intro + "\n" + ltext).strip()
+                        attachment_text = ((attachment_text or '').strip() + "\n\n" if (attachment_text or '').strip() else "") + f"[ESTADO DE HOY]\n{lifestyle_text_for_output_override}".strip()
 
                     # Persistir memoria mínima (last_ids)
                     try:

@@ -112,6 +112,10 @@ def _consecutive_below(series: list[dict[str, Any]], field: str, threshold: floa
         v = _safe_float(row.get(field))
         if v is None:
             break
+        # En algunos proveedores 0 se usa como "sin dato".
+        # Evitar contarlo como deterioro real.
+        if field in ("sleep_minutes", "steps") and float(v) <= 0:
+            break
         if float(v) < float(threshold):
             count += 1
         else:
@@ -173,6 +177,28 @@ def evaluate_lifestyle(payload: dict[str, Any]) -> LifestyleResult:
     sleep_minutes = _safe_float(today.get("sleep_minutes"))
     calories = _safe_float(today.get("calories"))
     rhr = _safe_float(today.get("resting_heart_rate_bpm"))
+
+    # Sanitización de placeholders/valores implausibles para evitar lecturas genéricas.
+    try:
+        if steps is not None and float(steps) < 50:
+            steps = None
+    except Exception:
+        pass
+    try:
+        if sleep_minutes is not None and float(sleep_minutes) < 30:
+            sleep_minutes = None
+    except Exception:
+        pass
+    try:
+        if calories is not None and float(calories) < 50:
+            calories = None
+    except Exception:
+        pass
+    try:
+        if rhr is not None and (float(rhr) < 35 or float(rhr) > 130):
+            rhr = None
+    except Exception:
+        pass
 
     rhr_vals = []
     for row in series[-7:]:
