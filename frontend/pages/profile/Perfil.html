@@ -188,6 +188,8 @@
                     border: 1px solid rgba(255, 255, 255, 0.06);
                     border-radius: 16px;
                     padding: 16px;
+                    position: relative;
+                    overflow: hidden;
                 }
 
                 .evolution-title {
@@ -224,6 +226,10 @@
                     background: var(--primary);
                     border-radius: 999px;
                     transition: width 450ms ease;
+                }
+
+                .progress-bar.progress-pulse {
+                    animation: progress-pulse 420ms ease;
                 }
 
                 .weekly-hint {
@@ -388,6 +394,18 @@
                     animation: wow-bump 380ms ease;
                 }
 
+                .wow-delta {
+                    color: var(--primary);
+                    font-size: 10px;
+                    opacity: 0;
+                    transform: translateY(2px);
+                    min-width: 0;
+                }
+
+                .wow-delta.show {
+                    animation: wow-delta-float 850ms ease;
+                }
+
                 .wow-row.claim-success {
                     animation: claim-success-flash 520ms ease;
                 }
@@ -398,6 +416,83 @@
                     margin-top: 6px;
                 }
 
+                .streak-row {
+                    display: flex;
+                    align-items: center;
+                    justify-content: space-between;
+                    gap: 8px;
+                    margin-top: 10px;
+                }
+
+                .streak-chip {
+                    color: var(--text-main);
+                    border: 1px solid rgba(255, 255, 255, 0.12);
+                    border-radius: 999px;
+                    padding: 6px 10px;
+                    font-size: 11px;
+                    background: rgba(255, 255, 255, 0.03);
+                }
+
+                .streak-tier {
+                    color: var(--secondary);
+                    font-size: 11px;
+                    text-align: right;
+                }
+
+                .fx-toast {
+                    position: absolute;
+                    top: 8px;
+                    left: 50%;
+                    transform: translateX(-50%) translateY(-6px);
+                    background: rgba(0, 0, 0, 0.72);
+                    color: var(--text-main);
+                    border: 1px solid rgba(255, 255, 255, 0.16);
+                    border-radius: 999px;
+                    padding: 6px 10px;
+                    font-size: 11px;
+                    opacity: 0;
+                    pointer-events: none;
+                    z-index: 3;
+                }
+
+                .fx-toast.show {
+                    animation: fx-toast-in-out 1800ms ease;
+                }
+
+                .fx-particles {
+                    position: absolute;
+                    top: 0;
+                    left: 0;
+                    right: 0;
+                    bottom: 0;
+                    pointer-events: none;
+                    z-index: 2;
+                }
+
+                .fx-particle {
+                    position: absolute;
+                    width: 6px;
+                    height: 6px;
+                    border-radius: 50%;
+                    background: var(--secondary);
+                    opacity: 0.9;
+                    animation: particle-burst 680ms ease forwards;
+                }
+
+                .sfx-status {
+                    position: absolute;
+                    top: 8px;
+                    right: 10px;
+                    color: var(--text-muted);
+                    font-size: 10px;
+                    opacity: 0;
+                    z-index: 3;
+                }
+
+                .sfx-status.show {
+                    animation: sfx-status-pop 900ms ease;
+                }
+
                 .evolution-section.reveal {
                     animation: evo-reveal 300ms ease;
                 }
@@ -406,6 +501,18 @@
                     0% { transform: scale(1); }
                     50% { transform: scale(1.18); }
                     100% { transform: scale(1); }
+                }
+
+                @keyframes wow-delta-float {
+                    0% { opacity: 0; transform: translateY(2px); }
+                    25% { opacity: 1; transform: translateY(-4px); }
+                    100% { opacity: 0; transform: translateY(-10px); }
+                }
+
+                @keyframes progress-pulse {
+                    0% { box-shadow: 0 0 0 rgba(15, 191, 176, 0); }
+                    50% { box-shadow: 0 0 14px rgba(15, 191, 176, 0.32); }
+                    100% { box-shadow: 0 0 0 rgba(15, 191, 176, 0); }
                 }
 
                 @keyframes claim-pulse {
@@ -430,12 +537,35 @@
                     100% { opacity: 1; transform: translateY(0); }
                 }
 
+                @keyframes fx-toast-in-out {
+                    0% { opacity: 0; transform: translateX(-50%) translateY(-6px); }
+                    12% { opacity: 1; transform: translateX(-50%) translateY(0); }
+                    86% { opacity: 1; transform: translateX(-50%) translateY(0); }
+                    100% { opacity: 0; transform: translateX(-50%) translateY(-4px); }
+                }
+
+                @keyframes particle-burst {
+                    0% { opacity: 0.95; transform: translate(0, 0) scale(1); }
+                    100% { opacity: 0; transform: translate(var(--tx), var(--ty)) scale(0.4); }
+                }
+
+                @keyframes sfx-status-pop {
+                    0% { opacity: 0; transform: translateY(2px); }
+                    35% { opacity: 1; transform: translateY(0); }
+                    100% { opacity: 0; transform: translateY(-2px); }
+                }
+
                 @media (prefers-reduced-motion: reduce) {
                     .mission-action-btn.claim-ready,
                     .mission-item.newly-completed,
                     .wow-value.bump,
                     .wow-row.claim-success,
-                    .evolution-section.reveal {
+                    .evolution-section.reveal,
+                    .wow-delta.show,
+                    .progress-bar.progress-pulse,
+                    .fx-toast.show,
+                    .sfx-status.show,
+                    .fx-particle {
                         animation: none !important;
                     }
                 }
@@ -629,12 +759,20 @@
     <div id="evolutionSection" class="evolution-section" style="display:none;">
         <p class="evolution-title">Tu evolución</p>
         <div class="identity-label" id="identityLabel">—</div>
+                <div id="fxToast" class="fx-toast" aria-live="polite"></div>
+                <div id="fxParticles" class="fx-particles" aria-hidden="true"></div>
+                <div id="sfxStatus" class="sfx-status" aria-hidden="true"></div>
         <div class="weekly-progress-text" id="weeklyProgressText">Semana: 0/5 registros</div>
-        <div class="progress-bar" aria-label="Progreso semanal">
+                <div class="progress-bar" aria-label="Progreso semanal" role="progressbar"
+                         aria-valuemin="0" aria-valuemax="5" aria-valuenow="0"
+                         id="weeklyProgressBar">
             <div class="progress-fill" id="weeklyProgressFill"></div>
         </div>
         <div class="wow-row">
-            <div class="wow-pill">Puntos <span class="wow-value" id="wowPoints">0</span></div>
+                        <div class="wow-pill" aria-label="Puntos WOW">
+                            Puntos <span class="wow-value" id="wowPoints" data-wow="0">0</span>
+                            <span class="wow-delta" id="wowDelta" aria-hidden="true"></span>
+                        </div>
             <div style="display:flex; gap:8px; align-items:center;">
                 <button id="sfxToggleBtn" class="mission-action-btn" type="button" onclick="toggleSfx()">SFX: ON</button>
                 <button id="claimDailyBtn" class="mission-action-btn" type="button" onclick="claimDailyReward()">Reclamar recompensa diaria</button>
@@ -642,6 +780,12 @@
         </div>
         <div id="claimDailyFeedback" class="claim-feedback"></div>
         <div class="weekly-hint" id="weeklyHint">Activa tu racha con 1 acción al día: check-in, hábito o sincronización.</div>
+                <div class="streak-row" aria-label="Racha">
+                    <div class="streak-chip" id="streakChip">
+                        🔥 Racha: <span id="streakValue">0</span> días
+                    </div>
+                    <div class="streak-tier" id="streakTier">—</div>
+                </div>
         <div class="evolution-help" id="evolutionHelp"></div>
 
         <div class="missions-title">Misión semanal</div>
@@ -696,6 +840,7 @@
         const GTG_PROFILE_FETCH_TTL_MS = 15000;
         let gtgPrevMissionCompleted = {};
         let gtgPrevWowPoints = null;
+        let gtgPrevWeeklyDone = null;
         let gtgGamificationRendered = false;
         let gtgAudioCtx = null;
         let gtgSfxEnabled = localStorage.getItem('gtg_sfx_enabled') !== '0';
@@ -762,7 +907,20 @@
             gtgSfxEnabled = !gtgSfxEnabled;
             localStorage.setItem('gtg_sfx_enabled', gtgSfxEnabled ? '1' : '0');
             syncSfxToggleUi();
+            showSfxStatus(gtgSfxEnabled ? 'SFX ON' : 'SFX OFF');
             showToast(gtgSfxEnabled ? 'Sonidos activados' : 'Sonidos desactivados', 'success');
+        }
+
+        function playSfx(kind = 'PING_SOFT') {
+            if (kind === 'CHIME_GOAL') {
+                playPositiveSfx('mission');
+                return;
+            }
+            if (kind === 'PING_SOFT') {
+                playPositiveSfx('claim');
+                return;
+            }
+            playPositiveSfx('success');
         }
 
         function playPositiveSfx(kind = 'success') {
@@ -807,18 +965,82 @@
             if (previousPoints === null || currentPoints <= previousPoints) return;
             const wowPoints = document.getElementById('wowPoints');
             const wowRow = document.querySelector('.wow-row');
+            const delta = currentPoints - previousPoints;
             if (wowPoints) {
                 wowPoints.classList.remove('bump');
                 void wowPoints.offsetWidth;
                 wowPoints.classList.add('bump');
+                wowPoints.dataset.wow = String(currentPoints);
             }
             if (wowRow) {
                 wowRow.classList.remove('claim-success');
                 void wowRow.offsetWidth;
                 wowRow.classList.add('claim-success');
             }
-            playPositiveSfx('claim');
+            animateWowDelta(delta);
+            burstFxParticles();
+            playSfx('PING_SOFT');
             triggerSuccessHaptic();
+        }
+
+        function animateProgressPulse(previousDone, currentDone) {
+            if (previousDone === null || currentDone <= previousDone) return;
+            const progressBar = document.getElementById('weeklyProgressBar');
+            if (!progressBar) return;
+            progressBar.classList.remove('progress-pulse');
+            void progressBar.offsetWidth;
+            progressBar.classList.add('progress-pulse');
+            playSfx('CHIME_GOAL');
+            showFxToast('¡Progreso semanal actualizado!');
+        }
+
+        function animateWowDelta(delta) {
+            if (!(delta > 0)) return;
+            const wowDelta = document.getElementById('wowDelta');
+            if (!wowDelta) return;
+            wowDelta.textContent = `+${Math.round(delta)} WOW`;
+            wowDelta.classList.remove('show');
+            void wowDelta.offsetWidth;
+            wowDelta.classList.add('show');
+        }
+
+        function showFxToast(message) {
+            const el = document.getElementById('fxToast');
+            if (!el || !message) return;
+            el.textContent = String(message);
+            el.classList.remove('show');
+            void el.offsetWidth;
+            el.classList.add('show');
+        }
+
+        function showSfxStatus(message) {
+            const el = document.getElementById('sfxStatus');
+            if (!el || !message) return;
+            el.textContent = String(message);
+            el.classList.remove('show');
+            void el.offsetWidth;
+            el.classList.add('show');
+        }
+
+        function burstFxParticles() {
+            if (prefersReducedMotion()) return;
+            const host = document.getElementById('fxParticles');
+            if (!host) return;
+            host.innerHTML = '';
+            for (let i = 0; i < 8; i += 1) {
+                const p = document.createElement('span');
+                p.className = 'fx-particle';
+                const tx = Math.round((Math.random() * 64) - 32);
+                const ty = Math.round(-12 - (Math.random() * 44));
+                p.style.left = `${44 + Math.round(Math.random() * 12)}%`;
+                p.style.top = `${58 + Math.round(Math.random() * 16)}%`;
+                p.style.setProperty('--tx', `${tx}px`);
+                p.style.setProperty('--ty', `${ty}px`);
+                host.appendChild(p);
+            }
+            setTimeout(() => {
+                host.innerHTML = '';
+            }, 740);
         }
 
         function applyUserToUI(user, opts = {}) {
@@ -910,8 +1132,15 @@
                     const weeklyText = document.getElementById('weeklyProgressText');
                     if (weeklyText) weeklyText.textContent = `Semana: ${done}/${target} registros`;
                     const fill = document.getElementById('weeklyProgressFill');
+                    const progressBar = document.getElementById('weeklyProgressBar');
                     const pct = target > 0 ? Math.min(100, Math.round((done / target) * 100)) : 0;
                     if (fill) fill.style.width = `${pct}%`;
+                    if (progressBar) {
+                        progressBar.setAttribute('aria-valuemax', String(target));
+                        progressBar.setAttribute('aria-valuenow', String(Math.min(done, target)));
+                    }
+                    animateProgressPulse(gtgPrevWeeklyDone, done);
+                    gtgPrevWeeklyDone = done;
 
                     const missionsEl = document.getElementById('missionsContainer');
                     if (missionsEl) {
@@ -967,7 +1196,10 @@
                                         const wow = g.wow || {};
                                         const currentWowPoints = Number(wow.points_total || 0);
                                         const wowPoints = document.getElementById('wowPoints');
-                                        if (wowPoints) wowPoints.textContent = String(currentWowPoints);
+                                        if (wowPoints) {
+                                            wowPoints.textContent = String(currentWowPoints);
+                                            wowPoints.dataset.wow = String(currentWowPoints);
+                                        }
                                         animateWowPointsChange(gtgPrevWowPoints, currentWowPoints);
                                         gtgPrevWowPoints = currentWowPoints;
                                         const claimBtn = document.getElementById('claimDailyBtn');
@@ -997,6 +1229,14 @@
                         hint.textContent = tier
                             ? `Estado: ${tier}. Activa tu racha con 1 acción al día: check-in, hábito o sincronización.`
                             : 'Activa tu racha con 1 acción al día: check-in, hábito o sincronización.';
+                    }
+
+                    const streakValue = document.getElementById('streakValue');
+                    const streakTier = document.getElementById('streakTier');
+                    if (streakValue) streakValue.textContent = String(Number(g.streak || user.current_streak || 0));
+                    if (streakTier) {
+                        const currentTier = g.streak_tier && g.streak_tier.current ? g.streak_tier.current.label : '—';
+                        streakTier.textContent = currentTier;
                     }
 
                     const qafProgressNote = document.getElementById('qafProgressNote');
@@ -1156,8 +1396,10 @@
                     applyUserToUI(merged, { silent: true });
                 }
                 if (data && data.claimed) {
+                    showFxToast(`¡+${Number(data.reward || 0)} WOW! Recompensa diaria reclamada`);
                     showToast(`+${Number(data.reward || 0)} puntos diarios`, 'success');
                 } else {
+                    showFxToast('Recompensa diaria ya reclamada');
                     showToast('La recompensa de hoy ya fue reclamada.', 'success');
                 }
             } catch (e) {

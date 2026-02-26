@@ -1133,8 +1133,11 @@ def _describe_image_with_azure_openai(image_url: str, *, image_bytes: bytes | No
             "- has_person (boolean)\n"
             "- has_nutrition_label (boolean)\n"
             "- is_closeup_skin_or_muscle (boolean)\n"
+            "- is_screenshot_or_ui (boolean): true si parece captura de pantalla, página web, app, chat, dashboard o interfaz\n"
+            "- is_document_like (boolean): true si predomina texto/documento sobre foto real\n"
             "Reglas: si ves comida o etiqueta nutricional => route='nutrition'. Si es una persona entrenando o en contexto gimnasio => route='training'. "
             "Si es primer plano de piel/músculo/rostro para salud/belleza => route='health'. Si no encaja => route='quantum'."
+            "Si parece captura de pantalla/UI/documento web, prioriza route='quantum' salvo que el usuario pida explícitamente una experiencia concreta."
         )
 
         payload = {
@@ -5141,6 +5144,8 @@ def chat_n8n(request):
         vision_parsed = None
         qaf_result = None
         qaf_text_for_output_override = ""
+        vision_route_bias_guard = False
+        vision_experience_activated = ""
 
         # Flags de intención (evitar sesgo por inyecciones no pedidas)
         try:
@@ -5148,6 +5153,10 @@ def chat_n8n(request):
         except Exception:
             _msg_low_flags = ''
         user_asked_metabolic = bool(re.search(r"\b(perfil\s+metab|metab[oó]lic|tdee|tmb|kcal|calor[ií]as)\b", _msg_low_flags or ""))
+        user_explicit_image_experience = bool(re.search(
+            r"\b(vitalidad\s+de\s+la\s+pi?e?l|skin\s*health|skincare|postura|posture|arquitectura\s+corporal|proporci[oó]n|shape|presence|presencia|progreso\s+muscular|medici[oó]n\s+muscular)\b",
+            _msg_low_flags or "",
+        ))
 
         # Exp-003 (perfil metabólico): quick-actions + cálculo semanal
         quick_actions_out = []
@@ -8157,6 +8166,56 @@ def chat_n8n(request):
             except Exception:
                 return None
             return None
+
+        def _vision_bool(v: Any) -> bool:
+            if isinstance(v, bool):
+                return v
+            if isinstance(v, (int, float)):
+                return bool(v)
+            if isinstance(v, str):
+                return v.strip().lower() in ("1", "true", "yes", "y", "on", "si", "sí")
+            return False
+
+        def _vision_route_conf(v: Any) -> float:
+            try:
+                score = float(v)
+            except Exception:
+                return 0.0
+            if score < 0:
+                return 0.0
+            if score > 1:
+                return 1.0
+            return score
+
+        def _vision_is_screenshot_or_ui(vp: dict[str, Any]) -> bool:
+            try:
+                if _vision_bool(vp.get('is_screenshot_or_ui')):
+                    return True
+                if _vision_bool(vp.get('is_document_like')):
+                    return True
+                notes_low = str(vp.get('notes') or '').strip().lower()
+                return bool(re.search(r"\b(captura|screenshot|pantalla|web|sitio|p[aá]gina|ui|interfaz|dashboard|chat|whatsapp|instagram|youtube|pdf|documento)\b", notes_low))
+            except Exception:
+                return False
+
+        def _vision_can_activate_health(vp: dict[str, Any]) -> bool:
+            if _vision_is_screenshot_or_ui(vp):
+                return False
+            conf = _vision_route_conf(vp.get('route_confidence'))
+            if conf < 0.65:
+                return False
+            closeup = _vision_bool(vp.get('is_closeup_skin_or_muscle'))
+            has_person = _vision_bool(vp.get('has_person'))
+            return bool(closeup or has_person)
+
+        def _vision_can_activate_training(vp: dict[str, Any]) -> bool:
+            if _vision_is_screenshot_or_ui(vp):
+                return False
+            conf = _vision_route_conf(vp.get('route_confidence'))
+            if conf < 0.65:
+                return False
+            has_person = _vision_bool(vp.get('has_person'))
+            return has_person
         try:
             if attachment_url:
                 filename_guess = os.path.basename(urlparse(str(attachment_url)).path or "")
@@ -8241,6 +8300,16 @@ def chat_n8n(request):
                                 if notes:
                                     summary.append(f"notes: {notes}")
                                 pretty = "\n".join(summary)
+
+                                # Guardrail UX: capturas/pantallas no deben secuestrar la conversación
+                                # hacia experiencias si el usuario no lo pidió explícitamente.
+                                if _vision_is_screenshot_or_ui(parsed):
+                                    route_now = str(parsed.get('route') or '').strip().lower()
+                                    if route_now in ('training', 'entrenamiento', 'health', 'salud') and not user_explicit_image_experience:
+                                        parsed['route'] = 'quantum'
+                                        parsed['route_confidence'] = 0.51
+                                        parsed['routing_guardrail'] = 'screenshot_ui_to_quantum'
+                                        vision_route_bias_guard = True
                         except Exception:
                             pass
 
@@ -8255,6 +8324,13 @@ def chat_n8n(request):
             if attachment_url and isinstance(vision_parsed, dict):
                 vr = str(vision_parsed.get('route') or '').strip().lower()
                 if vr in ('health', 'salud'):
+                    can_activate = _vision_can_activate_health(vision_parsed) or user_explicit_image_experience
+                    if not can_activate:
+                        vision_route_bias_guard = True
+                        # No forzar experiencias en imágenes ambiguas/capturas.
+                        # Dejamos que n8n converse de forma amplia con el contexto ya extraído.
+                        raise StopIteration()
+
                     msg_low2 = str(message or '').strip().lower()
                     cs_local = getattr(user, 'coach_state', {}) or {}
                     prefer_skin = False
@@ -8283,6 +8359,7 @@ def chat_n8n(request):
                         pass
 
                     if prefer_skin:
+                        vision_experience_activated = 'exp-011_skin_health'
                         attachment_text = ((attachment_text or '').strip() + "\n\n" if (attachment_text or '').strip() else "") + (
                             "**Vitalidad de la Piel**\n"
                             "Ya tengo tu foto. Para mantener esta experiencia limpia, sigo con **Vitalidad de la Piel**.\n\n"
@@ -8295,6 +8372,7 @@ def chat_n8n(request):
                         ])
                         quick_actions_out = qa[:6]
                     else:
+                        vision_experience_activated = 'exp-health-menu'
                         attachment_text = ((attachment_text or '').strip() + "\n\n" if (attachment_text or '').strip() else "") + (
                             "**Salud / Imagen**\n"
                             "Detecté una imagen tipo salud (primer plano de piel/músculo/rostro).\n"
@@ -8309,6 +8387,8 @@ def chat_n8n(request):
                             {'label': 'Vitalidad de la Piel', 'type': 'message', 'text': 'Vitalidad de la Piel'},
                         ])
                         quick_actions_out = qa[:6]
+        except StopIteration:
+            pass
         except Exception:
             pass
 
@@ -8317,12 +8397,19 @@ def chat_n8n(request):
             if attachment_url and isinstance(vision_parsed, dict):
                 vr = str(vision_parsed.get('route') or '').strip().lower()
                 if vr in ('training', 'entrenamiento'):
+                    can_activate = _vision_can_activate_training(vision_parsed) or user_explicit_image_experience
+                    if not can_activate:
+                        vision_route_bias_guard = True
+                        # Evitar sesgo: continuar conversación amplia en n8n sin imponer flujo de postura.
+                        raise StopIteration()
+
                     # Guardrail UX: no mezclar check-ins/metabólico si el usuario está en modo entrenamiento por imagen.
                     try:
                         suppress_weekly_checkins = True
                     except Exception:
                         pass
 
+                    vision_experience_activated = 'exp-006/012/013_menu'
                     attachment_text = ((attachment_text or '').strip() + "\n\n" if (attachment_text or '').strip() else "") + (
                         "**Entrenamiento / Imagen**\n"
                         "Puedo ayudarte con técnica/postura, pero necesito 2 fotos: frontal y lateral (cuerpo completo, buena luz, cámara a la altura del pecho, 2–3m).\n"
@@ -8339,6 +8426,8 @@ def chat_n8n(request):
                         {'label': 'Adjuntar foto', 'type': 'open_attach'},
                     ])
                     quick_actions_out = qa[:6]
+        except StopIteration:
+            pass
         except Exception:
             pass
 
@@ -8611,6 +8700,12 @@ def chat_n8n(request):
 
         # Construir prompt enriquecido (solo con texto real si se pudo)
         final_input = message or "Analisis de archivo adjunto"
+        if vision_route_bias_guard:
+            final_input = (
+                "INSTRUCCION DE CONTEXTO: La imagen actual parece captura/pantalla o no es suficiente para activar una experiencia específica. "
+                "No fuerces módulos de coach; prioriza conversación amplia, neutral y útil, y ofrece opciones solo si el usuario las pide.\n\n"
+                + final_input
+            )
         if (attachment_text or "").strip() and not _is_attachment_text_placeholder(attachment_text):
             final_input += f"\n\n--- DOCUMENTO ADJUNTO ---\n{attachment_text}\n-----------------------"
 
@@ -8923,6 +9018,9 @@ def chat_n8n(request):
                 "professional_focus": professional_rule,
                 "qaf_cognition_summary": qaf_cognition_summary,
                 "protocol_cognitive_body_summary": protocol_cognitive_body_summary,
+                "conversation_mode": "open" if vision_route_bias_guard else "guided",
+                "avoid_experience_bias": bool(vision_route_bias_guard),
+                "vision_experience_activated": vision_experience_activated,
             },
             "message": message,
             "sessionId": session_id,
