@@ -599,14 +599,26 @@
                 }
 
                 .badge-item.newly-unlocked {
-                    animation: badge-unlock-pop 640ms ease;
+                    animation: badge-unlock-pop 720ms ease;
                     border-color: rgba(212, 180, 106, 0.55);
+                }
+
+                .badge-item.newly-unlocked .badge-icon {
+                    animation: badge-icon-excite 820ms ease;
                 }
 
                 @keyframes badge-unlock-pop {
                     0% { transform: scale(0.96); }
-                    45% { transform: scale(1.06); }
+                    40% { transform: scale(1.08) translateY(-2px); }
                     100% { transform: scale(1); }
+                }
+
+                @keyframes badge-icon-excite {
+                    0% { transform: translateY(0) rotate(0deg); filter: none; }
+                    25% { transform: translateY(-3px) rotate(-6deg); filter: drop-shadow(0 0 8px rgba(212, 180, 106, 0.45)); }
+                    50% { transform: translateY(-5px) rotate(6deg); filter: drop-shadow(0 0 10px rgba(212, 180, 106, 0.52)); }
+                    75% { transform: translateY(-2px) rotate(-4deg); filter: drop-shadow(0 0 8px rgba(212, 180, 106, 0.45)); }
+                    100% { transform: translateY(0) rotate(0deg); filter: none; }
                 }
                 
                 .badge-icon {
@@ -886,6 +898,7 @@
         let gtgGamificationRendered = false;
         let gtgAudioCtx = null;
         let gtgSfxEnabled = localStorage.getItem('gtg_sfx_enabled') !== '0';
+        let gtgLastTapSfxAt = 0;
 
         function getStoredUser() {
             const raw = localStorage.getItem("user");
@@ -992,11 +1005,24 @@
                 playPositiveSfx('mission');
                 return;
             }
+            if (kind === 'BADGE_UNLOCK') {
+                playPositiveSfx('badge');
+                return;
+            }
             if (kind === 'PING_SOFT') {
                 playPositiveSfx('claim');
                 return;
             }
             playPositiveSfx('success');
+        }
+
+        function playUiTapSfx(kind = 'success') {
+            if (!gtgSfxEnabled) return;
+            const now = Date.now();
+            if (now - gtgLastTapSfxAt < 110) return;
+            gtgLastTapSfxAt = now;
+            warmupAudio();
+            playPositiveSfx(kind);
         }
 
         function playPositiveSfx(kind = 'success') {
@@ -1011,7 +1037,9 @@
                 const now = gtgAudioCtx.currentTime;
                 const osc = gtgAudioCtx.createOscillator();
                 const gain = gtgAudioCtx.createGain();
-                const baseFreq = kind === 'claim' ? 740 : (kind === 'mission' ? 660 : 620);
+                const baseFreq = kind === 'claim'
+                    ? 740
+                    : (kind === 'mission' ? 660 : (kind === 'badge' ? 820 : 620));
                 osc.type = 'triangle';
                 osc.frequency.setValueAtTime(baseFreq, now);
                 osc.frequency.exponentialRampToValueAtTime(baseFreq * 1.22, now + 0.09);
@@ -1471,7 +1499,7 @@
                     gtgPrevBadges = nextBadges;
                     if (hasNewBadge) {
                         showWowEventToast('¡Nuevo logro desbloqueado!');
-                        playSfx('CHIME_GOAL');
+                        playSfx('BADGE_UNLOCK');
                         triggerSuccessHaptic();
                     }
                 } else {
@@ -1532,8 +1560,16 @@
         async function claimDailyReward() {
             if (!window.API_URL || typeof authFetch !== 'function') return;
             warmupAudio();
+            playUiTapSfx('claim');
             const claimBtn = document.getElementById('claimDailyBtn');
             if (claimBtn && claimBtn.disabled) return;
+
+            const userBefore = getStoredUser();
+            const wowBefore = Number(
+                userBefore?.gamification?.wow?.points_total
+                ?? userBefore?.gamification?.wow?.xp?.total
+                ?? 0
+            );
 
             const prevText = claimBtn ? claimBtn.textContent : '';
             if (claimBtn) {
@@ -1561,17 +1597,22 @@
                 if (!res.ok) {
                     const merged = await syncDailyStateFallback();
                     const claimed = !!(merged && merged.gamification && merged.gamification.wow && merged.gamification.wow.daily_reward && merged.gamification.wow.daily_reward.claimed_today);
+                    const wowAfter = Number(
+                        merged?.gamification?.wow?.points_total
+                        ?? merged?.gamification?.wow?.xp?.total
+                        ?? wowBefore
+                    );
                     if (claimed) {
-                        showWowEventToast('Recompensa diaria ya reclamada');
-                        showToast('La recompensa de hoy ya fue reclamada.', 'success');
+                        showWowEventToast('La recompensa diaria ya fue entregada hoy');
+                        showToast('Recompensa de hoy ya entregada.', 'success');
                         return;
                     }
-                    if (res.status === 404) {
-                        showWowEventToast('Recompensa diaria no disponible en esta versión del backend');
-                        showToast('Recompensa diaria no disponible en este momento.', 'error');
+                    if (wowAfter > wowBefore) {
+                        showWowEventToast('Recompensa diaria entregada y sincronizada');
+                        showToast('Puntos diarios ya fueron entregados.', 'success');
                         return;
                     }
-                    showToast('No se pudo reclamar la recompensa diaria. Inténtalo de nuevo.', 'error');
+                    showToast('No se pudo confirmar la recompensa diaria. Inténtalo de nuevo.', 'error');
                     return;
                 }
                 const data = await res.json();
@@ -1583,18 +1624,26 @@
                     showWowEventToast(`¡+${Number(data.reward || 0)} WOW! Recompensa diaria reclamada`);
                     showToast(`+${Number(data.reward || 0)} puntos diarios`, 'success');
                 } else {
-                    showWowEventToast('Recompensa diaria ya reclamada');
-                    showToast('La recompensa de hoy ya fue reclamada.', 'success');
+                    showWowEventToast('La recompensa diaria ya fue entregada hoy');
+                    showToast('Recompensa de hoy ya entregada.', 'success');
                 }
             } catch (e) {
                 if (window.GTG_DEBUG) console.warn('[Perfil] claimDailyReward falló', e);
                 const merged = await syncDailyStateFallback();
                 const claimed = !!(merged && merged.gamification && merged.gamification.wow && merged.gamification.wow.daily_reward && merged.gamification.wow.daily_reward.claimed_today);
+                const wowAfter = Number(
+                    merged?.gamification?.wow?.points_total
+                    ?? merged?.gamification?.wow?.xp?.total
+                    ?? wowBefore
+                );
                 if (claimed) {
-                    showWowEventToast('Recompensa diaria ya reclamada');
-                    showToast('La recompensa de hoy ya fue reclamada.', 'success');
+                    showWowEventToast('La recompensa diaria ya fue entregada hoy');
+                    showToast('Recompensa de hoy ya entregada.', 'success');
+                } else if (wowAfter > wowBefore) {
+                    showWowEventToast('Recompensa diaria entregada y sincronizada');
+                    showToast('Puntos diarios ya fueron entregados.', 'success');
                 } else {
-                    showToast('No se pudo reclamar la recompensa diaria.', 'error');
+                    showToast('No se pudo confirmar la recompensa diaria.', 'error');
                 }
             } finally {
                 if (claimBtn && claimBtn.textContent === 'Verificando...') {
@@ -1615,6 +1664,13 @@
             };
             window.addEventListener('pointerdown', unlockAudioOnce, { passive: true });
             window.addEventListener('touchstart', unlockAudioOnce, { passive: true });
+            document.addEventListener('click', (event) => {
+                const target = event && event.target ? event.target : null;
+                if (!target || typeof target.closest !== 'function') return;
+                const clickable = target.closest('button, .menu-btn, .edit-btn, .mission-action-btn, a.menu-link, a.gold-link, [role="button"]');
+                if (!clickable) return;
+                playUiTapSfx('success');
+            }, { passive: true });
             const user = getStoredUser();
             
             if (!user) {

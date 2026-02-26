@@ -5124,7 +5124,19 @@ def chat_n8n(request):
                         {'label': 'Cancelar', 'type': 'skin_cancel'},
                     ]
 
-                return Response({'output': text or 'Vitalidad de la Piel listo.', 'qaf_skin_health': res, 'quick_actions': qas, 'skin_flow_stage': 'analysis_done'})
+                return Response(
+                    _attach_wow_event_payload(
+                        user,
+                        {
+                            'output': text or 'Vitalidad de la Piel listo.',
+                            'qaf_skin_health': res,
+                            'quick_actions': qas,
+                            'skin_flow_stage': 'analysis_done',
+                        },
+                        event_key='qaf_skin_health',
+                        label='Vitalidad de la piel analizada',
+                    )
+                )
         except Exception as ex:
             print(f"Vitalidad fast-path warning: {ex}")
 
@@ -5518,11 +5530,16 @@ def chat_n8n(request):
                         qas = []
 
                     return Response(
-                        {
-                            'output': text or 'Medición lista.',
-                            'qaf_muscle_measure': res,
-                            'quick_actions': qas,
-                        }
+                        _attach_wow_event_payload(
+                            user,
+                            {
+                                'output': text or 'Medición lista.',
+                                'qaf_muscle_measure': res,
+                                'quick_actions': qas,
+                            },
+                            event_key='qaf_muscle_measure',
+                            label='Medición muscular',
+                        )
                     )
         except Exception as ex:
             print(f"QAF muscle measure warning: {ex}")
@@ -5904,11 +5921,16 @@ def chat_n8n(request):
                         qas = []
 
                     return Response(
-                        {
-                            'output': text or 'Arquitectura Corporal listo.',
-                            'qaf_posture_proportion': res,
-                            'quick_actions': qas,
-                        }
+                        _attach_wow_event_payload(
+                            user,
+                            {
+                                'output': text or 'Arquitectura Corporal listo.',
+                                'qaf_posture_proportion': res,
+                                'quick_actions': qas,
+                            },
+                            event_key='qaf_posture_proportion',
+                            label='Arquitectura corporal evaluada',
+                        )
                     )
         except Exception as ex:
             print(f"QAF posture proportion warning: {ex}")
@@ -6171,11 +6193,16 @@ def chat_n8n(request):
                         qas = []
 
                     return Response(
-                        {
-                            'output': text or 'Alta Costura Inteligente listo.',
-                            'qaf_shape_presence': res,
-                            'quick_actions': qas,
-                        }
+                        _attach_wow_event_payload(
+                            user,
+                            {
+                                'output': text or 'Alta Costura Inteligente listo.',
+                                'qaf_shape_presence': res,
+                                'quick_actions': qas,
+                            },
+                            event_key='qaf_shape_presence',
+                            label='Shape & Presence actualizado',
+                        )
                     )
         except Exception as ex:
             print(f"QAF shape presence warning: {ex}")
@@ -6615,7 +6642,19 @@ def chat_n8n(request):
                     except Exception:
                         qas2 = qas
 
-                    return Response({'output': text or 'Vitalidad de la Piel listo.', 'qaf_skin_health': res, 'quick_actions': qas2, 'skin_flow_stage': 'analysis_done'})
+                    return Response(
+                        _attach_wow_event_payload(
+                            user,
+                            {
+                                'output': text or 'Vitalidad de la Piel listo.',
+                                'qaf_skin_health': res,
+                                'quick_actions': qas2,
+                                'skin_flow_stage': 'analysis_done',
+                            },
+                            event_key='qaf_skin_health',
+                            label='Vitalidad de la piel analizada',
+                        )
+                    )
         except Exception as ex:
             print(f"QAF skin health warning: {ex}")
 
@@ -7961,11 +8000,18 @@ def chat_n8n(request):
                             qa_existing = quick_actions_out if isinstance(quick_actions_out, list) else []
                             qa_existing2 = [x for x in qa_existing if isinstance(x, dict)]
                             out_actions = (qa_existing2 + motivation_quick_actions_out)[:6] if motivation_quick_actions_out else qa_existing2[:6]
-                            return Response({
-                                'output': motivation_text_for_output_override,
-                                'quick_actions': out_actions,
-                                'qaf_motivation': motivation_result,
-                            })
+                            return Response(
+                                _attach_wow_event_payload(
+                                    user,
+                                    {
+                                        'output': motivation_text_for_output_override,
+                                        'quick_actions': out_actions,
+                                        'qaf_motivation': motivation_result,
+                                    },
+                                    event_key='qaf_motivation',
+                                    label='Motivación personalizada',
+                                )
+                            )
                     except Exception:
                         pass
         except Exception as ex:
@@ -8223,11 +8269,18 @@ def chat_n8n(request):
                             existing = quick_actions_out if isinstance(quick_actions_out, list) else []
                             existing2 = [x for x in existing if isinstance(x, dict)]
                             out_actions = (existing2 + progression_quick_actions_out)[:6] if progression_quick_actions_out else existing2[:6]
-                            return Response({
-                                'output': progression_text_for_output_override,
-                                'quick_actions': out_actions,
-                                'qaf_progression': progression_result,
-                            })
+                            return Response(
+                                _attach_wow_event_payload(
+                                    user,
+                                    {
+                                        'output': progression_text_for_output_override,
+                                        'quick_actions': out_actions,
+                                        'qaf_progression': progression_result,
+                                    },
+                                    event_key='qaf_progression',
+                                    label='Progresión de entrenamiento',
+                                )
+                            )
                     except Exception:
                         pass
         except Exception as ex:
