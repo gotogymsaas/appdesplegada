@@ -4337,7 +4337,15 @@ def chat_n8n(request):
                         'label': 'Perfil Metabólico',
                         'aliases': [r"perfil\s+metab[oó]lico", r"metab[oó]lico", r"tdee", r"tmb"],
                         'start_actions': [
-                            {'label': 'Iniciar perfil metabólico', 'type': 'message', 'text': 'Iniciar perfil metabólico', 'payload': {'metabolic_profile_request': {'start': True}}},
+                            {
+                                'label': 'Ejecutar evaluación metabólica',
+                                'type': 'message',
+                                'text': 'Ejecutar evaluación metabólica',
+                                'payload': {
+                                    'metabolic_profile_request': {'start': True},
+                                    'service_intent': {'experience': 'exp-003_metabolic_profile', 'action': 'start_new'},
+                                },
+                            },
                             {'label': 'Cancelar', 'type': 'services_menu', 'page': 'core'},
                         ],
                     },
@@ -4570,6 +4578,16 @@ def chat_n8n(request):
 
                 if want_last:
                     last_res, updated_at = _resolve_last_result(service_exp, user)
+                    start_payload = {'service_intent': {'experience': service_exp, 'action': 'start_new'}}
+                    start_text = f'Iniciar {label}'
+                    start_label = 'Iniciar evaluación nueva'
+                    if service_exp == 'exp-003_metabolic_profile':
+                        start_payload = {
+                            'metabolic_profile_request': {'start': True},
+                            'service_intent': {'experience': service_exp, 'action': 'start_new'},
+                        }
+                        start_text = 'Ejecutar evaluación metabólica'
+                        start_label = 'Ejecutar evaluación metabólica'
                     if isinstance(last_res, dict):
                         interpreted = ""
                         try:
@@ -4648,10 +4666,10 @@ def chat_n8n(request):
                                 'output': interpreted,
                                 'quick_actions': [
                                     {
-                                        'label': 'Iniciar evaluación nueva',
+                                        'label': start_label,
                                         'type': 'message',
-                                        'text': f'Iniciar {label}',
-                                        'payload': {'service_intent': {'experience': service_exp, 'action': 'start_new'}},
+                                        'text': start_text,
+                                        'payload': start_payload,
                                     },
                                     {'label': 'Servicios GoToGym (13)', 'type': 'services_menu', 'page': 'core'},
                                 ],
@@ -4663,10 +4681,10 @@ def chat_n8n(request):
                             'output': f"No encuentro un resultado previo para **{label}**.",
                             'quick_actions': [
                                 {
-                                    'label': 'Iniciar evaluación nueva',
+                                    'label': start_label,
                                     'type': 'message',
-                                    'text': f'Iniciar {label}',
-                                    'payload': {'service_intent': {'experience': service_exp, 'action': 'start_new'}},
+                                    'text': start_text,
+                                    'payload': start_payload,
                                 },
                                 {'label': 'Servicios GoToGym (13)', 'type': 'services_menu', 'page': 'core'},
                             ],
@@ -4715,10 +4733,17 @@ def chat_n8n(request):
                                 'payload': {'service_intent': {'experience': service_exp, 'action': 'show_last'}},
                             },
                             {
-                                'label': 'Iniciar evaluación nueva',
+                                'label': ('Ejecutar evaluación metabólica' if service_exp == 'exp-003_metabolic_profile' else 'Iniciar evaluación nueva'),
                                 'type': 'message',
-                                'text': f'Iniciar {label}',
-                                'payload': {'service_intent': {'experience': service_exp, 'action': 'start_new'}},
+                                'text': ('Ejecutar evaluación metabólica' if service_exp == 'exp-003_metabolic_profile' else f'Iniciar {label}'),
+                                'payload': (
+                                    {
+                                        'metabolic_profile_request': {'start': True},
+                                        'service_intent': {'experience': service_exp, 'action': 'start_new'},
+                                    }
+                                    if service_exp == 'exp-003_metabolic_profile'
+                                    else {'service_intent': {'experience': service_exp, 'action': 'start_new'}}
+                                ),
                             },
                             {'label': 'Cancelar', 'type': 'services_menu', 'page': 'core'},
                         ],
