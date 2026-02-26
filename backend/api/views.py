@@ -4318,7 +4318,7 @@ def chat_n8n(request):
                 specs = {
                     'exp-001_calories': {
                         'label': 'Calorías Inteligentes (QAF)',
-                        'aliases': [r"calor[ií]a", r"qaf", r"comida", r"foto\s+de\s+comida"],
+                        'aliases': [r"calor[ií]a", r"qaf", r"foto\s+de\s+comida", r"analiza\s+mi\s+comida", r"analizar\s+comida"],
                         'start_actions': [
                             {'label': 'Tomar foto de comida', 'type': 'open_camera'},
                             {'label': 'Adjuntar foto de comida', 'type': 'open_attach'},
@@ -4343,7 +4343,7 @@ def chat_n8n(request):
                     },
                     'exp-004_meal_plan': {
                         'label': 'Menú Semanal',
-                        'aliases': [r"men[uú]\s+semanal", r"meal\s+plan", r"plan\s+de\s+comidas"],
+                        'aliases': [r"men[uú]\s+semanal", r"meal\s+plan", r"plan\s+de\s+comidas", r"plan\s+semanal\s+personalizado", r"plan\s+nutricional\s+semanal", r"plan\s+alimenticio\s+semanal"],
                         'start_actions': [
                             {'label': 'Generar menú semanal', 'type': 'message', 'text': 'Menú semanal', 'payload': {'meal_plan_request': {'variety': 'normal', 'meals_per_day': 3}}},
                             {'label': 'Cancelar', 'type': 'services_menu', 'page': 'core'},
@@ -4430,6 +4430,18 @@ def chat_n8n(request):
                 return specs.get(exp_code) or {}
 
             def _detect_service_from_message(msg_low: str) -> str:
+                # Heurística UX: cuando el usuario responde objetivos/preferencias para un plan,
+                # mantenerlo en Experiencia 2 (menú semanal) y evitar desvío a calorías por la palabra "comida".
+                try:
+                    has_goal = bool(re.search(r"\b(mantener|mantenimiento|ganar\s+m[uú]sculo|subir\s+m[uú]sculo|definir|perder\s+grasa|objetivo)\b", msg_low or ""))
+                    has_food_pref = bool(re.search(r"\b(comida|platos?|caser[oa]s?|bogotan[ao]|tradicional|restricci[oó]n|preferencia\s+alimentaria)\b", msg_low or ""))
+                    has_training_pref = bool(re.search(r"\b(fuerza|entrenamiento|entrenar|resistencia|cardio|crossfit|gimnasio)\b", msg_low or ""))
+                    has_weekly_frame = bool(re.search(r"\b(\d+\s*d[ií]as|semana|semanal)\b", msg_low or ""))
+                    if (has_goal and has_food_pref and has_training_pref) or (has_food_pref and has_weekly_frame and has_training_pref):
+                        return 'exp-004_meal_plan'
+                except Exception:
+                    pass
+
                 for code in (
                     'exp-013_body_architecture', 'exp-012_shape_presence', 'exp-011_skin_health', 'exp-010_muscle_measure',
                     'exp-009_progression', 'exp-008_motivation', 'exp-007_lifestyle', 'exp-006_posture',
@@ -4646,6 +4658,17 @@ def chat_n8n(request):
                                     "**Estado de Hoy (Lifestyle)**\n"
                                     "En ~10 segundos evalúo tu sistema con señales de sueño, movimiento y carga diaria para definir tu foco del día sin sobreexigirte.\n\n"
                                     "No es un diagnóstico médico: es una guía de decisión para entrenar mejor hoy."
+                                ),
+                                'quick_actions': start_actions[:6],
+                            }
+                        )
+                    if service_exp == 'exp-004_meal_plan':
+                        return Response(
+                            {
+                                'output': (
+                                    "**Menú Semanal Personalizado**\n"
+                                    "En segundos te armo una propuesta semanal ajustada a tu objetivo calórico y adherencia, con opciones prácticas para ejecutar desde hoy.\n\n"
+                                    "Luego puedes aplicar, ver lista de compras o cambiar comidas en 1 toque."
                                 ),
                                 'quick_actions': start_actions[:6],
                             }
@@ -6600,6 +6623,7 @@ def chat_n8n(request):
         try:
             if user:
                 # Acciones directas desde botones (quick-actions)
+                meal_plan_apply_only = False
                 if isinstance(request.data, dict) and request.data.get('meal_plan_apply') is True:
                     try:
                         week_id_now = _week_id()
@@ -6613,8 +6637,29 @@ def chat_n8n(request):
                         attachment_text = ((attachment_text or '').strip() + "\n\n" if (attachment_text or '').strip() else "") + (
                             "[MENÚ] Estado: aplicado para esta semana."
                         )
+                        meal_plan_apply_only = True
                     except Exception:
                         pass
+
+                # UX: confirmar aplicación sin depender de n8n cuando el tap viene directo.
+                try:
+                    if meal_plan_apply_only and (not isinstance(request.data.get('meal_plan_request'), dict)):
+                        return Response(
+                            {
+                                'output': (
+                                    "✅ **Listo, menú aplicado para esta semana.**\n"
+                                    "¿Qué ganas con esto? Menos fricción diaria: ya tienes una estructura clara para decidir más rápido y sostener constancia."
+                                ),
+                                'quick_actions': [
+                                    {'label': 'Lista de compras', 'type': 'message', 'text': 'Lista de compras', 'payload': {'meal_plan_view': 'shopping_list'}},
+                                    {'label': 'Cambiar cena (mañana)', 'type': 'message', 'text': 'Cambiar cena (mañana)', 'payload': {'meal_plan_mutate': {'day_index': 1, 'slot': 'cena', 'direction': 'high'}}},
+                                    {'label': 'Finalizar', 'type': 'services_menu', 'page': 'close'},
+                                ],
+                            },
+                            status=200,
+                        )
+                except Exception:
+                    pass
 
                 view_mode = request.data.get('meal_plan_view') if isinstance(request.data, dict) else None
                 if isinstance(view_mode, str) and view_mode.strip() == 'shopping_list':
@@ -6691,7 +6736,7 @@ def chat_n8n(request):
                     want_menu = True
                 else:
                     msg_low = str(message or '').lower()
-                    if re.search(r"\b(men[uú]|meal\s*plan|plan\s+de\s+comidas|menu\s+semanal|men[uú]\s+semanal)\b", msg_low):
+                    if re.search(r"\b(men[uú]|meal\s*plan|plan\s+de\s+comidas|menu\s+semanal|men[uú]\s+semanal|plan\s+semanal\s+personalizado|plan\s+nutricional\s+semanal|plan\s+alimenticio\s+semanal)\b", msg_low):
                         want_menu = True
 
                 if want_menu:
@@ -6807,9 +6852,69 @@ def chat_n8n(request):
                         pass
 
                     menu_text = render_menu_summary(meal_plan_result)
+
+                    # Narrativa premium/humana vía Quantum Coach (fallback determinista si falla).
+                    try:
+                        qc_text = ""
+                        prompt = (
+                            "Eres Quantum Coach. Convierte este menú semanal técnico en una explicación clara, útil y accionable para el usuario.\n"
+                            "Responde SOLO en texto plano (sin HTML, sin <iframe>).\n"
+                            "No diagnóstico médico. No promesas absolutas.\n"
+                            "Formato:\n"
+                            "1) Resumen de la semana (2-3 bullets)\n"
+                            "2) Cómo ejecutar sin fricción (3-5 bullets)\n"
+                            "3) Qué hacer si se rompe el plan (2 bullets)\n"
+                            "4) Próximo paso inmediato (1 frase)\n"
+                            "Evita mostrar JSON o métricas técnicas crudas.\n\n"
+                            f"Mensaje del usuario: {str(message or '').strip()}\n"
+                            f"Resultado QAF meal plan: {json.dumps(meal_plan_result, ensure_ascii=False)}\n"
+                        )
+                        n8n_payload = {
+                            'chatInput': prompt,
+                            'message': prompt,
+                            'sessionId': session_id,
+                            'username': (getattr(user, 'username', '') or ''),
+                            'auth_header': auth_header,
+                            'attachment': '',
+                            'attachment_text': '',
+                            'qaf': {'type': 'exp-004_meal_plan_explainer', 'result': meal_plan_result},
+                            'system_rules': {
+                                'module': 'exp-004_meal_plan_explainer',
+                                'no_new_buttons': True,
+                                'no_medical': True,
+                            },
+                        }
+                        resp = _bench_n8n_post(request, n8n_url, n8n_payload, timeout=45)
+                        if resp.status_code == 200:
+                            try:
+                                data = resp.json()
+                            except Exception:
+                                data = {'output': resp.text}
+                            if isinstance(data, dict) and isinstance(data.get('output'), str):
+                                qc_text = (data.get('output') or '').strip()
+                            elif isinstance(data, str):
+                                qc_text = data.strip()
+
+                        low_qc = str(qc_text or '').lower()
+                        if '<iframe' in low_qc:
+                            qc_text = ''
+                        if re.search(r"\b(env[ií]a|adjunta|adjuntar)\b.*\b(foto|imagen)\b", low_qc):
+                            qc_text = ''
+
+                        if qc_text.strip():
+                            menu_text = qc_text
+                        else:
+                            _bench_event_note(request, fallback_used=True)
+                    except Exception:
+                        _bench_event_note(request, fallback_used=True)
+
                     if menu_text:
-                        meal_plan_text_for_output_override = menu_text
-                        attachment_text = ((attachment_text or '').strip() + "\n\n" if (attachment_text or '').strip() else "") + f"[MENÚ SEMANAL PROPUESTO]\n{menu_text}".strip()
+                        meal_intro = (
+                            "**Menú Semanal Personalizado**\n"
+                            "Ya construí tu propuesta semanal con foco en adherencia y ejecución simple.\n"
+                        )
+                        meal_plan_text_for_output_override = (meal_intro + "\n" + menu_text).strip()
+                        attachment_text = ((attachment_text or '').strip() + "\n\n" if (attachment_text or '').strip() else "") + f"[MENÚ SEMANAL PROPUESTO]\n{meal_plan_text_for_output_override}".strip()
 
                     # Quick-actions para regeneración (wow: 1 tap)
                     try:

@@ -1194,7 +1194,11 @@
                     }
 
                                         const wow = g.wow || {};
-                                        const currentWowPoints = Number(wow.points_total || 0);
+                                        const currentWowPoints = Number(
+                                            wow.points_total
+                                            ?? (wow.xp && wow.xp.total)
+                                            ?? 0
+                                        );
                                         const wowPoints = document.getElementById('wowPoints');
                                         if (wowPoints) {
                                             wowPoints.textContent = String(currentWowPoints);
@@ -1206,8 +1210,14 @@
                                         syncSfxToggleUi();
                                         const claimFeedback = document.getElementById('claimDailyFeedback');
                                         const dailyReward = wow.daily_reward || {};
-                                        const rewardAmount = Number(dailyReward.amount || 0);
-                                        const claimedToday = !!dailyReward.claimed_today;
+                                        const rewardAmount = Number(
+                                            dailyReward.amount
+                                            ?? dailyReward.points
+                                            ?? 0
+                                        );
+                                        const claimedToday = typeof dailyReward.claimed_today === 'boolean'
+                                            ? dailyReward.claimed_today
+                                            : (typeof dailyReward.available === 'boolean' ? !dailyReward.available : false);
                                         if (claimBtn) {
                                                 claimBtn.disabled = claimedToday;
                                             claimBtn.classList.toggle('claim-ready', !claimedToday);
@@ -1387,6 +1397,12 @@
             try {
                 const res = await authFetch(`${API_URL}gamification/claim_daily/`, { method: 'POST' });
                 if (!res.ok) {
+                    if (res.status === 404) {
+                        showFxToast('Recompensa diaria no disponible en esta versión del backend');
+                        showToast('Recompensa diaria no disponible en este momento.', 'error');
+                        await refreshProfile({ silent: true });
+                        return;
+                    }
                     showToast('No se pudo reclamar la recompensa diaria.', 'error');
                     return;
                 }
