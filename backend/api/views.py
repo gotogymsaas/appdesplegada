@@ -8970,6 +8970,8 @@ def chat_n8n(request):
                 week_id_now = _week_id()
                 weekly_state = getattr(user, 'coach_weekly_state', {}) or {}
                 coach_state = getattr(user, 'coach_state', {}) or {}
+                metabolic_start_payload = request.data.get('metabolic_profile_request') if isinstance(request.data, dict) else None
+                explicit_metabolic_start = isinstance(metabolic_start_payload, dict)
 
                 snoozed_week = str(coach_state.get('weekly_checkin_snoozed_week_id') or '')
                 prompted_week = str(coach_state.get('weekly_checkin_prompted_week_id') or '')
@@ -9049,6 +9051,17 @@ def chat_n8n(request):
                     # Importante: NO anexar esto a attachment_text.
                     # Si se añade al prompt de n8n, sesga conversaciones no relacionadas.
 
+                # Fast-path UX: si el usuario inició explícitamente Perfil Metabólico
+                # y aún falta check-in semanal, responder aquí y no delegar a n8n.
+                if explicit_metabolic_start and cur_avg is None:
+                    qa = [x for x in quick_actions_out if isinstance(x, dict)][:6]
+                    out = (
+                        "**Perfil Metabólico**\n"
+                        "Para calcularlo bien hoy necesito completar tu check-in semanal (1 dato de peso y, si falta, sexo biológico).\n"
+                        "Con eso te entrego TMB/TDEE y recomendación calórica ajustada."
+                    )
+                    return Response({'output': out, 'quick_actions': qa}, status=200)
+
                 # Si ya tenemos dato semanal, calculamos
                 cur_avg2 = _week_weights_from_state(weekly_state, week_id_now)
                 if cur_avg2 is not None:
@@ -9102,6 +9115,27 @@ def chat_n8n(request):
                     if mtext:
                         metabolic_text_for_output_override = mtext
                         # Evitar anexar al attachment_text: sesga el prompt hacia n8n.
+
+                    # Fast-path UX: inicio explícito debe devolver el resultado ya calculado,
+                    # sin depender de respuesta posterior del modelo conversacional.
+                    if explicit_metabolic_start and metabolic_text_for_output_override:
+                        return Response(
+                            _attach_wow_event_payload(
+                                user,
+                                {
+                                    'output': metabolic_text_for_output_override,
+                                    'qaf_metabolic': metabolic_result,
+                                    'quick_actions': [
+                                        {'label': 'Menú semanal', 'type': 'message', 'text': 'Menú semanal', 'payload': {'meal_plan_request': {'variety': 'normal', 'meals_per_day': 3}}},
+                                        {'label': 'Tendencia 6 semanas', 'type': 'message', 'text': 'Tendencia 6 semanas', 'payload': {'body_trend_request': {}}},
+                                        {'label': 'Estado de hoy', 'type': 'message', 'text': 'Estado de hoy', 'payload': {'lifestyle_request': {'days': 14}}},
+                                    ],
+                                },
+                                event_key='qaf_metabolic_profile',
+                                label='Perfil metabólico calculado',
+                            ),
+                            status=200,
+                        )
         except Exception as ex:
             print(f"QAF metabolic profile warning: {ex}")
 
