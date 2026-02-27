@@ -6186,6 +6186,17 @@ def chat_n8n(request):
                 except Exception:
                     coach_output = ''
 
+                try:
+                    low_out = str(coach_output or '').lower()
+                    if re.search(r"\b(no\s+pude\s+generar|int[eé]ntalo\s+de\s+nuevo|problema\s+t[eé]cnico|error\s+t[eé]cnico)\b", low_out):
+                        coach_output = ''
+                    if re.search(r"\b(env[ií]a|enviame|enviarme|adjunta|adjuntar)\b.*\bfoto\b", low_out):
+                        coach_output = ''
+                    if re.search(r"\b(para\s+poder\s+orientarte\s+mejor|necesito\s+una\s+foto)\b", low_out):
+                        coach_output = ''
+                except Exception:
+                    coach_output = coach_output or ''
+
                 final_output = coach_output or (
                     "**Vitalidad de la Piel**\n"
                     "Listo. Ya procesé tu análisis.\n\n"
@@ -7749,6 +7760,17 @@ def chat_n8n(request):
                                 coach_output = n8n_data.strip()
                     except Exception:
                         coach_output = ''
+
+                    try:
+                        low_out = str(coach_output or '').lower()
+                        if re.search(r"\b(no\s+pude\s+generar|int[eé]ntalo\s+de\s+nuevo|problema\s+t[eé]cnico|error\s+t[eé]cnico)\b", low_out):
+                            coach_output = ''
+                        if re.search(r"\b(env[ií]a|enviame|enviarme|adjunta|adjuntar)\b.*\bfoto\b", low_out):
+                            coach_output = ''
+                        if re.search(r"\b(para\s+poder\s+orientarte\s+mejor|necesito\s+una\s+foto)\b", low_out):
+                            coach_output = ''
+                    except Exception:
+                        coach_output = coach_output or ''
 
                     final_output = coach_output or (
                         "**Vitalidad de la Piel**\n"
