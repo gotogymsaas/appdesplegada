@@ -1949,7 +1949,18 @@ function showServicesMenu(page = 'core') {
       svc('Menú semanal', 'exp-004_meal_plan', 'Menú semanal'),
       svc('Perfil metabólico', 'exp-003_metabolic_profile', 'Perfil metabólico'),
       svc('Tendencia 6 semanas', 'exp-005_body_trend', 'Tendencia 6 semanas'),
-      svc('Evolución entrenamiento', 'exp-009_progression', 'Evolución de entrenamiento'),
+      {
+        label: 'Evolución entrenamiento',
+        type: 'message',
+        text: 'Evolución de entrenamiento',
+        payload: {
+          progression_request: {},
+          service_intent: {
+            experience: 'exp-009_progression',
+            action: 'start_new',
+          },
+        },
+      },
       { label: 'Más ▶', type: 'services_menu', page: 'final' },
     ]);
     return;
