@@ -1085,7 +1085,9 @@ def admin_dashboard_ops_metrics(request):
         action='llm.hito5.inference',
         occurred_at__gte=range_info['start_utc'],
         occurred_at__lte=range_info['end_utc'],
-    ).values('occurred_at', 'before_json', 'after_json')
+    ).values('occurred_at', 'before_json', 'after_json', 'actor_id')
+
+    active_actor_ids = set()
 
     requests_total = 0
     requests_success = 0
@@ -1105,6 +1107,7 @@ def admin_dashboard_ops_metrics(request):
         occurred_at = row.get('occurred_at')
         before = row.get('before_json') if isinstance(row.get('before_json'), dict) else {}
         after = row.get('after_json') if isinstance(row.get('after_json'), dict) else {}
+        actor_id = row.get('actor_id')
 
         if occurred_at:
             try:
@@ -1159,16 +1162,24 @@ def admin_dashboard_ops_metrics(request):
         except Exception:
             pass
 
+        if actor_id:
+            try:
+                active_actor_ids.add(int(actor_id))
+            except Exception:
+                pass
+
     qaf_qs = AuditLog.objects.filter(
         action='qaf.experience.invoke',
         occurred_at__gte=range_info['start_utc'],
         occurred_at__lte=range_info['end_utc'],
-    ).values('occurred_at', 'entity_id', 'before_json')
+    ).values('occurred_at', 'entity_id', 'before_json', 'after_json', 'actor_id')
 
     for row in qaf_qs:
         occurred_at = row.get('occurred_at')
         before = row.get('before_json') if isinstance(row.get('before_json'), dict) else {}
+        after = row.get('after_json') if isinstance(row.get('after_json'), dict) else {}
         entity_id = str(row.get('entity_id') or '').strip()
+        actor_id = row.get('actor_id')
 
         if occurred_at:
             try:
@@ -1182,6 +1193,57 @@ def admin_dashboard_ops_metrics(request):
         if local_day in day_map and exp_key in exp_keys:
             day_map[local_day][exp_key] += 1
             day_map[local_day]['total'] += 1
+
+        requests_total += 1
+        try:
+            status_code = int(after.get('status_code') or 200)
+        except Exception:
+            status_code = 200
+        if 200 <= status_code < 300:
+            requests_success += 1
+        if status_code >= 400 or bool(after.get('error')):
+            requests_error += 1
+
+        if actor_id:
+            try:
+                active_actor_ids.add(int(actor_id))
+            except Exception:
+                pass
+
+    premium_gate_qs = AuditLog.objects.filter(
+        action='billing.premium_gate.shown',
+        entity_type='qaf_module',
+        occurred_at__gte=range_info['start_utc'],
+        occurred_at__lte=range_info['end_utc'],
+    ).values('occurred_at', 'entity_id', 'after_json', 'actor_id')
+
+    for row in premium_gate_qs:
+        occurred_at = row.get('occurred_at')
+        after = row.get('after_json') if isinstance(row.get('after_json'), dict) else {}
+        entity_id = str(row.get('entity_id') or '').strip()
+        actor_id = row.get('actor_id')
+
+        if occurred_at:
+            try:
+                local_day = occurred_at.astimezone(tz).date().isoformat()
+            except Exception:
+                local_day = occurred_at.date().isoformat()
+        else:
+            local_day = None
+
+        exp_key = _normalize_experience_key(entity_id or after.get('module'))
+        if local_day in day_map and exp_key in exp_keys:
+            day_map[local_day][exp_key] += 1
+            day_map[local_day]['total'] += 1
+
+        requests_total += 1
+        requests_success += 1
+
+        if actor_id:
+            try:
+                active_actor_ids.add(int(actor_id))
+            except Exception:
+                pass
 
     avg_latency_total = (latency_total_sum / latency_total_count) if latency_total_count else None
     avg_latency_n8n = (latency_n8n_sum / latency_n8n_count) if latency_n8n_count else None
@@ -1220,12 +1282,31 @@ def admin_dashboard_ops_metrics(request):
             cost_source = 'azure_billing_csv'
             cost_source_meta = real_cost
 
-    active_users_range = User.objects.filter(
-        is_active=True,
-        last_login__isnull=False,
-        last_login__gte=range_info['start_utc'],
-        last_login__lte=range_info['end_utc'],
-    ).count()
+    if not active_actor_ids:
+        try:
+            trace_actor_ids = AuditLog.objects.filter(
+                action='llm.hito5.inference',
+                occurred_at__gte=range_info['start_utc'],
+                occurred_at__lte=range_info['end_utc'],
+                actor_id__isnull=False,
+            ).values_list('actor_id', flat=True)
+            for actor_id in trace_actor_ids:
+                try:
+                    active_actor_ids.add(int(actor_id))
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
+    if active_actor_ids:
+        active_users_range = len(active_actor_ids)
+    else:
+        active_users_range = User.objects.filter(
+            is_active=True,
+            last_login__isnull=False,
+            last_login__gte=range_info['start_utc'],
+            last_login__lte=range_info['end_utc'],
+        ).count()
     cost_per_active_user_cop = (estimated_total_cop / active_users_range) if active_users_range else None
 
     series = [day_map[k] for k in sorted(day_map.keys())]
