@@ -101,6 +101,8 @@ except Exception:
 
 
 logger = logging.getLogger(__name__)
+_azure_cost_cache = {}
+_azure_cost_cache_lock = threading.Lock()
 
 
 def _dt_iso(value):
@@ -921,7 +923,8 @@ def _find_azure_billing_csv_path():
 
     candidates = []
     try:
-        candidates.extend(list(BASE_DIR.glob('Detail_BillingAccount*.csv')))
+        root_dir = Path(__file__).resolve().parents[2]
+        candidates.extend(list(root_dir.glob('Detail_BillingAccount*.csv')))
     except Exception:
         pass
 
@@ -1040,6 +1043,181 @@ def _load_real_azure_cost_from_csv(date_from, date_to):
             }
     except Exception:
         return None
+
+
+def _azure_cost_cache_get(cache_key: str, ttl_seconds: int = 600):
+    now = int(time.time())
+    with _azure_cost_cache_lock:
+        entry = _azure_cost_cache.get(cache_key)
+        if not isinstance(entry, dict):
+            return None
+        exp = int(entry.get('expires_at') or 0)
+        if exp <= now:
+            _azure_cost_cache.pop(cache_key, None)
+            return None
+        return entry.get('value')
+
+
+def _azure_cost_cache_set(cache_key: str, value, ttl_seconds: int = 600):
+    expires_at = int(time.time()) + max(30, int(ttl_seconds or 600))
+    with _azure_cost_cache_lock:
+        _azure_cost_cache[cache_key] = {'expires_at': expires_at, 'value': value}
+
+
+def _get_azure_management_token():
+    # Managed Identity (App Service / VM)
+    identity_endpoint = (os.getenv('IDENTITY_ENDPOINT') or '').strip()
+    identity_header = (os.getenv('IDENTITY_HEADER') or os.getenv('MSI_SECRET') or '').strip()
+    if identity_endpoint and identity_header:
+        try:
+            params = {
+                'api-version': '2019-08-01',
+                'resource': 'https://management.azure.com/',
+            }
+            response = requests.get(
+                identity_endpoint,
+                params=params,
+                headers={'X-IDENTITY-HEADER': identity_header, 'Metadata': 'true'},
+                timeout=15,
+            )
+            if response.status_code == 200:
+                payload = response.json() if (response.headers.get('Content-Type') or '').lower().startswith('application/json') else {}
+                token = str((payload or {}).get('access_token') or '').strip()
+                if token:
+                    return token
+        except Exception:
+            pass
+
+    msi_endpoint = (os.getenv('MSI_ENDPOINT') or '').strip()
+    msi_secret = (os.getenv('MSI_SECRET') or '').strip()
+    if msi_endpoint and msi_secret:
+        try:
+            params = {
+                'api-version': '2017-09-01',
+                'resource': 'https://management.azure.com/',
+            }
+            response = requests.get(
+                msi_endpoint,
+                params=params,
+                headers={'Secret': msi_secret, 'Metadata': 'true'},
+                timeout=15,
+            )
+            if response.status_code == 200:
+                payload = response.json() if (response.headers.get('Content-Type') or '').lower().startswith('application/json') else {}
+                token = str((payload or {}).get('access_token') or '').strip()
+                if token:
+                    return token
+        except Exception:
+            pass
+
+    # Service principal fallback
+    tenant_id = (os.getenv('AZURE_TENANT_ID') or '').strip()
+    client_id = (os.getenv('AZURE_CLIENT_ID') or '').strip()
+    client_secret = (os.getenv('AZURE_CLIENT_SECRET') or '').strip()
+    if tenant_id and client_id and client_secret:
+        try:
+            url = f'https://login.microsoftonline.com/{tenant_id}/oauth2/v2.0/token'
+            form = {
+                'grant_type': 'client_credentials',
+                'client_id': client_id,
+                'client_secret': client_secret,
+                'scope': 'https://management.azure.com/.default',
+            }
+            response = requests.post(url, data=form, timeout=15)
+            if response.status_code == 200:
+                payload = response.json() if (response.headers.get('Content-Type') or '').lower().startswith('application/json') else {}
+                token = str((payload or {}).get('access_token') or '').strip()
+                if token:
+                    return token
+        except Exception:
+            pass
+
+    return None
+
+
+def _load_real_azure_cost_from_api(date_from, date_to):
+    subscription_id = (os.getenv('AZURE_SUBSCRIPTION_ID') or '').strip()
+    if not subscription_id:
+        return None
+
+    cache_key = f'azure_cost:{subscription_id}:{date_from.isoformat()}:{date_to.isoformat()}'
+    cached = _azure_cost_cache_get(cache_key, ttl_seconds=600)
+    if isinstance(cached, dict):
+        return cached
+
+    token = _get_azure_management_token()
+    if not token:
+        return None
+
+    endpoint = f'https://management.azure.com/subscriptions/{subscription_id}/providers/Microsoft.CostManagement/query'
+    params = {'api-version': '2023-03-01'}
+    payload = {
+        'type': 'ActualCost',
+        'timeframe': 'Custom',
+        'timePeriod': {
+            'from': f'{date_from.isoformat()}T00:00:00Z',
+            'to': f'{date_to.isoformat()}T23:59:59Z',
+        },
+        'dataset': {
+            'granularity': 'None',
+            'aggregation': {
+                'totalCost': {
+                    'name': 'Cost',
+                    'function': 'Sum',
+                },
+            },
+        },
+    }
+    headers = {
+        'Authorization': f'Bearer {token}',
+        'Content-Type': 'application/json',
+    }
+
+    try:
+        response = requests.post(endpoint, params=params, json=payload, headers=headers, timeout=25)
+    except Exception:
+        return None
+    if response.status_code != 200:
+        return None
+
+    try:
+        body = response.json() if (response.headers.get('Content-Type') or '').lower().startswith('application/json') else {}
+    except Exception:
+        body = {}
+
+    props = body.get('properties') if isinstance(body, dict) else {}
+    rows = props.get('rows') if isinstance(props, dict) and isinstance(props.get('rows'), list) else []
+    columns = props.get('columns') if isinstance(props, dict) and isinstance(props.get('columns'), list) else []
+
+    if not rows:
+        result = {
+            'rows_count': 0,
+            'currency': None,
+            'total_cost': 0.0,
+            'scope': f'subscription:{subscription_id}',
+        }
+        _azure_cost_cache_set(cache_key, result, ttl_seconds=600)
+        return result
+
+    first = rows[0] if isinstance(rows[0], list) else []
+    total_cost = _parse_billing_amount(first[0] if len(first) >= 1 else None)
+    if total_cost is None:
+        total_cost = 0.0
+
+    currency = None
+    if len(first) >= 2:
+        currency = str(first[1] or '').strip().upper() or None
+    if not currency and len(columns) >= 2 and isinstance(columns[1], dict):
+        currency = str(columns[1].get('name') or '').strip().upper() or None
+
+    result = {
+        'rows_count': int(len(rows)),
+        'currency': currency,
+        'total_cost': float(total_cost),
+        'scope': f'subscription:{subscription_id}',
+    }
+    _azure_cost_cache_set(cache_key, result, ttl_seconds=600)
+    return result
 
 
 @api_view(['GET', 'OPTIONS'])
@@ -1205,19 +1383,21 @@ def admin_dashboard_ops_metrics(request):
     cost_source = 'estimated_tokens'
     cost_source_meta = None
 
-    real_cost = _load_real_azure_cost_from_csv(range_info['date_from'], range_info['date_to'])
+    real_cost = _load_real_azure_cost_from_api(range_info['date_from'], range_info['date_to'])
+    if not (isinstance(real_cost, dict) and real_cost.get('rows_count') is not None):
+        real_cost = _load_real_azure_cost_from_csv(range_info['date_from'], range_info['date_to'])
     if isinstance(real_cost, dict) and real_cost.get('rows_count'):
         currency = str(real_cost.get('currency') or '').strip().upper()
         total_cost = float(real_cost.get('total_cost') or 0.0)
         if currency in ('COP', 'COL$', 'CO$', 'PESO COLOMBIANO'):
             estimated_total_cop = total_cost
             estimated_total_usd = (total_cost / usd_to_cop) if usd_to_cop else 0.0
-            cost_source = 'azure_billing_csv'
+            cost_source = 'azure_cost_management_api' if real_cost.get('scope') else 'azure_billing_csv'
             cost_source_meta = real_cost
         elif currency in ('USD', 'US$', '$', ''):
             estimated_total_usd = total_cost
             estimated_total_cop = total_cost * usd_to_cop
-            cost_source = 'azure_billing_csv'
+            cost_source = 'azure_cost_management_api' if real_cost.get('scope') else 'azure_billing_csv'
             cost_source_meta = real_cost
 
     active_users_range = User.objects.filter(
