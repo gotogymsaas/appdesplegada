@@ -29,7 +29,7 @@
     rangeLabel: () => document.getElementById('rangeLabel'),
 
     compareToggle: () => document.getElementById('compareToggle'),
-    lastUpdated: () => document.getElementById('lastUpdated'),
+    lastUpdated: () => document.getElementById('lastUpdated') || document.getElementById('adminUpdatedAt'),
 
     kpiActiveUsers7d: () => document.getElementById('kpi-active-users-7d'),
     kpiRangeSignups: () => document.getElementById('kpi-range-signups'),
@@ -179,6 +179,70 @@
     }
   }
 
+  function buildEmptyOpsMetrics(days) {
+    const safeDays = Math.max(1, Number(days) || DEFAULT_DAYS_WINDOW);
+    const start = new Date();
+    start.setHours(0, 0, 0, 0);
+    start.setDate(start.getDate() - (safeDays - 1));
+
+    const experiences = EXPERIENCE_ENDPOINT_CATALOG.map((item) => ({
+      key: item.key,
+      label: item.code,
+    }));
+
+    const series = [];
+    for (let i = 0; i < safeDays; i += 1) {
+      const day = new Date(start);
+      day.setDate(start.getDate() + i);
+      const row = {
+        date: day.toISOString().slice(0, 10),
+        total: 0,
+      };
+      experiences.forEach((exp) => {
+        row[exp.key] = 0;
+      });
+      series.push(row);
+    }
+
+    const activeUsersRef = Number(overviewCache?.data?.active_users_7d || 0);
+    return {
+      data: {
+        experiences,
+        series,
+        benchmark: {
+          requests_total: 0,
+          requests_success: 0,
+          requests_error: 0,
+          success_rate: 0,
+          error_rate: 0,
+          avg_latency_ms_total: 0,
+          avg_latency_ms_n8n: 0,
+          avg_latency_ms_qaf: 0,
+          tokens_in_total: 0,
+          tokens_out_total: 0,
+        },
+        costs: {
+          estimated_total_usd: 0,
+          estimated_total_cop: 0,
+          active_users_range: activeUsersRef,
+          cost_per_active_user_cop: 0,
+          model: {
+            input_cost_per_1k_usd: 0,
+            output_cost_per_1k_usd: 0,
+            usd_to_cop: 4000,
+          },
+        },
+      },
+      meta: {
+        dateFrom: series[0]?.date || '',
+        dateTo: series[series.length - 1]?.date || '',
+        timezone: 'America/Bogota',
+        days: safeDays,
+        source: 'fallback',
+      },
+    };
+  }
+
   function renderRevenueAndProjections() {
     if (!overviewCache) return;
     const d = overviewCache.data || {};
@@ -190,14 +254,14 @@
     const mrrSource = String(d.mrr_source || '').trim().toLowerCase();
     const mrrActiveSubscriptions = Number(d.mrr_active_subscriptions || 0);
 
-    const mrrNow = hasBackendMrr ? mrrBackend : (premiumActiveNow * price);
+    const mrrNow = hasBackendMrr ? mrrBackend : 0;
     if (els.kpiMrrCurrent()) els.kpiMrrCurrent().innerText = formatCOP(mrrNow);
     if (els.kpiMrrCurrentSub()) {
       if (hasBackendMrr && mrrSource === 'mercadopago') {
         const n = Number.isFinite(mrrActiveSubscriptions) ? mrrActiveSubscriptions : 0;
         els.kpiMrrCurrentSub().innerText = `${n} suscripciones activas en Mercado Pago (valor real)`;
       } else {
-        els.kpiMrrCurrentSub().innerText = `${premiumActiveNow} Premium activos × ${formatCOP(price)}/mes (estimado)`;
+        els.kpiMrrCurrentSub().innerText = 'Sin datos de cobro en Mercado Pago';
       }
     }
 
@@ -379,7 +443,9 @@
   }
 
   function renderOpsMetrics() {
-    if (!opsMetricsCache) return;
+    if (!opsMetricsCache) {
+      opsMetricsCache = buildEmptyOpsMetrics(daysWindow);
+    }
     const d = opsMetricsCache.data || {};
     const benchmark = d.benchmark || {};
     const costs = d.costs || {};
@@ -394,7 +460,7 @@
     }
     if (els.opsAvgLatency()) {
       const v = Number(benchmark.avg_latency_ms_total);
-      els.opsAvgLatency().innerText = Number.isFinite(v) ? `${Math.round(v)} ms` : '--';
+      els.opsAvgLatency().innerText = Number.isFinite(v) ? `${Math.round(v)} ms` : '0 ms';
     }
     if (els.opsTokensTotal()) {
       const tIn = Number(benchmark.tokens_in_total || 0);
@@ -403,11 +469,11 @@
     }
     if (els.opsCostCop()) {
       const v = Number(costs.estimated_total_cop);
-      els.opsCostCop().innerText = Number.isFinite(v) ? formatCOP(v) : '--';
+      els.opsCostCop().innerText = Number.isFinite(v) ? formatCOP(v) : formatCOP(0);
     }
     if (els.opsCostPerUser()) {
       const v = Number(costs.cost_per_active_user_cop);
-      els.opsCostPerUser().innerText = Number.isFinite(v) ? formatCOP(v) : '--';
+      els.opsCostPerUser().innerText = Number.isFinite(v) ? formatCOP(v) : formatCOP(0);
     }
     if (els.opsUsersRange()) {
       els.opsUsersRange().innerText = String(costs.active_users_range ?? '--');
@@ -1634,10 +1700,19 @@
   async function fetchOpsMetrics() {
     try {
       const res = await authFetch(`${API_URL}admin/dashboard/ops_metrics/?days=${daysWindow}&timezone=America/Bogota`);
-      if (!res.ok) return false;
-      opsMetricsCache = await res.json();
+      if (!res.ok) {
+        opsMetricsCache = buildEmptyOpsMetrics(daysWindow);
+        return false;
+      }
+      const payload = await res.json();
+      if (!payload || !payload.data || !Array.isArray(payload.data.series)) {
+        opsMetricsCache = buildEmptyOpsMetrics(daysWindow);
+        return false;
+      }
+      opsMetricsCache = payload;
       return true;
     } catch (e) {
+      opsMetricsCache = buildEmptyOpsMetrics(daysWindow);
       return false;
     }
   }

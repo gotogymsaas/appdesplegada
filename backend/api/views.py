@@ -741,19 +741,14 @@ def admin_dashboard_overview(request):
     premium_active = users_all.filter(plan="Premium", is_active=True).count()
 
     mp_mrr = _mercadopago_current_mrr_cop()
-    fallback_price_cop = 20900
-    try:
-        fallback_price_cop = float(os.getenv('PREMIUM_PRICE_COP', '20900') or 20900)
-    except Exception:
-        fallback_price_cop = 20900
 
     if mp_mrr.get('ok'):
         mrr_current_cop = float(mp_mrr.get('mrr_cop') or 0)
         mrr_source = 'mercadopago'
         mrr_active_subscriptions = int(mp_mrr.get('active_subscriptions') or 0)
     else:
-        mrr_current_cop = float(premium_active * fallback_price_cop)
-        mrr_source = 'fallback_estimate'
+        mrr_current_cop = 0.0
+        mrr_source = 'mercadopago_unavailable'
         mrr_active_subscriptions = 0
 
     users_period = users_all.filter(date_joined__gte=range_info["start_utc"], date_joined__lte=range_info["end_utc"])
@@ -6472,7 +6467,7 @@ def chat_n8n(request):
                 if pp_intent_action in ('show_last', 'view_last', 'last_result'):
                     want_pp_results = True
 
-                want_pp = explicit or start_verb
+                want_pp = explicit or (start_verb and posture_domain)
                 if pp_intent_action in ('start_new', 'new_eval', 'start'):
                     want_pp = True
 

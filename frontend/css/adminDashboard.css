@@ -32,6 +32,31 @@ body {
   padding-bottom: 14px;
 }
 
+.admin-header-inner {
+  width: 100%;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.admin-header-left {
+  min-width: 0;
+  flex: 1;
+}
+
+.admin-header-right {
+  display: flex;
+  align-items: flex-start;
+  justify-content: flex-end;
+}
+
+.admin-header-meta {
+  font-size: 12px;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
 .admin-title-wrap {
   display: flex;
   align-items: center;
@@ -110,6 +135,10 @@ button.admin-menu-link {
   font-size: 24px;
   font-weight: 600;
   letter-spacing: -0.4px;
+}
+
+.admin-title {
+  margin: 0;
 }
 
 .admin-header-actions {
@@ -511,6 +540,16 @@ button.admin-menu-link {
 @media (max-width: 540px) {
   .admin-container {
     padding: 14px;
+  }
+
+  .admin-header-inner {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+  }
+
+  .admin-header-right {
+    justify-content: flex-start;
   }
 
   .admin-header {
