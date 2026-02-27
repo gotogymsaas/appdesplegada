@@ -88,7 +88,11 @@
   }
 
   function getRefreshToken() {
-    return localStorage.getItem(REFRESH_KEY) || null;
+    return (
+      localStorage.getItem(REFRESH_KEY) ||
+      localStorage.getItem("refresh_token") ||
+      null
+    );
   }
 
   function setAccessToken(token) {
@@ -148,7 +152,24 @@
 
     // Intentar refresh una sola vez
     const newToken = await refreshAccessToken();
-    if (!newToken) return res;
+    if (!newToken) {
+      try {
+        localStorage.removeItem(ACCESS_KEY);
+        localStorage.removeItem(TOKEN_KEY);
+        localStorage.removeItem(REFRESH_KEY);
+        localStorage.removeItem("refresh_token");
+        localStorage.removeItem("isLoggedIn");
+      } catch (_) {}
+
+      try {
+        const path = (window.location && window.location.pathname) ? window.location.pathname : "";
+        if (path.includes('/pages/admin/')) {
+          window.location.href = '/pages/auth/indexInicioDeSesion.html?reason=session_expired';
+        }
+      } catch (_) {}
+
+      return res;
+    }
 
     const retryOpts = {
       ...opts,

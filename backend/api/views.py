@@ -1280,58 +1280,62 @@ def admin_audit_list(request):
 
     if not getattr(request, "user", None) or not request.user.is_superuser:
         return Response({"error": "Forbidden"}, status=status.HTTP_403_FORBIDDEN)
-
-    qs = request.query_params
-    action = (qs.get('action') or '').strip()
-    entity_type = (qs.get('entity_type') or '').strip()
-    entity_id = (qs.get('entity_id') or '').strip()
-
     try:
-        page = int(qs.get('page') or 1)
-    except Exception:
-        page = 1
-    try:
-        page_size = int(qs.get('pageSize') or 50)
-    except Exception:
-        page_size = 50
-    page = max(1, page)
-    page_size = max(1, min(200, page_size))
+        qs = request.query_params
+        action = (qs.get('action') or '').strip()
+        entity_type = (qs.get('entity_type') or '').strip()
+        entity_id = (qs.get('entity_id') or '').strip()
 
-    logs = AuditLog.objects.all().select_related('actor').order_by('-occurred_at')
-    if action:
-        logs = logs.filter(action=action)
-    if entity_type:
-        logs = logs.filter(entity_type=entity_type)
-    if entity_id:
-        logs = logs.filter(entity_id=entity_id)
+        try:
+            page = int(qs.get('page') or 1)
+        except Exception:
+            page = 1
+        try:
+            page_size = int(qs.get('pageSize') or 50)
+        except Exception:
+            page_size = 50
+        page = max(1, page)
+        page_size = max(1, min(200, page_size))
 
-    total = logs.count()
-    start = (page - 1) * page_size
-    items = logs[start:start + page_size]
-    data = []
-    for it in items:
-        data.append(
+        logs = AuditLog.objects.all().select_related('actor').order_by('-occurred_at')
+        if action:
+            logs = logs.filter(action=action)
+        if entity_type:
+            logs = logs.filter(entity_type=entity_type)
+        if entity_id:
+            logs = logs.filter(entity_id=entity_id)
+
+        total = logs.count()
+        start = (page - 1) * page_size
+        items = logs[start:start + page_size]
+        data = []
+        for it in items:
+            actor = getattr(it, 'actor', None)
+            data.append(
+                {
+                    "occurred_at": _dt_iso(getattr(it, 'occurred_at', None)),
+                    "action": getattr(it, 'action', ''),
+                    "actor": {
+                        "id": getattr(actor, 'id', None) if actor else None,
+                        "email": getattr(actor, 'email', None) if actor else None,
+                        "username": getattr(actor, 'username', None) if actor else None,
+                    },
+                    "entity_type": getattr(it, 'entity_type', ''),
+                    "entity_id": getattr(it, 'entity_id', ''),
+                    "reason": getattr(it, 'reason', ''),
+                    "ip": getattr(it, 'ip', None),
+                }
+            )
+
+        return Response(
             {
-                "occurred_at": _dt_iso(it.occurred_at),
-                "action": it.action,
-                "actor": {
-                    "id": it.actor.id if it.actor else None,
-                    "email": it.actor.email if it.actor else None,
-                    "username": it.actor.username if it.actor else None,
-                },
-                "entity_type": it.entity_type,
-                "entity_id": it.entity_id,
-                "reason": it.reason,
-                "ip": it.ip,
+                "data": data,
+                "meta": {"page": page, "pageSize": page_size, "total": total},
             }
         )
-
-    return Response(
-        {
-            "data": data,
-            "meta": {"page": page, "pageSize": page_size, "total": total},
-        }
-    )
+    except Exception as exc:
+        logger.exception("admin_audit_list_failed")
+        return Response({"error": "Audit endpoint failed", "detail": str(exc)[:200]}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 # Ajustar path para importar if_model (que está en la raíz del proyecto backend/if_model?) No, está en feature_engineer_v6.py path
