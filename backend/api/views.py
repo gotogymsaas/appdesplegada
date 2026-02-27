@@ -103,6 +103,13 @@ except Exception:
 logger = logging.getLogger(__name__)
 
 
+def _dt_iso(value):
+    try:
+        return value.isoformat() if value else None
+    except Exception:
+        return None
+
+
 def _bench_event_get(request):
     """Obtiene el dict de benchmark creado por `BenchmarkChatMiddleware` (si está activo)."""
     try:
