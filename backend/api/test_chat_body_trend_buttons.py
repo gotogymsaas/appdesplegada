@@ -18,6 +18,8 @@ class ChatBodyTrendButtonsTests(TestCase):
             email="juan@example.com",
             password="pass12345",
         )
+        self.user.plan = "Premium"
+        self.user.billing_status = "active"
 
         wk = _week_id()
         # Aseguramos que hay peso semanal y kcal promedio para que aparezcan botones de simulación.
@@ -26,15 +28,15 @@ class ChatBodyTrendButtonsTests(TestCase):
             "kcal_avg_by_week": {wk: {"kcal_in_avg_day": 2000.0}},
             "metabolic_last": {"tdee_effective_kcal_day": 2400.0, "kcal_day": 2000.0},
         }
-        self.user.save(update_fields=["coach_weekly_state"])
+        self.user.save(update_fields=["plan", "billing_status", "coach_weekly_state"])
 
     @patch("api.views.requests.post")
     @override_settings(SECURE_SSL_REDIRECT=False)
-    def test_sim_buttons_turn_off_on_first_simulation_and_show_finalize(self, mock_post):
+    def test_used_simulation_is_hidden_but_others_remain(self, mock_post):
         # Evitar dependencia de n8n
         mock_post.return_value = Mock(status_code=200, json=lambda: {"output": "ok"})
 
-        # 1ra simulación: no debe reinyectar Simular..., solo finalizar.
+        # 1ra simulación: se oculta solo la simulación usada.
         r1 = self.client.post(
             "/api/chat/",
             {
@@ -50,10 +52,12 @@ class ChatBodyTrendButtonsTests(TestCase):
         self.assertEqual(r1.status_code, 200)
         qa1 = (r1.json() or {}).get("quick_actions") or []
         labels1 = [str(x.get("label") or "") for x in qa1 if isinstance(x, dict)]
-        self.assertFalse(any("simular" in (l or "").lower() for l in labels1))
+        self.assertNotIn("Simular -200 kcal", labels1)
+        self.assertIn("Simular recomendación", labels1)
+        self.assertIn("Simular +200 kcal", labels1)
         self.assertIn("Finalizar", labels1)
 
-        # 2da simulación: se mantiene sin botones de simulación.
+        # 2da simulación: se oculta también la usada ahora, quedando 1 disponible.
         r2 = self.client.post(
             "/api/chat/",
             {
@@ -69,7 +73,9 @@ class ChatBodyTrendButtonsTests(TestCase):
         self.assertEqual(r2.status_code, 200)
         qa2 = (r2.json() or {}).get("quick_actions") or []
         labels2 = [str(x.get("label") or "") for x in qa2 if isinstance(x, dict)]
-        self.assertFalse(any("simular" in (l or "").lower() for l in labels2))
+        self.assertNotIn("Simular -200 kcal", labels2)
+        self.assertNotIn("Simular +200 kcal", labels2)
+        self.assertIn("Simular recomendación", labels2)
         self.assertIn("Finalizar", labels2)
 
     @patch("api.views.requests.post")
