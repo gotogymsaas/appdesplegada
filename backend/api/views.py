@@ -5834,7 +5834,7 @@ def chat_n8n(request):
 
             want_skin = False
             try:
-                if (('vitalidad' in msg_low) and ('piel' in msg_low or 'peil' in msg_low)):
+                if ((('vitalidad' in msg_low) or ('votalidad' in msg_low)) and ('piel' in msg_low or 'peil' in msg_low)):
                     want_skin = True
                 if 'skin health' in msg_low or 'skincare' in msg_low:
                     want_skin = True
@@ -10075,9 +10075,9 @@ def chat_n8n(request):
                     try:
                         if str(cs_local.get('health_mode') or '').strip().lower() == 'skin':
                             prefer_skin = True
-                        if re.search(r"\b(vitalidad\s+de\s+la\s+pi?e?l|vitalidad\s+pi?e?l|pi?e?l|skincare|skin\s*health)\b", msg_low2):
+                        if re.search(r"\b(v[io]talidad\s+de\s+la\s+pi?e?l|v[io]talidad\s+pi?e?l|pi?e?l|skincare|skin\s*health)\b", msg_low2):
                             prefer_skin = True
-                        if ("vitalidad" in msg_low2) and ("piel" in msg_low2 or "peil" in msg_low2):
+                        if (("vitalidad" in msg_low2) or ("votalidad" in msg_low2)) and ("piel" in msg_low2 or "peil" in msg_low2):
                             prefer_skin = True
                     except Exception:
                         prefer_skin = False
