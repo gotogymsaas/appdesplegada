@@ -57,7 +57,6 @@
     opsCostCop: () => document.getElementById('ops-cost-cop'),
     opsCostPerUser: () => document.getElementById('ops-cost-per-user'),
     opsUsersRange: () => document.getElementById('ops-users-range'),
-    experienceRefBody: () => document.getElementById('experienceRefBody'),
 
     bulkCreateInput: () => document.getElementById('bulkCreateInput'),
     bulkPlanInput: () => document.getElementById('bulkPlanInput'),
@@ -425,23 +424,6 @@
     });
   }
 
-  function renderExperienceReference() {
-    const tbody = els.experienceRefBody();
-    if (!tbody) return;
-
-    tbody.innerHTML = '';
-    EXPERIENCE_ENDPOINT_CATALOG.forEach((item) => {
-      const tr = document.createElement('tr');
-      tr.innerHTML = `
-        <td>${item.code}</td>
-        <td>${item.label}</td>
-        <td><code>${item.endpoint}</code></td>
-        <td><code>${item.support}</code></td>
-      `;
-      tbody.appendChild(tr);
-    });
-  }
-
   function renderOpsMetrics() {
     if (!opsMetricsCache) {
       opsMetricsCache = buildEmptyOpsMetrics(daysWindow);
@@ -504,12 +486,8 @@
     experiences.forEach((exp, idx) => {
       const key = exp && exp.key ? exp.key : null;
       if (!key) return;
-      const catalog = byKey[key] || null;
-      const datasetLabel = isPage('experiences')
-        ? `${exp.label || key} · ${(catalog && catalog.endpoint) ? catalog.endpoint : '/api/chat/'}`
-        : (exp.label || key);
       datasets.push({
-        label: datasetLabel,
+        label: exp.label || key,
         data: series.map((r) => Number(r[key] || 0)),
         borderColor: basePalette[idx % basePalette.length],
         borderWidth: 1.5,
@@ -1632,13 +1610,6 @@
       renderTable(allUsers);
     }
 
-    if (isPage('experiences')) {
-      renderExperienceReference();
-      renderOpsMetrics();
-      setLastUpdatedNow();
-      return;
-    }
-
     if (!isPage('metrics')) {
       setLastUpdatedNow();
       return;
@@ -1748,12 +1719,6 @@
 
     if (isPage('users')) {
       await fetchUsers();
-      return;
-    }
-
-    if (isPage('experiences')) {
-      await fetchOpsMetrics();
-      renderDashboard();
       return;
     }
 

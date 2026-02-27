@@ -194,6 +194,40 @@ button.admin-menu-link {
   margin-top: 6px;
 }
 
+body[data-admin-page='users'] .table-section {
+  padding: 12px;
+}
+
+body[data-admin-page='users'] .table-section h2 {
+  font-size: 14px !important;
+}
+
+body[data-admin-page='users'] .toolbar,
+body[data-admin-page='users'] .bulk-help,
+body[data-admin-page='users'] .audit-help,
+body[data-admin-page='users'] .segments-row {
+  font-size: 12px;
+}
+
+body[data-admin-page='users'] table th,
+body[data-admin-page='users'] table td {
+  font-size: 12px;
+  padding: 7px 8px;
+}
+
+body[data-admin-page='users'] .search-input {
+  font-size: 12px;
+  padding: 9px 10px;
+}
+
+body[data-admin-page='users'] .selected-count,
+body[data-admin-page='users'] .segment-chip,
+body[data-admin-page='users'] .plan-label,
+body[data-admin-page='users'] .row-menu button,
+body[data-admin-page='users'] .admin-container .btn {
+  font-size: 11px;
+}
+
 .design-guidelines {
   margin-bottom: 18px;
   background: var(--card-bg);
