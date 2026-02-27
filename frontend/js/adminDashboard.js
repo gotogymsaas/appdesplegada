@@ -6,6 +6,7 @@
   const DEFAULT_DAYS_WINDOW = 90;
   const RANGE_STORAGE_KEY = 'adminDashboardRangeDays';
   const COMPARE_STORAGE_KEY = 'adminDashboardCompareEnabled';
+  const pageMode = (document.body?.dataset?.adminPage || 'metrics').trim().toLowerCase();
 
   const els = {
     kpiTotal: () => document.getElementById('kpi-total'),
@@ -48,6 +49,15 @@
     mrrHistoryChart: () => document.getElementById('mrrHistoryChart'),
     mrrProjectionChart: () => document.getElementById('mrrProjectionChart'),
 
+    opsExperienceChart: () => document.getElementById('opsExperienceChart'),
+    opsReqTotal: () => document.getElementById('ops-req-total'),
+    opsSuccessRate: () => document.getElementById('ops-success-rate'),
+    opsAvgLatency: () => document.getElementById('ops-avg-latency'),
+    opsTokensTotal: () => document.getElementById('ops-tokens-total'),
+    opsCostCop: () => document.getElementById('ops-cost-cop'),
+    opsCostPerUser: () => document.getElementById('ops-cost-per-user'),
+    opsUsersRange: () => document.getElementById('ops-users-range'),
+
     bulkCreateInput: () => document.getElementById('bulkCreateInput'),
     bulkPlanInput: () => document.getElementById('bulkPlanInput'),
 
@@ -60,6 +70,9 @@
     editUsername: () => document.getElementById('editUsername'),
     editEmail: () => document.getElementById('editEmail'),
     editPlan: () => document.getElementById('editPlan'),
+
+    adminMenuBtn: () => document.getElementById('adminMenuBtn'),
+    adminMenuPanel: () => document.getElementById('adminMenuPanel'),
   };
 
   const authFetch = window.authFetch;
@@ -70,6 +83,7 @@
 
   let overviewCache = null;
   let signupsSeriesCache = null;
+  let opsMetricsCache = null;
 
   let auditCache = null;
   let activeSegment = 'all';
@@ -87,6 +101,14 @@
 
   let mrrHistoryChartInstance = null;
   let mrrProjectionChartInstance = null;
+  let opsExperienceChartInstance = null;
+
+  const ACTIVE_MAX_DAYS = 3;
+  const LOW_ACTIVITY_MAX_DAYS = 14;
+
+  function isPage(mode) {
+    return pageMode === mode;
+  }
 
   function getPremiumPriceCOP() {
     const override =
@@ -146,10 +168,20 @@
     const premiumActiveNow = Number(d.premium_active || 0);
     const price = getPremiumPriceCOP();
 
-    const mrrNow = premiumActiveNow * price;
+    const mrrBackend = Number(d.mrr_current_cop);
+    const hasBackendMrr = Number.isFinite(mrrBackend) && mrrBackend >= 0;
+    const mrrSource = String(d.mrr_source || '').trim().toLowerCase();
+    const mrrActiveSubscriptions = Number(d.mrr_active_subscriptions || 0);
+
+    const mrrNow = hasBackendMrr ? mrrBackend : (premiumActiveNow * price);
     if (els.kpiMrrCurrent()) els.kpiMrrCurrent().innerText = formatCOP(mrrNow);
     if (els.kpiMrrCurrentSub()) {
-      els.kpiMrrCurrentSub().innerText = `${premiumActiveNow} Premium activos × ${formatCOP(price)}/mes`;
+      if (hasBackendMrr && mrrSource === 'mercadopago') {
+        const n = Number.isFinite(mrrActiveSubscriptions) ? mrrActiveSubscriptions : 0;
+        els.kpiMrrCurrentSub().innerText = `${n} suscripciones activas en Mercado Pago (valor real)`;
+      } else {
+        els.kpiMrrCurrentSub().innerText = `${premiumActiveNow} Premium activos × ${formatCOP(price)}/mes (estimado)`;
+      }
     }
 
     const series = computePremiumSignupsSeries();
@@ -288,6 +320,118 @@
     const secondary = (styles.getPropertyValue('--secondary') || '').trim() || '#D4B46A';
     const textMuted = (styles.getPropertyValue('--text-muted') || '').trim() || '#AAAAAA';
     return { primary, secondary, textMuted };
+  }
+
+  function bindAdminMenu() {
+    const btn = els.adminMenuBtn();
+    const panel = els.adminMenuPanel();
+    if (!btn || !panel) return;
+
+    const close = () => panel.classList.remove('open');
+    const toggle = () => panel.classList.toggle('open');
+
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      toggle();
+    });
+
+    document.addEventListener('click', (e) => {
+      if (!panel.contains(e.target) && !btn.contains(e.target)) close();
+    });
+
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') close();
+    });
+  }
+
+  function renderOpsMetrics() {
+    if (!opsMetricsCache) return;
+    const d = opsMetricsCache.data || {};
+    const benchmark = d.benchmark || {};
+    const costs = d.costs || {};
+    const series = Array.isArray(d.series) ? d.series : [];
+    const experiences = Array.isArray(d.experiences) ? d.experiences : [];
+
+    if (els.opsReqTotal()) els.opsReqTotal().innerText = String(benchmark.requests_total ?? '--');
+    if (els.opsSuccessRate()) {
+      const v = Number(benchmark.success_rate);
+      els.opsSuccessRate().innerText = Number.isFinite(v) ? `${(v * 100).toFixed(1)}%` : '--';
+    }
+    if (els.opsAvgLatency()) {
+      const v = Number(benchmark.avg_latency_ms_total);
+      els.opsAvgLatency().innerText = Number.isFinite(v) ? `${Math.round(v)} ms` : '--';
+    }
+    if (els.opsTokensTotal()) {
+      const tIn = Number(benchmark.tokens_in_total || 0);
+      const tOut = Number(benchmark.tokens_out_total || 0);
+      els.opsTokensTotal().innerText = `${(tIn + tOut).toLocaleString('es-CO')}`;
+    }
+    if (els.opsCostCop()) {
+      const v = Number(costs.estimated_total_cop);
+      els.opsCostCop().innerText = Number.isFinite(v) ? formatCOP(v) : '--';
+    }
+    if (els.opsCostPerUser()) {
+      const v = Number(costs.cost_per_active_user_cop);
+      els.opsCostPerUser().innerText = Number.isFinite(v) ? formatCOP(v) : '--';
+    }
+    if (els.opsUsersRange()) {
+      els.opsUsersRange().innerText = String(costs.active_users_range ?? '--');
+    }
+
+    const chartEl = els.opsExperienceChart();
+    if (!chartEl || !window.Chart || !series.length) return;
+
+    const labels = series.map((r) => r.date);
+    const { primary, textMuted } = getThemeVars();
+    const basePalette = [
+      '#0FBFB0', '#D4B46A', '#8E8EFF', '#F28B82', '#81C995', '#FDD663', '#A7FFEB',
+      '#FFAB91', '#B39DDB', '#80DEEA', '#FFCC80', '#90CAF9', '#CE93D8',
+    ];
+
+    const datasets = [];
+    datasets.push({
+      label: 'Total actividad',
+      data: series.map((r) => Number(r.total || 0)),
+      borderColor: primary,
+      backgroundColor: 'rgba(15, 191, 176, 0.10)',
+      borderWidth: 2,
+      tension: 0.25,
+      fill: true,
+      pointRadius: 0,
+    });
+
+    experiences.forEach((exp, idx) => {
+      const key = exp && exp.key ? exp.key : null;
+      if (!key) return;
+      datasets.push({
+        label: exp.label || key,
+        data: series.map((r) => Number(r[key] || 0)),
+        borderColor: basePalette[idx % basePalette.length],
+        borderWidth: 1.5,
+        tension: 0.25,
+        fill: false,
+        pointRadius: 0,
+      });
+    });
+
+    const ctx = chartEl.getContext('2d');
+    if (opsExperienceChartInstance) opsExperienceChartInstance.destroy();
+    opsExperienceChartInstance = new Chart(ctx, {
+      type: 'line',
+      data: { labels, datasets },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        interaction: { mode: 'nearest', intersect: false },
+        plugins: {
+          legend: { position: 'bottom', labels: { color: textMuted, boxWidth: 10 } },
+        },
+        scales: {
+          y: { beginAtZero: true, grid: { color: 'rgba(255,255,255,0.1)' }, ticks: { color: textMuted } },
+          x: { grid: { display: false }, ticks: { maxTicksLimit: 8, color: textMuted } },
+        },
+      },
+    });
   }
 
   function clampDaysWindow(value) {
@@ -449,6 +593,92 @@
     setTimeout(() => (t.style.display = 'none'), 3000);
   }
 
+  async function readApiError(res, fallbackMessage) {
+    try {
+      const payload = await res.json();
+      if (payload && typeof payload === 'object') {
+        const msg = payload.error || payload.detail || payload.message;
+        if (msg) return String(msg);
+      }
+    } catch (e) {
+      // ignore
+    }
+    return fallbackMessage;
+  }
+
+  function daysSinceDate(dateStr) {
+    if (!dateStr) return null;
+    try {
+      const dateValue = new Date(dateStr);
+      if (Number.isNaN(dateValue.getTime())) return null;
+      const now = new Date();
+      return Math.floor((now.getTime() - dateValue.getTime()) / (1000 * 60 * 60 * 24));
+    } catch (e) {
+      return null;
+    }
+  }
+
+  function classifyUserActivity(user) {
+    if (!user) {
+      return {
+        key: 'unknown',
+        label: '—',
+        riskLevel: 'med',
+        score: 50,
+        lastDays: null,
+      };
+    }
+
+    if (user.is_active === false) {
+      return {
+        key: 'inactive',
+        label: 'Inactivo',
+        riskLevel: 'high',
+        score: 100,
+        lastDays: daysSinceDate(user.last_login),
+      };
+    }
+
+    const lastDays = daysSinceDate(user.last_login);
+    if (lastDays === null) {
+      return {
+        key: 'inactive',
+        label: 'Inactivo',
+        riskLevel: 'high',
+        score: 90,
+        lastDays: null,
+      };
+    }
+
+    if (lastDays <= ACTIVE_MAX_DAYS) {
+      return {
+        key: 'active',
+        label: 'Activo',
+        riskLevel: 'low',
+        score: 10,
+        lastDays,
+      };
+    }
+
+    if (lastDays <= LOW_ACTIVITY_MAX_DAYS) {
+      return {
+        key: 'low_activity',
+        label: 'Poca actividad',
+        riskLevel: 'med',
+        score: 55,
+        lastDays,
+      };
+    }
+
+    return {
+      key: 'inactive',
+      label: 'Inactivo',
+      riskLevel: 'high',
+      score: 85,
+      lastDays,
+    };
+  }
+
   function requireAdminSessionOrRedirect() {
     const userStr = localStorage.getItem('user');
     const hasToken = !!(localStorage.getItem('access') || localStorage.getItem('token'));
@@ -516,24 +746,6 @@
 
     tbody.innerHTML = '';
 
-    const daysSince = (dateStr) => {
-      if (!dateStr) return null;
-      try {
-        const d = new Date(dateStr);
-        if (Number.isNaN(d.getTime())) return null;
-        const now = new Date();
-        return Math.floor((now.getTime() - d.getTime()) / (1000 * 60 * 60 * 24));
-      } catch (e) {
-        return null;
-      }
-    };
-
-    const operationalState = (user) => {
-      if (!user) return { key: 'unknown', label: '—' };
-      if (user.is_active === false) return { key: 'inactive', label: 'Inactivo' };
-      return { key: 'active', label: 'Activo' };
-    };
-
     const formatLastActivity = (user) => {
       if (!user?.last_login) return '—';
       try {
@@ -545,29 +757,18 @@
       }
     };
 
-    const computeRisk = (user) => {
-      const lastDays = daysSince(user?.last_login);
-      const isPremium = user?.plan === 'Premium';
-      const isInactive = user?.is_active === false;
-
-      if (isInactive) return { score: 100, level: 'high', label: 'Inactivo' };
-      if (lastDays === null) return { score: isPremium ? 80 : 60, level: isPremium ? 'high' : 'med', label: 'Sin actividad' };
-
-      if (isPremium && lastDays >= 14) return { score: 85, level: 'high', label: `Inactivo ${lastDays}d` };
-      if (!isPremium && lastDays >= 30) return { score: 70, level: 'med', label: `Inactivo ${lastDays}d` };
-      if (lastDays >= 7) return { score: 45, level: 'med', label: `Baja act. ${lastDays}d` };
-      return { score: 10, level: 'low', label: 'OK' };
-    };
-
     users.forEach((user) => {
       const row = document.createElement('tr');
       const date = user.date_joined ? new Date(user.date_joined).toLocaleDateString() : '-';
       const badgeClass = user.plan === 'Premium' ? 'badge-premium' : 'badge-free';
 
-      const state = operationalState(user);
+      const state = classifyUserActivity(user);
       const lastAct = formatLastActivity(user);
-      const risk = computeRisk(user);
-      const riskClass = risk.level === 'high' ? 'risk-badge risk-high' : (risk.level === 'med' ? 'risk-badge risk-med' : 'risk-badge risk-low');
+      const risk = classifyUserActivity(user);
+      const riskClass = risk.riskLevel === 'high' ? 'risk-badge risk-high' : (risk.riskLevel === 'med' ? 'risk-badge risk-med' : 'risk-badge risk-low');
+      const riskTooltip = risk.lastDays === null
+        ? `Estado: ${risk.label}`
+        : `Estado: ${risk.label} | Última actividad: ${risk.lastDays} día(s)`;
 
       const checked = selectedUserIds.has(user.id) ? 'checked' : '';
 
@@ -589,7 +790,7 @@
         </td>
         <td>${state.label}</td>
         <td>${lastAct}</td>
-        <td><span class="${riskClass}" title="Risk score: ${risk.score}">${risk.label}</span></td>
+        <td><span class="${riskClass}" title="${riskTooltip}">${risk.label}</span></td>
         <td>${date}</td>
         <td class="actions-cell">
           <button class="row-menu-btn" type="button" data-menu-btn="${user.id}" aria-label="Acciones">⋮</button>
@@ -899,8 +1100,13 @@
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ reason }),
         });
-        if (res.ok) ok += 1;
-        else fail += 1;
+        if (res.ok) {
+          ok += 1;
+        } else {
+          fail += 1;
+          const errorMessage = await readApiError(res, 'No fue posible eliminar algunos usuarios');
+          console.warn('bulkDeleteUsers error', id, errorMessage);
+        }
       } catch (e) {
         fail += 1;
       }
@@ -909,6 +1115,7 @@
     showToast(`Eliminados: ${ok} ok, ${fail} fallidos`, fail ? 'error' : 'success');
     selectedUserIds.clear();
     await fetchUsers();
+    await refreshAudit();
   }
 
   function lastNDaysLabels(days) {
@@ -1316,7 +1523,15 @@
   }
 
   function renderDashboard() {
-    renderTable(allUsers);
+    if (!isPage('notifications')) {
+      renderTable(allUsers);
+    }
+
+    if (!isPage('metrics')) {
+      setLastUpdatedNow();
+      return;
+    }
+
     // KPIs y series: preferir backend agregado; si falla, fallback local.
     if (overviewCache) {
       try {
@@ -1344,6 +1559,7 @@
 
     renderPeriodComparatives();
     renderRevenueAndProjections();
+    renderOpsMetrics();
     setLastUpdatedNow();
   }
 
@@ -1369,6 +1585,17 @@
     }
   }
 
+  async function fetchOpsMetrics() {
+    try {
+      const res = await authFetch(`${API_URL}admin/dashboard/ops_metrics/?days=${daysWindow}&timezone=America/Bogota`);
+      if (!res.ok) return false;
+      opsMetricsCache = await res.json();
+      return true;
+    } catch (e) {
+      return false;
+    }
+  }
+
   async function fetchUsers() {
     try {
       // Paginación (MVP): primer page. Mantiene compatibilidad si backend responde array.
@@ -1380,8 +1607,11 @@
       }
       allUsers = Array.isArray(users) ? users : (users && Array.isArray(users.data) ? users.data : []);
 
-      await fetchOverview();
-      await fetchSignupsSeries();
+      if (isPage('metrics')) {
+        await fetchOverview();
+        await fetchSignupsSeries();
+        await fetchOpsMetrics();
+      }
       renderDashboard();
     } catch (e) {
       console.error(e);
@@ -1394,31 +1624,9 @@
     activeSegment = next;
 
     const now = new Date();
-    const daysSince = (dateStr) => {
-      if (!dateStr) return null;
-      try {
-        const d = new Date(dateStr);
-        if (Number.isNaN(d.getTime())) return null;
-        return Math.floor((now.getTime() - d.getTime()) / (1000 * 60 * 60 * 24));
-      } catch (e) {
-        return null;
-      }
-    };
-
-    const computeRiskLevel = (user) => {
-      const lastDays = daysSince(user?.last_login);
-      const isPremium = user?.plan === 'Premium';
-      const isInactive = user?.is_active === false;
-      if (isInactive) return 'high';
-      if (lastDays === null) return isPremium ? 'high' : 'med';
-      if (isPremium && lastDays >= 14) return 'high';
-      if (!isPremium && lastDays >= 30) return 'med';
-      if (lastDays >= 7) return 'med';
-      return 'low';
-    };
-
     const filtered = allUsers.filter((u) => {
       if (!u) return false;
+      const state = classifyUserActivity(u);
       if (next === 'all') return true;
 
       if (next === 'new_7d') {
@@ -1429,13 +1637,12 @@
 
       if (next === 'premium_inactive_14d') {
         if (u.plan !== 'Premium') return false;
-        if (u.is_active === false) return false;
-        const lastDays = daysSince(u.last_login);
-        return lastDays === null || lastDays >= 14;
+        const lastDays = daysSinceDate(u.last_login);
+        return u.is_active === false || lastDays === null || lastDays >= 14;
       }
 
       if (next === 'risk_high') {
-        return computeRiskLevel(u) === 'high';
+        return state.key === 'inactive';
       }
 
       return true;
@@ -1466,10 +1673,12 @@
 
     items.forEach((r) => {
       const tr = document.createElement('tr');
-      const when = r.created_at ? new Date(r.created_at).toLocaleString() : '-';
+      const whenRaw = r.occurred_at || r.created_at;
+      const when = whenRaw ? new Date(whenRaw).toLocaleString() : '-';
       const action = r.action || '-';
       const entity = `${r.entity_type || '-'}:${r.entity_id || '-'}`;
-      const actor = r.actor_username || r.actor_id || '-';
+      const actorObj = r.actor && typeof r.actor === 'object' ? r.actor : null;
+      const actor = (actorObj && (actorObj.username || actorObj.email || actorObj.id)) || r.actor_username || r.actor_id || '-';
       const reason = r.reason || '-';
       tr.innerHTML = `
         <td>${when}</td>
@@ -1490,7 +1699,7 @@
   function filterUsers() {
     const term = (els.searchInput()?.value || '').toLowerCase();
     const filtered = allUsers.filter(
-      (u) => u.username.toLowerCase().includes(term) || u.email.toLowerCase().includes(term),
+      (u) => String(u.username || '').toLowerCase().includes(term) || String(u.email || '').toLowerCase().includes(term),
     );
     renderTable(filtered);
   }
@@ -1517,13 +1726,14 @@
       });
       if (res.ok) {
         showToast('Eliminado', 'success');
-        fetchUsers();
-        refreshAudit();
+        selectedUserIds.delete(Number(id));
+        await fetchUsers();
+        await refreshAudit();
       } else {
-        showToast('Error', 'error');
+        showToast(await readApiError(res, 'No fue posible eliminar el usuario'), 'error');
       }
     } catch (e) {
-      showToast('Error', 'error');
+      showToast('Error de conexión al eliminar', 'error');
     }
   }
 
@@ -1884,10 +2094,15 @@
 
   async function handleCreate(e) {
     e.preventDefault();
-    const username = document.getElementById('newUsername').value;
-    const email = document.getElementById('newEmail').value;
-    const password = document.getElementById('newPassword').value;
-    const plan = document.getElementById('newPlan').value;
+    const username = String(document.getElementById('newUsername').value || '').trim();
+    const email = String(document.getElementById('newEmail').value || '').trim();
+    const password = String(document.getElementById('newPassword').value || '').trim();
+    const plan = String(document.getElementById('newPlan').value || 'Gratis').trim() === 'Premium' ? 'Premium' : 'Gratis';
+
+    if (!username || !email || !password) {
+      showToast('Completa usuario, email y contraseña', 'error');
+      return;
+    }
 
     try {
       const res = await authFetch(API_URL + 'users/create/', {
@@ -1898,13 +2113,14 @@
       if (res.ok) {
         showToast('Usuario creado', 'success');
         closeModal();
-        fetchUsers();
+        await fetchUsers();
+        await refreshAudit();
         e.target.reset();
       } else {
-        showToast('Error al crear', 'error');
+        showToast(await readApiError(res, 'Error al crear usuario'), 'error');
       }
     } catch (err) {
-      showToast('Error', 'error');
+      showToast('Error de conexión al crear', 'error');
     }
   }
 
@@ -2062,6 +2278,9 @@
     if (confirm('¿Cerrar sesión de administrador?')) {
       localStorage.removeItem('user');
       localStorage.removeItem('isLoggedIn');
+      localStorage.removeItem('access');
+      localStorage.removeItem('refresh');
+      localStorage.removeItem('token');
       window.location.href = '/pages/auth/indexInicioDeSesion.html';
     }
   }
@@ -2094,6 +2313,8 @@
   document.addEventListener('DOMContentLoaded', () => {
     if (!requireAdminSessionOrRedirect()) return;
 
+    bindAdminMenu();
+
     loadStoredDaysWindow();
     loadStoredCompareEnabled();
     bindRangeSelect();
@@ -2105,9 +2326,17 @@
     const toggleEl = els.compareToggle();
     if (toggleEl) toggleEl.checked = compareEnabled;
 
-    fetchUsers();
+    if (isPage('metrics') || isPage('users')) {
+      fetchUsers();
+    }
 
-    refreshAudit();
+    if (isPage('users')) {
+      refreshAudit();
+    }
+
+    if (isPage('notifications')) {
+      setLastUpdatedNow();
+    }
 
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.register('/sw.js').catch((err) => console.error('SW Fail', err));

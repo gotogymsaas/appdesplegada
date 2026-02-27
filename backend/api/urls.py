@@ -46,6 +46,7 @@ urlpatterns = [
     # Admin dashboard aggregated endpoints (MVP, repo actual)
     path('admin/dashboard/overview/', views.admin_dashboard_overview, name='admin_dashboard_overview'),
     path('admin/dashboard/signups_series/', views.admin_dashboard_signups_series, name='admin_dashboard_signups_series'),
+    path('admin/dashboard/ops_metrics/', views.admin_dashboard_ops_metrics, name='admin_dashboard_ops_metrics'),
     path('admin/audit/', views.admin_audit_list, name='admin_audit_list'),
     path('billing/telemetry/premium_event/', views.premium_telemetry_event, name='premium_telemetry_event'),
     path('billing/checkout/mercadopago/', views.mercadopago_checkout_link, name='mercadopago_checkout_link'),

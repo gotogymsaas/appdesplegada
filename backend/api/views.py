@@ -413,16 +413,23 @@ def _hito5_write_trace(
         latency_total = None
         latency_n8n = None
         latency_qaf = None
+        flow = ""
+        tokens_in = None
+        tokens_out = None
         if isinstance(bench, dict):
             latency_total = bench.get("latency_ms_total")
             latency_n8n = bench.get("latency_ms_n8n")
             latency_qaf = bench.get("latency_ms_qaf")
+            flow = str(bench.get("flow") or "")
+            tokens_in = bench.get("tokens_in")
+            tokens_out = bench.get("tokens_out")
 
         decision = qaf_cognition.get("decision") if isinstance(qaf_cognition, dict) and isinstance(qaf_cognition.get("decision"), dict) else {}
         flags = qaf_cognition.get("flags") if isinstance(qaf_cognition, dict) and isinstance(qaf_cognition.get("flags"), dict) else {}
 
         before_json = {
             "session_id": str(session_id or ""),
+            "flow": flow,
             "release": {
                 "enabled": bool(release_ctx.get("enabled")) if isinstance(release_ctx, dict) else False,
                 "variant": str(release_ctx.get("variant") or "") if isinstance(release_ctx, dict) else "",
@@ -442,6 +449,8 @@ def _hito5_write_trace(
             "latency_ms_total": latency_total,
             "latency_ms_n8n": latency_n8n,
             "latency_ms_qaf": latency_qaf,
+            "tokens_in": tokens_in,
+            "tokens_out": tokens_out,
             "error": str(error or "")[:400],
         }
 
@@ -607,6 +616,103 @@ def _delta(current, previous):
     return {"abs": abs_delta, "pct": pct}
 
 
+def _mercadopago_monthly_factor(frequency, frequency_type):
+    try:
+        freq = float(frequency or 0)
+    except Exception:
+        return None
+    if freq <= 0:
+        return None
+
+    ftype = str(frequency_type or '').strip().lower()
+    if ftype in ('month', 'months'):
+        return 1.0 / freq
+    if ftype in ('year', 'years'):
+        return 1.0 / (12.0 * freq)
+    if ftype in ('week', 'weeks'):
+        return 4.345 / freq
+    if ftype in ('day', 'days'):
+        return 30.0 / freq
+    return None
+
+
+def _mercadopago_current_mrr_cop():
+    """Obtiene MRR mensual aproximado REAL desde Mercado Pago (suscripciones activas).
+
+    Usa preapproval/search y normaliza a mensual según auto_recurring.
+    """
+    token = (os.getenv('MERCADOPAGO_ACCESS_TOKEN') or '').strip()
+    if not token:
+        return {'ok': False, 'error': 'mp_token_missing'}
+
+    total_mrr = 0.0
+    active_count = 0
+    skipped_non_cop = 0
+
+    limit = 100
+    offset = 0
+    max_pages = 20
+
+    for _ in range(max_pages):
+        try:
+            resp = requests.get(
+                'https://api.mercadopago.com/preapproval/search',
+                headers={"Authorization": f"Bearer {token}"},
+                params={
+                    'status': 'authorized',
+                    'limit': limit,
+                    'offset': offset,
+                },
+                timeout=15,
+            )
+        except Exception as exc:
+            return {'ok': False, 'error': f'mp_request_failed:{exc}'}
+
+        if resp.status_code != 200:
+            return {'ok': False, 'error': f'mp_http_{resp.status_code}'}
+
+        data = resp.json() if resp.content else {}
+        results = data.get('results') if isinstance(data, dict) else None
+        if not isinstance(results, list) or len(results) == 0:
+            break
+
+        for sub in results:
+            status_str = str(sub.get('status') or '').strip().lower()
+            if status_str not in ('authorized', 'active'):
+                continue
+
+            auto = sub.get('auto_recurring') if isinstance(sub.get('auto_recurring'), dict) else {}
+            currency = str(auto.get('currency_id') or '').strip().upper()
+            if currency and currency != 'COP':
+                skipped_non_cop += 1
+                continue
+
+            try:
+                amount = float(auto.get('transaction_amount') or 0)
+            except Exception:
+                amount = 0.0
+            if amount <= 0:
+                continue
+
+            factor = _mercadopago_monthly_factor(auto.get('frequency'), auto.get('frequency_type'))
+            if factor is None:
+                continue
+
+            total_mrr += (amount * factor)
+            active_count += 1
+
+        if len(results) < limit:
+            break
+        offset += limit
+
+    return {
+        'ok': True,
+        'mrr_cop': round(total_mrr, 2),
+        'active_subscriptions': int(active_count),
+        'skipped_non_cop': int(skipped_non_cop),
+    }
+
+
 @api_view(['GET', 'OPTIONS'])
 @authentication_classes([JWTAuthentication])
 @permission_classes([IsAuthenticatedOrOptions])
@@ -624,6 +730,22 @@ def admin_dashboard_overview(request):
     users_all = User.objects.all()
     total_users = users_all.count()
     premium_active = users_all.filter(plan="Premium", is_active=True).count()
+
+    mp_mrr = _mercadopago_current_mrr_cop()
+    fallback_price_cop = 20900
+    try:
+        fallback_price_cop = float(os.getenv('PREMIUM_PRICE_COP', '20900') or 20900)
+    except Exception:
+        fallback_price_cop = 20900
+
+    if mp_mrr.get('ok'):
+        mrr_current_cop = float(mp_mrr.get('mrr_cop') or 0)
+        mrr_source = 'mercadopago'
+        mrr_active_subscriptions = int(mp_mrr.get('active_subscriptions') or 0)
+    else:
+        mrr_current_cop = float(premium_active * fallback_price_cop)
+        mrr_source = 'fallback_estimate'
+        mrr_active_subscriptions = 0
 
     users_period = users_all.filter(date_joined__gte=range_info["start_utc"], date_joined__lte=range_info["end_utc"])
     signups_total = users_period.count()
@@ -659,6 +781,9 @@ def admin_dashboard_overview(request):
             "data": {
                 "total_users": total_users,
                 "premium_active": premium_active,
+                "mrr_current_cop": round(mrr_current_cop, 2),
+                "mrr_source": mrr_source,
+                "mrr_active_subscriptions": mrr_active_subscriptions,
                 "active_users_7d": active_7d,
                 "signups_total": signups_total,
                 "signups_premium": signups_premium,
@@ -724,6 +849,217 @@ def admin_dashboard_signups_series(request):
         cur += timedelta(days=1)
 
     return Response({"data": out, "meta": {"dateFrom": str(range_info["date_from"]), "dateTo": str(range_info["date_to"]), "timezone": str(tz), "days": range_info["days"]}})
+
+
+def _normalize_experience_key(flow_value: str):
+    raw = str(flow_value or '').strip().lower()
+    if not raw:
+        return None
+
+    aliases = {
+        'exp-001_calories': 'exp-001_calories',
+        'exp-002_meal_coherence': 'exp-002_meal_coherence',
+        'exp-003_metabolic_profile': 'exp-003_metabolic_profile',
+        'exp-004_meal_plan': 'exp-004_meal_plan',
+        'exp-005_body_trend': 'exp-005_body_trend',
+        'exp-006_posture': 'exp-006_posture',
+        'exp-007_lifestyle': 'exp-007_lifestyle',
+        'exp-008_motivation': 'exp-008_motivation',
+        'exp-009_progression': 'exp-009_progression',
+        'exp-010_muscle_measure': 'exp-010_muscle_measure',
+        'exp-011_skin_health': 'exp-011_skin_health',
+        'exp-011_skin_habits': 'exp-011_skin_health',
+        'exp-012_shape_presence': 'exp-012_shape_presence',
+        'exp-012_couture_garments': 'exp-012_shape_presence',
+        'exp-013_body_architecture': 'exp-013_body_architecture',
+    }
+    return aliases.get(raw)
+
+
+@api_view(['GET', 'OPTIONS'])
+@authentication_classes([JWTAuthentication])
+@permission_classes([IsAuthenticatedOrOptions])
+def admin_dashboard_ops_metrics(request):
+    if request.method == 'OPTIONS':
+        return Response(status=status.HTTP_200_OK)
+
+    if not getattr(request, "user", None) or not request.user.is_superuser:
+        return Response({"error": "Forbidden"}, status=status.HTTP_403_FORBIDDEN)
+
+    range_info = _date_range_from_request(request, default_days=30)
+    tz = range_info["tz"]
+
+    experiences = [
+        ('exp-001_calories', 'Exp-001 Calorías'),
+        ('exp-002_meal_coherence', 'Exp-002 Coherencia'),
+        ('exp-003_metabolic_profile', 'Exp-003 Metabólico'),
+        ('exp-004_meal_plan', 'Exp-004 Menú'),
+        ('exp-005_body_trend', 'Exp-005 Tendencia'),
+        ('exp-006_posture', 'Exp-006 Postura'),
+        ('exp-007_lifestyle', 'Exp-007 Lifestyle'),
+        ('exp-008_motivation', 'Exp-008 Motivación'),
+        ('exp-009_progression', 'Exp-009 Progresión'),
+        ('exp-010_muscle_measure', 'Exp-010 Músculo'),
+        ('exp-011_skin_health', 'Exp-011 Piel'),
+        ('exp-012_shape_presence', 'Exp-012 Alta Costura'),
+        ('exp-013_body_architecture', 'Exp-013 Arquitectura'),
+    ]
+    exp_keys = [k for k, _ in experiences]
+
+    day_map = {}
+    cur = range_info['date_from']
+    while cur <= range_info['date_to']:
+        key = cur.isoformat()
+        day_map[key] = {'date': key, 'total': 0}
+        for exp_key in exp_keys:
+            day_map[key][exp_key] = 0
+        cur += timedelta(days=1)
+
+    trace_qs = AuditLog.objects.filter(
+        action='llm.hito5.inference',
+        occurred_at__gte=range_info['start_utc'],
+        occurred_at__lte=range_info['end_utc'],
+    ).values('occurred_at', 'before_json', 'after_json')
+
+    requests_total = 0
+    requests_success = 0
+    requests_error = 0
+
+    latency_total_sum = 0.0
+    latency_total_count = 0
+    latency_n8n_sum = 0.0
+    latency_n8n_count = 0
+    latency_qaf_sum = 0.0
+    latency_qaf_count = 0
+
+    tokens_in_total = 0
+    tokens_out_total = 0
+
+    for row in trace_qs:
+        occurred_at = row.get('occurred_at')
+        before = row.get('before_json') if isinstance(row.get('before_json'), dict) else {}
+        after = row.get('after_json') if isinstance(row.get('after_json'), dict) else {}
+
+        if occurred_at:
+            try:
+                local_day = occurred_at.astimezone(tz).date().isoformat()
+            except Exception:
+                local_day = occurred_at.date().isoformat()
+        else:
+            local_day = None
+
+        exp_key = _normalize_experience_key(before.get('flow'))
+        if local_day in day_map and exp_key in exp_keys:
+            day_map[local_day][exp_key] += 1
+            day_map[local_day]['total'] += 1
+
+        requests_total += 1
+        try:
+            status_code = int(after.get('status_code') or 0)
+        except Exception:
+            status_code = 0
+        if 200 <= status_code < 300:
+            requests_success += 1
+        if status_code >= 400 or bool(after.get('error')):
+            requests_error += 1
+
+        for key_name, acc_sum_name, acc_count_name in (
+            ('latency_ms_total', 'latency_total_sum', 'latency_total_count'),
+            ('latency_ms_n8n', 'latency_n8n_sum', 'latency_n8n_count'),
+            ('latency_ms_qaf', 'latency_qaf_sum', 'latency_qaf_count'),
+        ):
+            try:
+                val = float(after.get(key_name))
+            except Exception:
+                val = None
+            if val is None or val < 0:
+                continue
+            if acc_sum_name == 'latency_total_sum':
+                latency_total_sum += val
+                latency_total_count += 1
+            elif acc_sum_name == 'latency_n8n_sum':
+                latency_n8n_sum += val
+                latency_n8n_count += 1
+            else:
+                latency_qaf_sum += val
+                latency_qaf_count += 1
+
+        try:
+            tokens_in_total += int(float(after.get('tokens_in') or 0))
+        except Exception:
+            pass
+        try:
+            tokens_out_total += int(float(after.get('tokens_out') or 0))
+        except Exception:
+            pass
+
+    avg_latency_total = (latency_total_sum / latency_total_count) if latency_total_count else None
+    avg_latency_n8n = (latency_n8n_sum / latency_n8n_count) if latency_n8n_count else None
+    avg_latency_qaf = (latency_qaf_sum / latency_qaf_count) if latency_qaf_count else None
+
+    success_rate = (requests_success / requests_total) if requests_total else 0.0
+    error_rate = (requests_error / requests_total) if requests_total else 0.0
+
+    def _env_float(name, default):
+        try:
+            return float(os.getenv(name, str(default)) or default)
+        except Exception:
+            return float(default)
+
+    in_cost_per_1k = _env_float('HITO5_COST_INPUT_PER_1K_USD', 0.0)
+    out_cost_per_1k = _env_float('HITO5_COST_OUTPUT_PER_1K_USD', 0.0)
+    usd_to_cop = _env_float('USD_TO_COP', 4000.0)
+
+    estimated_total_usd = (tokens_in_total / 1000.0) * in_cost_per_1k + (tokens_out_total / 1000.0) * out_cost_per_1k
+    estimated_total_cop = estimated_total_usd * usd_to_cop
+
+    active_users_range = User.objects.filter(
+        is_active=True,
+        last_login__isnull=False,
+        last_login__gte=range_info['start_utc'],
+        last_login__lte=range_info['end_utc'],
+    ).count()
+    cost_per_active_user_cop = (estimated_total_cop / active_users_range) if active_users_range else None
+
+    series = [day_map[k] for k in sorted(day_map.keys())]
+
+    return Response(
+        {
+            'data': {
+                'experiences': [{'key': k, 'label': label} for k, label in experiences],
+                'series': series,
+                'benchmark': {
+                    'requests_total': requests_total,
+                    'requests_success': requests_success,
+                    'requests_error': requests_error,
+                    'success_rate': round(success_rate, 6),
+                    'error_rate': round(error_rate, 6),
+                    'avg_latency_ms_total': round(avg_latency_total, 2) if avg_latency_total is not None else None,
+                    'avg_latency_ms_n8n': round(avg_latency_n8n, 2) if avg_latency_n8n is not None else None,
+                    'avg_latency_ms_qaf': round(avg_latency_qaf, 2) if avg_latency_qaf is not None else None,
+                    'tokens_in_total': int(tokens_in_total),
+                    'tokens_out_total': int(tokens_out_total),
+                },
+                'costs': {
+                    'estimated_total_usd': round(estimated_total_usd, 6),
+                    'estimated_total_cop': round(estimated_total_cop, 2),
+                    'active_users_range': int(active_users_range),
+                    'cost_per_active_user_cop': round(cost_per_active_user_cop, 2) if cost_per_active_user_cop is not None else None,
+                    'model': {
+                        'input_cost_per_1k_usd': in_cost_per_1k,
+                        'output_cost_per_1k_usd': out_cost_per_1k,
+                        'usd_to_cop': usd_to_cop,
+                    },
+                },
+            },
+            'meta': {
+                'dateFrom': str(range_info['date_from']),
+                'dateTo': str(range_info['date_to']),
+                'timezone': str(range_info['tz']),
+                'days': range_info['days'],
+            },
+        }
+    )
 
 
 @api_view(['GET', 'OPTIONS'])
