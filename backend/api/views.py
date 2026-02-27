@@ -5292,6 +5292,7 @@ def chat_n8n(request):
             known_payload_keys = {
                 'metabolic_profile_request',
                 'posture_request', 'muscle_measure_request', 'posture_proportion_request',
+                'shape_presence_request',
                 'meal_plan_request', 'body_trend_request', 'lifestyle_request', 'motivation_request',
                 'progression_request', 'skin_habits_request', 'skin_cancel', 'pp_cancel'
             }
@@ -8091,45 +8092,57 @@ def chat_n8n(request):
                     # Quick-actions
                     try:
                         has_intake = (kcal_in_avg is not None)
-                        show_sim_actions = True
+                        excluded_simulations: list[str] = []
                         if has_intake:
                             try:
                                 cs0 = getattr(user, 'coach_state', {}) or {}
                                 cs1 = dict(cs0)
-                                by_sess = cs1.get('body_trend_sim_locked')
+                                by_sess = cs1.get('body_trend_sim_usage')
                                 by_sess = by_sess if isinstance(by_sess, dict) else {}
                                 by_sess2 = dict(by_sess)
 
                                 sess_key = str(session_id or '').strip() or 'default'
                                 row = by_sess2.get(sess_key)
                                 row = row if isinstance(row, dict) else {}
-                                row_week = str(row.get('week_id') or '')
-                                locked = bool(row.get('locked')) if row_week == str(week_id_now) else False
+                                row_week = str(row.get('week_id') or '').strip()
+                                used_raw = row.get('used_scenarios') if isinstance(row.get('used_scenarios'), list) else []
+                                used = {
+                                    str(x or '').strip().lower()
+                                    for x in used_raw
+                                    if str(x or '').strip().lower() in ('follow_plan', 'minus_200', 'plus_200')
+                                }
+                                if row_week != str(week_id_now):
+                                    used = set()
 
                                 scen = str((bt_req or {}).get('scenario') or '').strip().lower() if isinstance(bt_req, dict) else ''
 
-                                # Si arranca nueva evaluación, desbloqueamos para volver a mostrar simulaciones.
+                                # Si arranca nueva evaluación, reseteamos simulaciones ya usadas.
                                 if isinstance(bt_req, dict) and not scen:
-                                    locked = False
+                                    used = set()
 
-                                # Si seleccionó una simulación, bloqueamos inmediatamente para evitar loop.
+                                # Si seleccionó una simulación, ocultamos solo esa para la siguiente respuesta.
                                 if scen in ('follow_plan', 'minus_200', 'plus_200'):
-                                    locked = True
+                                    used.add(scen)
 
-                                by_sess2[sess_key] = {'week_id': str(week_id_now), 'locked': bool(locked)}
-                                cs1['body_trend_sim_locked'] = by_sess2
+                                by_sess2[sess_key] = {
+                                    'week_id': str(week_id_now),
+                                    'used_scenarios': sorted(list(used)),
+                                    'updated_at': timezone.now().isoformat(),
+                                }
+                                cs1['body_trend_sim_usage'] = by_sess2
                                 user.coach_state = cs1
                                 user.coach_state_updated_at = timezone.now()
                                 user.save(update_fields=['coach_state', 'coach_state_updated_at'])
 
-                                show_sim_actions = not locked
+                                excluded_simulations = sorted(list(used))
                             except Exception:
-                                show_sim_actions = True
+                                excluded_simulations = []
 
                         quick_actions_out.extend(
                             build_quick_actions_for_trend(
                                 has_intake=bool(has_intake),
-                                allow_simulations=bool(show_sim_actions),
+                                allow_simulations=True,
+                                excluded_scenarios=excluded_simulations,
                             )
                         )
                     except Exception:
