@@ -57,6 +57,7 @@
     opsCostCop: () => document.getElementById('ops-cost-cop'),
     opsCostPerUser: () => document.getElementById('ops-cost-per-user'),
     opsUsersRange: () => document.getElementById('ops-users-range'),
+    experienceRefBody: () => document.getElementById('experienceRefBody'),
 
     bulkCreateInput: () => document.getElementById('bulkCreateInput'),
     bulkPlanInput: () => document.getElementById('bulkPlanInput'),
@@ -105,6 +106,22 @@
 
   const ACTIVE_MAX_DAYS = 3;
   const LOW_ACTIVITY_MAX_DAYS = 14;
+
+  const EXPERIENCE_ENDPOINT_CATALOG = [
+    { key: 'exp-001_calories', code: 'Exp-001', label: 'Calorías Inteligentes', endpoint: '/api/chat/', support: '/api/upload_chat_attachment/' },
+    { key: 'exp-002_meal_coherence', code: 'Exp-002', label: 'Coherencia Nutricional', endpoint: '/api/qaf/meal_coherence/', support: '/api/chat/' },
+    { key: 'exp-003_metabolic_profile', code: 'Exp-003', label: 'Perfil Metabólico', endpoint: '/api/qaf/metabolic_profile/', support: '/api/chat/' },
+    { key: 'exp-004_meal_plan', code: 'Exp-004', label: 'Menú Semanal', endpoint: '/api/qaf/meal_plan/', support: '/api/qaf/meal_plan/mutate/' },
+    { key: 'exp-005_body_trend', code: 'Exp-005', label: 'Tendencia 6 Semanas', endpoint: '/api/qaf/body_trend/', support: '/api/chat/' },
+    { key: 'exp-006_posture', code: 'Exp-006', label: 'Postura Correctiva', endpoint: '/api/qaf/posture/', support: '/api/upload_chat_attachment/' },
+    { key: 'exp-007_lifestyle', code: 'Exp-007', label: 'Lifestyle', endpoint: '/api/qaf/lifestyle/', support: '/api/chat/' },
+    { key: 'exp-008_motivation', code: 'Exp-008', label: 'Motivación', endpoint: '/api/qaf/motivation/', support: '/api/chat/' },
+    { key: 'exp-009_progression', code: 'Exp-009', label: 'Progresión', endpoint: '/api/qaf/progression/', support: '/api/chat/' },
+    { key: 'exp-010_muscle_measure', code: 'Exp-010', label: 'Medición Muscular', endpoint: '/api/qaf/muscle_measure/', support: '/api/chat/' },
+    { key: 'exp-011_skin_health', code: 'Exp-011', label: 'Salud de Piel', endpoint: '/api/qaf/skin_health/', support: '/api/chat/' },
+    { key: 'exp-012_shape_presence', code: 'Exp-012', label: 'Shape Presence', endpoint: '/api/qaf/shape_presence/', support: '/api/chat/' },
+    { key: 'exp-013_body_architecture', code: 'Exp-013', label: 'Posture Proportion', endpoint: '/api/qaf/posture_proportion/', support: '/api/chat/' },
+  ];
 
   function isPage(mode) {
     return pageMode === mode;
@@ -344,6 +361,23 @@
     });
   }
 
+  function renderExperienceReference() {
+    const tbody = els.experienceRefBody();
+    if (!tbody) return;
+
+    tbody.innerHTML = '';
+    EXPERIENCE_ENDPOINT_CATALOG.forEach((item) => {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td>${item.code}</td>
+        <td>${item.label}</td>
+        <td><code>${item.endpoint}</code></td>
+        <td><code>${item.support}</code></td>
+      `;
+      tbody.appendChild(tr);
+    });
+  }
+
   function renderOpsMetrics() {
     if (!opsMetricsCache) return;
     const d = opsMetricsCache.data || {};
@@ -351,6 +385,7 @@
     const costs = d.costs || {};
     const series = Array.isArray(d.series) ? d.series : [];
     const experiences = Array.isArray(d.experiences) ? d.experiences : [];
+    const byKey = Object.fromEntries(EXPERIENCE_ENDPOINT_CATALOG.map((item) => [item.key, item]));
 
     if (els.opsReqTotal()) els.opsReqTotal().innerText = String(benchmark.requests_total ?? '--');
     if (els.opsSuccessRate()) {
@@ -403,8 +438,12 @@
     experiences.forEach((exp, idx) => {
       const key = exp && exp.key ? exp.key : null;
       if (!key) return;
+      const catalog = byKey[key] || null;
+      const datasetLabel = isPage('experiences')
+        ? `${exp.label || key} · ${(catalog && catalog.endpoint) ? catalog.endpoint : '/api/chat/'}`
+        : (exp.label || key);
       datasets.push({
-        label: exp.label || key,
+        label: datasetLabel,
         data: series.map((r) => Number(r[key] || 0)),
         borderColor: basePalette[idx % basePalette.length],
         borderWidth: 1.5,
@@ -1506,7 +1545,7 @@
     syncRangeUI();
     overviewCache = null;
     signupsSeriesCache = null;
-    fetchUsers();
+    loadPageData();
   }
 
   function loadStoredDaysWindow() {
@@ -1525,6 +1564,13 @@
   function renderDashboard() {
     if (!isPage('notifications')) {
       renderTable(allUsers);
+    }
+
+    if (isPage('experiences')) {
+      renderExperienceReference();
+      renderOpsMetrics();
+      setLastUpdatedNow();
+      return;
     }
 
     if (!isPage('metrics')) {
@@ -1617,6 +1663,26 @@
       console.error(e);
       showToast('Error de conexión', 'error');
     }
+  }
+
+  async function loadPageData() {
+    if (isPage('metrics')) {
+      await fetchUsers();
+      return;
+    }
+
+    if (isPage('users')) {
+      await fetchUsers();
+      return;
+    }
+
+    if (isPage('experiences')) {
+      await fetchOpsMetrics();
+      renderDashboard();
+      return;
+    }
+
+    setLastUpdatedNow();
   }
 
   function applySegment(segment, { silent = false } = {}) {
@@ -2286,7 +2352,7 @@
   }
 
   function refreshDashboard() {
-    fetchUsers();
+    loadPageData();
   }
 
   // Expose minimal functions used by inline HTML handlers
@@ -2326,9 +2392,7 @@
     const toggleEl = els.compareToggle();
     if (toggleEl) toggleEl.checked = compareEnabled;
 
-    if (isPage('metrics') || isPage('users')) {
-      fetchUsers();
-    }
+    loadPageData();
 
     if (isPage('users')) {
       refreshAudit();

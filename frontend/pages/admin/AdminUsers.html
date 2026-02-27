@@ -6,7 +6,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Administración de Usuarios - GoToGym</title>
     <link rel="stylesheet" href="../../css/theme.css">
-    <link rel="stylesheet" href="../../css/adminDashboard.css?v=2026-02-27-users">
+    <link rel="stylesheet" href="../../css/adminDashboard.css?v=2026-02-27-v2">
 </head>
 
 <body data-admin-page="users">
@@ -16,11 +16,16 @@
             <div>
                 <div class="admin-title-wrap">
                     <div class="admin-menu-wrap">
-                        <button id="adminMenuBtn" class="admin-menu-btn" type="button" aria-label="Menú admin">☰</button>
+                        <button id="adminMenuBtn" class="admin-menu-btn" type="button" aria-label="Menú admin">
+                            <span class="hamburger-line"></span>
+                            <span class="hamburger-line"></span>
+                            <span class="hamburger-line"></span>
+                        </button>
                         <div id="adminMenuPanel" class="admin-menu-panel">
                             <a class="admin-menu-link" href="./AdminDashboard.html">Dashboard Métricas</a>
                             <a class="admin-menu-link active" href="./AdminUsers.html">Administración de Usuarios</a>
                             <a class="admin-menu-link" href="./AdminNotifications.html">Panel de Notificaciones</a>
+                            <a class="admin-menu-link" href="./AdminExperiences.html">Experiencias y Endpoints</a>
                             <button class="admin-menu-link admin-menu-link-danger" type="button" onclick="logout()">Cerrar Sesión</button>
                         </div>
                     </div>
@@ -177,8 +182,8 @@
 
     <div id="toast" class="toast"></div>
 
-    <script src="../../js/config.js?v=2026-02-27-users"></script>
-    <script src="../../js/adminDashboard.js?v=2026-02-27-users"></script>
+    <script src="../../js/config.js?v=2026-02-27-v2"></script>
+    <script src="../../js/adminDashboard.js?v=2026-02-27-v2"></script>
 </body>
 
 </html>

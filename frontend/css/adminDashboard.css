@@ -35,7 +35,7 @@ body {
 .admin-title-wrap {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 15px;
 }
 
 .admin-menu-wrap {
@@ -43,17 +43,20 @@ body {
 }
 
 .admin-menu-btn {
-  width: 36px;
-  height: 36px;
-  border-radius: 10px;
-  border: 1px solid rgba(255, 255, 255, 0.16);
-  background: transparent;
-  color: var(--text-main);
+  background: none;
+  border: none;
+  padding: 0;
   cursor: pointer;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.hamburger-line {
+  width: 28px;
+  height: 3px;
+  background-color: var(--primary);
+  border-radius: 2px;
 }
 
 .admin-menu-panel {
@@ -160,6 +163,28 @@ button.admin-menu-link {
   color: var(--text-muted);
   font-size: 13px;
   margin-top: 6px;
+}
+
+.design-guidelines {
+  margin-bottom: 18px;
+  background: var(--card-bg);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: var(--radius-lg);
+  padding: 14px;
+}
+
+.design-guidelines-title {
+  font-size: 14px;
+  font-weight: 800;
+  color: var(--secondary);
+  margin-bottom: 8px;
+}
+
+.design-guidelines ul {
+  margin-left: 16px;
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 1.45;
 }
 
 /* Capas: Estratégico / Táctico / Operativo */
@@ -526,6 +551,11 @@ button.admin-menu-link {
 
 .table-wrapper {
   overflow-x: auto;
+}
+
+.experience-ref-table td code {
+  color: var(--text-main);
+  font-size: 12px;
 }
 
 table {

@@ -6,7 +6,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Dashboard Admin - GoToGym</title>
     <link rel="stylesheet" href="../../css/theme.css">
-    <link rel="stylesheet" href="../../css/adminDashboard.css?v=2026-02-19">
+    <link rel="stylesheet" href="../../css/adminDashboard.css?v=2026-02-27-v2">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 
@@ -18,11 +18,16 @@
             <div>
                 <div class="admin-title-wrap">
                     <div class="admin-menu-wrap">
-                        <button id="adminMenuBtn" class="admin-menu-btn" type="button" aria-label="Menú admin">☰</button>
+                        <button id="adminMenuBtn" class="admin-menu-btn" type="button" aria-label="Menú admin">
+                            <span class="hamburger-line"></span>
+                            <span class="hamburger-line"></span>
+                            <span class="hamburger-line"></span>
+                        </button>
                         <div id="adminMenuPanel" class="admin-menu-panel">
                             <a class="admin-menu-link active" href="./AdminDashboard.html">Dashboard Métricas</a>
                             <a class="admin-menu-link" href="./AdminUsers.html">Administración de Usuarios</a>
                             <a class="admin-menu-link" href="./AdminNotifications.html">Panel de Notificaciones</a>
+                            <a class="admin-menu-link" href="./AdminExperiences.html">Experiencias y Endpoints</a>
                             <button class="admin-menu-link admin-menu-link-danger" type="button" onclick="logout()">Cerrar Sesión</button>
                         </div>
                     </div>
@@ -54,6 +59,16 @@
                 <span id="lastUpdated" class="last-updated">—</span>
             </div>
         </div>
+
+        <section class="design-guidelines" id="design-guidelines">
+            <div class="design-guidelines-title">Buenas prácticas de diseño (operación)</div>
+            <ul>
+                <li>Prioriza claridad: indicadores críticos arriba y acciones sensibles separadas.</li>
+                <li>Mantén consistencia: misma semántica de estado (verde, amarillo, rojo) en todo admin.</li>
+                <li>Da feedback inmediato: cada acción debe confirmar éxito o error con contexto.</li>
+                <li>Reduce riesgo: acciones irreversibles siempre con confirmación y motivo auditado.</li>
+            </ul>
+        </section>
 
         <!-- ESTRATÉGICO: qué está pasando (dirección) -->
         <section class="layer-section" id="estrategico">
@@ -465,7 +480,7 @@
     <!-- Toast Notification -->
     <div id="toast" class="toast"></div>
 
-    <script src="../../js/config.js?v=2026-02-19"></script>
-    <script src="../../js/adminDashboard.js?v=2026-02-19"></script>
+    <script src="../../js/config.js?v=2026-02-27-v2"></script>
+    <script src="../../js/adminDashboard.js?v=2026-02-27-v2"></script>
 </body>
 </html>

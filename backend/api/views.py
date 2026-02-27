@@ -650,60 +650,69 @@ def _mercadopago_current_mrr_cop():
     skipped_non_cop = 0
 
     limit = 100
-    offset = 0
     max_pages = 20
+    statuses_to_scan = ('authorized', 'active')
+    seen_ids = set()
 
-    for _ in range(max_pages):
-        try:
-            resp = requests.get(
-                'https://api.mercadopago.com/preapproval/search',
-                headers={"Authorization": f"Bearer {token}"},
-                params={
-                    'status': 'authorized',
-                    'limit': limit,
-                    'offset': offset,
-                },
-                timeout=15,
-            )
-        except Exception as exc:
-            return {'ok': False, 'error': f'mp_request_failed:{exc}'}
-
-        if resp.status_code != 200:
-            return {'ok': False, 'error': f'mp_http_{resp.status_code}'}
-
-        data = resp.json() if resp.content else {}
-        results = data.get('results') if isinstance(data, dict) else None
-        if not isinstance(results, list) or len(results) == 0:
-            break
-
-        for sub in results:
-            status_str = str(sub.get('status') or '').strip().lower()
-            if status_str not in ('authorized', 'active'):
-                continue
-
-            auto = sub.get('auto_recurring') if isinstance(sub.get('auto_recurring'), dict) else {}
-            currency = str(auto.get('currency_id') or '').strip().upper()
-            if currency and currency != 'COP':
-                skipped_non_cop += 1
-                continue
-
+    for status_to_scan in statuses_to_scan:
+        offset = 0
+        for _ in range(max_pages):
             try:
-                amount = float(auto.get('transaction_amount') or 0)
-            except Exception:
-                amount = 0.0
-            if amount <= 0:
-                continue
+                resp = requests.get(
+                    'https://api.mercadopago.com/preapproval/search',
+                    headers={"Authorization": f"Bearer {token}"},
+                    params={
+                        'status': status_to_scan,
+                        'limit': limit,
+                        'offset': offset,
+                    },
+                    timeout=15,
+                )
+            except Exception as exc:
+                return {'ok': False, 'error': f'mp_request_failed:{exc}'}
 
-            factor = _mercadopago_monthly_factor(auto.get('frequency'), auto.get('frequency_type'))
-            if factor is None:
-                continue
+            if resp.status_code != 200:
+                return {'ok': False, 'error': f'mp_http_{resp.status_code}'}
 
-            total_mrr += (amount * factor)
-            active_count += 1
+            data = resp.json() if resp.content else {}
+            results = data.get('results') if isinstance(data, dict) else None
+            if not isinstance(results, list) or len(results) == 0:
+                break
 
-        if len(results) < limit:
-            break
-        offset += limit
+            for sub in results:
+                preapproval_id = str(sub.get('id') or '').strip()
+                if preapproval_id and preapproval_id in seen_ids:
+                    continue
+
+                status_str = str(sub.get('status') or '').strip().lower()
+                if status_str not in ('authorized', 'active'):
+                    continue
+
+                auto = sub.get('auto_recurring') if isinstance(sub.get('auto_recurring'), dict) else {}
+                currency = str(auto.get('currency_id') or '').strip().upper()
+                if currency and currency != 'COP':
+                    skipped_non_cop += 1
+                    continue
+
+                try:
+                    amount = float(auto.get('transaction_amount') or 0)
+                except Exception:
+                    amount = 0.0
+                if amount <= 0:
+                    continue
+
+                factor = _mercadopago_monthly_factor(auto.get('frequency'), auto.get('frequency_type'))
+                if factor is None:
+                    continue
+
+                if preapproval_id:
+                    seen_ids.add(preapproval_id)
+                total_mrr += (amount * factor)
+                active_count += 1
+
+            if len(results) < limit:
+                break
+            offset += limit
 
     return {
         'ok': True,

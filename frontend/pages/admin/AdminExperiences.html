@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Experiencias y Endpoints - GoToGym</title>
+    <link rel="stylesheet" href="../../css/theme.css">
+    <link rel="stylesheet" href="../../css/adminDashboard.css?v=2026-02-27-v2">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+
+<body data-admin-page="experiences">
+
+    <div class="admin-container">
+        <div class="admin-header">
+            <div>
+                <div class="admin-title-wrap">
+                    <div class="admin-menu-wrap">
+                        <button id="adminMenuBtn" class="admin-menu-btn" type="button" aria-label="Menú admin">
+                            <span class="hamburger-line"></span>
+                            <span class="hamburger-line"></span>
+                            <span class="hamburger-line"></span>
+                        </button>
+                        <div id="adminMenuPanel" class="admin-menu-panel">
+                            <a class="admin-menu-link" href="./AdminDashboard.html">Dashboard Métricas</a>
+                            <a class="admin-menu-link" href="./AdminUsers.html">Administración de Usuarios</a>
+                            <a class="admin-menu-link" href="./AdminNotifications.html">Panel de Notificaciones</a>
+                            <a class="admin-menu-link active" href="./AdminExperiences.html">Experiencias y Endpoints</a>
+                            <button class="admin-menu-link admin-menu-link-danger" type="button" onclick="logout()">Cerrar Sesión</button>
+                        </div>
+                    </div>
+                    <h3>Experiencias y Endpoints</h3>
+                </div>
+                <div class="admin-subtitle">Referencia técnica de las 13 experiencias y su actividad diaria.</div>
+            </div>
+            <div class="admin-header-actions">
+                <button class="btn btn-outline-teal btn-sm" onclick="refreshDashboard()">Actualizar</button>
+                <span id="lastUpdated" class="last-updated">—</span>
+            </div>
+        </div>
+
+        <section class="layer-section" id="experience-reference">
+            <div class="layer-header">
+                <div>
+                    <div class="layer-title">Inventario de Endpoints (13 experiencias)</div>
+                    <div class="layer-subtitle">Catálogo de referencia para operación y QA.</div>
+                </div>
+                <span class="layer-chip">API</span>
+            </div>
+
+            <div class="table-section">
+                <div class="table-wrapper experience-ref-table">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Código</th>
+                                <th>Experiencia</th>
+                                <th>Endpoint principal</th>
+                                <th>Soporte/alterno</th>
+                            </tr>
+                        </thead>
+                        <tbody id="experienceRefBody"></tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+
+        <section class="layer-section" id="experience-runtime">
+            <div class="layer-header">
+                <div>
+                    <div class="layer-title">Diagrama de líneas (13 experiencias)</div>
+                    <div class="layer-subtitle">Actividad por experiencia conectada al runtime (`llm.hito5.inference`).</div>
+                </div>
+                <span class="layer-chip">Operativo</span>
+            </div>
+
+            <div class="table-section">
+                <div class="ops-chart-wrap">
+                    <canvas id="opsExperienceChart"></canvas>
+                </div>
+            </div>
+
+            <div class="ops-grid" style="margin-top: 12px;">
+                <div class="ops-card"><div class="ops-label">Requests</div><div class="ops-value" id="ops-req-total">--</div></div>
+                <div class="ops-card"><div class="ops-label">Success rate</div><div class="ops-value" id="ops-success-rate">--</div></div>
+                <div class="ops-card"><div class="ops-label">Latencia promedio</div><div class="ops-value" id="ops-avg-latency">--</div></div>
+                <div class="ops-card"><div class="ops-label">Tokens (total)</div><div class="ops-value" id="ops-tokens-total">--</div></div>
+                <div class="ops-card"><div class="ops-label">Costo estimado período (COP)</div><div class="ops-value" id="ops-cost-cop">--</div></div>
+                <div class="ops-card"><div class="ops-label">Costo unitario / usuario (COP)</div><div class="ops-value" id="ops-cost-per-user">--</div></div>
+                <div class="ops-card"><div class="ops-label">Usuarios activos (rango)</div><div class="ops-value" id="ops-users-range">--</div></div>
+            </div>
+        </section>
+    </div>
+
+    <div id="toast" class="toast"></div>
+
+    <script src="../../js/config.js?v=2026-02-27-v2"></script>
+    <script src="../../js/adminDashboard.js?v=2026-02-27-v2"></script>
+</body>
+
+</html>
