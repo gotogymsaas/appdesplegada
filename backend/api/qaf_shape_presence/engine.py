@@ -539,11 +539,11 @@ def render_professional_summary(result: dict[str, Any]) -> str:
         confidence_pct = None
 
     lines: list[str] = []
-    lines.append("**Alta Costura Inteligente (beta)**")
-    lines.append("(Asesoría visual tipo diseñador: proporciones ópticas por foto; **no son medidas en cm**.)")
+    lines.append("**Alta Costura Inteligente**")
+    lines.append("Lectura de diseñador sobre tu silueta en cámara (proporciones ópticas por foto, sin cm reales).")
 
     if decision != 'accepted':
-        lines.append("\n**⚠️ Necesito una foto mejor para medir**")
+        lines.append("\n**⚠️ Necesito una foto mejor para afinar tu lectura**")
         lines.append("- Cuerpo completo (pies a cabeza)")
         lines.append("- Luz uniforme, sin contraluz")
         lines.append("- Cámara a 2–3m, a la altura del pecho")
@@ -551,14 +551,11 @@ def render_professional_summary(result: dict[str, Any]) -> str:
         return "\n".join(lines).strip()
 
     if confidence_pct is not None:
-        lines.append(f"\n**✅ Listo** · Confianza de captura: {confidence_pct}%")
+        lines.append(f"\n**✅ Listo** · Confianza visual: {confidence_pct}%")
     else:
         lines.append("\n**✅ Listo**")
 
-    lines.append(
-        "\nGracias por compartir tus fotos. Ahora traduzco tus proporciones ópticas en decisiones de alta costura "
-        "(corte, largo, estructura y caída)."
-    )
+    lines.append("\nGracias por las fotos. Esta es tu lectura de diseñador, en lenguaje claro y accionable:")
 
     # Mapa (wow, escaneable)
     try:
@@ -569,27 +566,17 @@ def render_professional_summary(result: dict[str, Any]) -> str:
         sig1 = (couture.get('modules') or {}).get('silhouette_sculpt', {}) if isinstance((couture.get('modules') or {}).get('silhouette_sculpt'), dict) else {}
         sig2 = (couture.get('modules') or {}).get('balance_torso_leg', {}) if isinstance((couture.get('modules') or {}).get('balance_torso_leg'), dict) else {}
 
-        lines.append("\n**🧵 Arquitectura visual (alta costura)**")
+        lines.append("\n**Tu arquitectura visual**")
         if sig1.get('signature'):
             lines.append(f"- {str(sig1.get('signature')).strip()}")
         if sig2.get('signature'):
             lines.append(f"- {str(sig2.get('signature')).strip()}")
 
-        # Scores
-        lines.append("\n**📌 Índices (0–100)**")
-        lines.append(f"- Presencia global: {int(vars_.get('overall_presence') or 0)}")
-        lines.append(f"- Alineación: {int(vars_.get('alignment_symmetry') or 0)}")
-        lines.append(f"- Silueta (V‑taper proxy): {int(vars_.get('silhouette_v_taper') or 0)}")
-        lines.append(f"- Verticalidad (torso/pierna): {int(vars_.get('torso_leg_balance') or 0)}")
+        lines.append("\n**Lectura rápida (0–100)**")
+        lines.append(f"- Presencia: {int(vars_.get('overall_presence') or 0)} · Alineación: {int(vars_.get('alignment_symmetry') or 0)}")
+        lines.append(f"- Silueta: {int(vars_.get('silhouette_v_taper') or 0)} · Verticalidad: {int(vars_.get('torso_leg_balance') or 0)}")
         if vars_.get('profile_stack') is not None:
-            lines.append(f"- Perfil (stacking): {int(vars_.get('profile_stack') or 0)}")
-
-        lines.append("\n**🪡 Cómo leer tus índices (alta costura)**")
-        lines.append("- Presencia global: lectura de lujo en cámara (caída + balance + continuidad de línea).")
-        lines.append("- Alineación: eje limpio (hombros/pelvis/cabeza) → mejora la caída y la percepción de sastrería.")
-        lines.append("- V‑taper (proxy): arquitectura hombro–cintura → define cuánta estructura admite sin ‘pesar’ visualmente.")
-        lines.append("- Verticalidad: torso vs pierna (óptico) → guía tiro, largos de chaqueta y ubicación de cintura visual.")
-        lines.append("- Perfil: línea cuello‑torso → afina escotes, solapas y cuellos para estilizar la parte superior.")
+            lines.append(f"- Perfil: {int(vars_.get('profile_stack') or 0)}")
     except Exception:
         pass
 
@@ -599,7 +586,7 @@ def render_professional_summary(result: dict[str, Any]) -> str:
     actions = plan.get('actions') if isinstance(plan.get('actions'), list) else []
     actions = [str(x).strip() for x in actions if str(x).strip()]
 
-    lines.append("\n**🎯 Prioridades (4 semanas)**")
+    lines.append("\n**Prioridades de estilo (4 semanas)**")
     if prios:
         for i, p in enumerate(prios[:3], start=1):
             lines.append(f"- Prioridad {i}: {p}")
@@ -608,10 +595,9 @@ def render_professional_summary(result: dict[str, Any]) -> str:
         lines.append("- Prioridad 2: alineación (línea limpia)")
         lines.append("- Prioridad 3: arquitectura de silueta")
 
-    lines.append("\n**✅ Sugerencias personalizadas (alta costura)**")
+    lines.append("\n**Qué te favorece desde hoy**")
     for a in actions[:8]:
         lines.append(f"- {a}")
 
-    # Cierre
-    lines.append("\nSi quieres afinarlo, repite la foto con la misma luz y encuadre 1 vez por semana.")
+    lines.append("\nSi quieres, en el siguiente paso te doy combinaciones concretas de prendas (look completo) según esta lectura.")
     return "\n".join(lines).strip()

@@ -7052,12 +7052,16 @@ def chat_n8n(request):
                             vars_ = last_res.get('variables') if isinstance(last_res.get('variables'), dict) else {}
 
                             prompt = (
-                                "Eres un asesor de moda premium (alta costura).\n"
-                                "Con base en este análisis de proporciones ópticas, genera una LISTA de prendas sugeridas que le queden bien.\n"
+                                "Eres un diseñador de modas premium (alta costura) y estilista personal.\n"
+                                "Con base en este análisis de proporciones ópticas, recomienda prendas que favorezcan visualmente al usuario.\n"
                                 "IMPORTANTE: no pidas fotos ni más datos; ya existe análisis.\n"
+                                "Escribe en español claro, tono cercano y elegante, evitando lenguaje demasiado técnico.\n"
                                 "Responde SOLO en texto plano (sin HTML, sin <iframe>).\n"
-                                "Formato: 8–12 bullets máximo. Incluye: prenda + corte + largo/tiro + tela/estructura.\n"
-                                "Evita: diagnósticos, promesas, preguntas al final.\n\n"
+                                "Formato exacto:\n"
+                                "1) Una frase breve de apertura (1 línea).\n"
+                                "2) Lista de 6 a 8 recomendaciones con formato: prenda + corte + largo/tiro + tela/estructura.\n"
+                                "3) Cierre de 1 línea con criterio de estilo (sin preguntas).\n"
+                                "Evita: diagnósticos, promesas médicas, tablas y secciones largas tipo reporte.\n\n"
                                 f"Variables: {vars_}\n"
                                 f"Plan: {plan}\n"
                                 f"Couture: {couture}\n"
