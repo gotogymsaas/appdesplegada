@@ -10,6 +10,7 @@ import re
 import threading
 import secrets
 import time
+import csv
 from typing import Any
 
 from devices.models import DeviceConnection, FitnessSync as DevicesFitnessSync
@@ -904,6 +905,136 @@ def _track_qaf_experience_call(request, experience_key: str, *, status_code: int
     )
 
 
+def _find_azure_billing_csv_path():
+    configured = (os.getenv('AZURE_BILLING_CSV_PATH') or '').strip()
+    if configured:
+        p = Path(configured).expanduser()
+        if p.exists() and p.is_file():
+            return p
+
+    candidates = []
+    try:
+        candidates.extend(list(BASE_DIR.glob('Detail_BillingAccount*.csv')))
+    except Exception:
+        pass
+
+    if not candidates:
+        return None
+
+    try:
+        candidates.sort(key=lambda item: item.stat().st_mtime, reverse=True)
+    except Exception:
+        candidates.sort(reverse=True)
+    return candidates[0]
+
+
+def _parse_billing_date(value):
+    raw = str(value or '').strip()
+    if not raw:
+        return None
+    try:
+        if 'T' in raw:
+            return datetime.fromisoformat(raw.replace('Z', '+00:00')).date()
+    except Exception:
+        pass
+
+    for fmt in ('%Y-%m-%d', '%Y/%m/%d', '%m/%d/%Y', '%d/%m/%Y', '%Y-%m-%d %H:%M:%S'):
+        try:
+            return datetime.strptime(raw, fmt).date()
+        except Exception:
+            continue
+    return None
+
+
+def _parse_billing_amount(value):
+    raw = str(value or '').strip()
+    if not raw:
+        return None
+    cleaned = raw.replace(' ', '').replace('$', '')
+    if ',' in cleaned and '.' in cleaned:
+        cleaned = cleaned.replace(',', '')
+    elif ',' in cleaned and '.' not in cleaned:
+        cleaned = cleaned.replace(',', '.')
+    try:
+        return float(cleaned)
+    except Exception:
+        return None
+
+
+def _load_real_azure_cost_from_csv(date_from, date_to):
+    csv_path = _find_azure_billing_csv_path()
+    if not csv_path:
+        return None
+
+    try:
+        with csv_path.open('r', encoding='utf-8-sig', newline='') as f:
+            reader = csv.DictReader(f)
+            headers = list(reader.fieldnames or [])
+
+            if not headers:
+                return None
+
+            date_column = None
+            for candidate in ('Date', 'UsageDate', 'Usage Date'):
+                if candidate in headers:
+                    date_column = candidate
+                    break
+            if date_column is None:
+                for h in headers:
+                    if 'date' in str(h).strip().lower():
+                        date_column = h
+                        break
+
+            cost_column = None
+            for candidate in ('CostInBillingCurrency', 'PreTaxCost', 'Cost', 'CostInUsd'):
+                if candidate in headers:
+                    cost_column = candidate
+                    break
+            if cost_column is None:
+                for h in headers:
+                    hl = str(h).strip().lower()
+                    if 'cost' in hl and 'quantity' not in hl:
+                        cost_column = h
+                        break
+
+            currency_column = None
+            for candidate in ('BillingCurrencyCode', 'Currency', 'Billing Currency'):
+                if candidate in headers:
+                    currency_column = candidate
+                    break
+
+            if not date_column or not cost_column:
+                return None
+
+            total_cost = 0.0
+            rows_count = 0
+            currency = None
+            for row in reader:
+                if not isinstance(row, dict):
+                    continue
+                day = _parse_billing_date(row.get(date_column))
+                if not day or day < date_from or day > date_to:
+                    continue
+                amount = _parse_billing_amount(row.get(cost_column))
+                if amount is None:
+                    continue
+                total_cost += float(amount)
+                rows_count += 1
+                if not currency and currency_column:
+                    currency = str(row.get(currency_column) or '').strip().upper() or None
+
+            return {
+                'rows_count': rows_count,
+                'currency': currency,
+                'total_cost': float(total_cost),
+                'file_name': csv_path.name,
+                'date_column': str(date_column),
+                'cost_column': str(cost_column),
+            }
+    except Exception:
+        return None
+
+
 @api_view(['GET', 'OPTIONS'])
 @authentication_classes([JWTAuthentication])
 @permission_classes([IsAuthenticatedOrOptions])
@@ -1064,6 +1195,23 @@ def admin_dashboard_ops_metrics(request):
 
     estimated_total_usd = (tokens_in_total / 1000.0) * in_cost_per_1k + (tokens_out_total / 1000.0) * out_cost_per_1k
     estimated_total_cop = estimated_total_usd * usd_to_cop
+    cost_source = 'estimated_tokens'
+    cost_source_meta = None
+
+    real_cost = _load_real_azure_cost_from_csv(range_info['date_from'], range_info['date_to'])
+    if isinstance(real_cost, dict) and real_cost.get('rows_count'):
+        currency = str(real_cost.get('currency') or '').strip().upper()
+        total_cost = float(real_cost.get('total_cost') or 0.0)
+        if currency in ('COP', 'COL$', 'CO$', 'PESO COLOMBIANO'):
+            estimated_total_cop = total_cost
+            estimated_total_usd = (total_cost / usd_to_cop) if usd_to_cop else 0.0
+            cost_source = 'azure_billing_csv'
+            cost_source_meta = real_cost
+        elif currency in ('USD', 'US$', '$', ''):
+            estimated_total_usd = total_cost
+            estimated_total_cop = total_cost * usd_to_cop
+            cost_source = 'azure_billing_csv'
+            cost_source_meta = real_cost
 
     active_users_range = User.objects.filter(
         is_active=True,
@@ -1095,6 +1243,8 @@ def admin_dashboard_ops_metrics(request):
                 'costs': {
                     'estimated_total_usd': round(estimated_total_usd, 6),
                     'estimated_total_cop': round(estimated_total_cop, 2),
+                    'source': cost_source,
+                    'source_meta': cost_source_meta,
                     'active_users_range': int(active_users_range),
                     'cost_per_active_user_cop': round(cost_per_active_user_cop, 2) if cost_per_active_user_cop is not None else None,
                     'model': {
