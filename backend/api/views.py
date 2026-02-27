@@ -880,6 +880,30 @@ def _normalize_experience_key(flow_value: str):
     return aliases.get(raw)
 
 
+def _track_qaf_experience_call(request, experience_key: str, *, status_code: int = 200, extra_after=None):
+    exp_key = _normalize_experience_key(experience_key)
+    if not exp_key:
+        return
+    after = {
+        'status_code': int(status_code),
+        'source': 'qaf_endpoint',
+    }
+    if isinstance(extra_after, dict):
+        after.update(extra_after)
+    _audit_log(
+        request,
+        action='qaf.experience.invoke',
+        entity_type='experience',
+        entity_id=exp_key,
+        before={
+            'flow': exp_key,
+            'source': 'qaf_endpoint',
+        },
+        after=after,
+        reason='QAF endpoint invocation',
+    )
+
+
 @api_view(['GET', 'OPTIONS'])
 @authentication_classes([JWTAuthentication])
 @permission_classes([IsAuthenticatedOrOptions])
@@ -996,6 +1020,30 @@ def admin_dashboard_ops_metrics(request):
             tokens_out_total += int(float(after.get('tokens_out') or 0))
         except Exception:
             pass
+
+    qaf_qs = AuditLog.objects.filter(
+        action='qaf.experience.invoke',
+        occurred_at__gte=range_info['start_utc'],
+        occurred_at__lte=range_info['end_utc'],
+    ).values('occurred_at', 'entity_id', 'before_json')
+
+    for row in qaf_qs:
+        occurred_at = row.get('occurred_at')
+        before = row.get('before_json') if isinstance(row.get('before_json'), dict) else {}
+        entity_id = str(row.get('entity_id') or '').strip()
+
+        if occurred_at:
+            try:
+                local_day = occurred_at.astimezone(tz).date().isoformat()
+            except Exception:
+                local_day = occurred_at.date().isoformat()
+        else:
+            local_day = None
+
+        exp_key = _normalize_experience_key(entity_id or before.get('flow'))
+        if local_day in day_map and exp_key in exp_keys:
+            day_map[local_day][exp_key] += 1
+            day_map[local_day]['total'] += 1
 
     avg_latency_total = (latency_total_sum / latency_total_count) if latency_total_count else None
     avg_latency_n8n = (latency_n8n_sum / latency_n8n_count) if latency_n8n_count else None
@@ -1166,6 +1214,29 @@ def _is_premium_active(user):
 
     # Cualquier otro estado se considera no premium para bloquear funciones de pago.
     return False
+
+
+def _apply_admin_plan_transition(user, requested_plan: str):
+    plan = str(requested_plan or '').strip()
+    if plan not in ('Gratis', 'Premium'):
+        return
+
+    user.plan = plan
+
+    if plan == 'Premium':
+        current_billing = str(getattr(user, 'billing_status', '') or '').strip().lower()
+        if current_billing != 'active':
+            now = timezone.now()
+            user.trial_active = True
+            user.trial_started_at = now
+            user.trial_ends_at = now + timedelta(days=14)
+            user.billing_status = 'trial'
+        return
+
+    user.trial_active = False
+    user.trial_started_at = None
+    user.trial_ends_at = None
+    user.billing_status = 'free'
 
 
 def _qaf_premium_gate_payload(
@@ -4496,31 +4567,7 @@ def update_user_admin(request, user_id):
         if requested_plan and requested_plan != before.get('plan'):
             if not reason:
                 return Response({'error': 'reason requerido para cambio de plan'}, status=status.HTTP_400_BAD_REQUEST)
-            user.plan = requested_plan
-
-            if requested_plan == "Premium":
-                # Extensión de prueba desde dashboard: 14 días, excepto si ya está en cobro activo.
-                current_billing = str(getattr(user, 'billing_status', '') or '').strip().lower()
-                if current_billing != 'active':
-                    now = timezone.now()
-                    base_start = now
-                    try:
-                        if user.trial_active and user.trial_ends_at and user.trial_ends_at > now:
-                            base_start = user.trial_ends_at
-                    except Exception:
-                        base_start = now
-
-                    user.trial_active = True
-                    if not user.trial_started_at:
-                        user.trial_started_at = now
-                    user.trial_ends_at = base_start + timedelta(days=14)
-                    user.billing_status = 'trial'
-            elif requested_plan == "Gratis":
-                # Revocación manual: bloquear premium inmediatamente.
-                user.trial_active = False
-                user.trial_started_at = None
-                user.trial_ends_at = None
-                user.billing_status = 'free'
+            _apply_admin_plan_transition(user, requested_plan)
 
         user.save()
         after = {"id": user.id, "username": user.username, "email": user.email, "plan": user.plan, "is_active": getattr(user, "is_active", True)}
@@ -11055,6 +11102,7 @@ def qaf_meal_coherence(request):
     }
 
     result = evaluate_meal(user_ctx, meal)
+    _track_qaf_experience_call(request, 'exp-002_meal_coherence')
     return Response(_attach_wow_event_payload(user, result, event_key='qaf_meal_coherence', label='Coherencia nutricional evaluada'))
 
 
@@ -11170,6 +11218,7 @@ def qaf_metabolic_profile(request):
         except Exception:
             pass
 
+    _track_qaf_experience_call(request, 'exp-003_metabolic_profile')
     return Response(_attach_wow_event_payload(user, {'success': True, 'result': res.payload}, event_key='qaf_metabolic_profile', label='Perfil metabólico actualizado'))
 
 
@@ -11322,6 +11371,7 @@ def qaf_meal_plan(request):
         except Exception:
             pass
 
+    _track_qaf_experience_call(request, 'exp-004_meal_plan')
     return Response(_attach_wow_event_payload(user, {'success': True, 'result': result, 'text': text, 'quick_actions': quick_actions}, event_key='qaf_meal_plan', label='Menú inteligente generado'))
 
 
@@ -11348,6 +11398,7 @@ def qaf_meal_plan_apply(request):
     user.coach_weekly_state = ws2
     user.coach_weekly_updated_at = timezone.now()
     user.save(update_fields=['coach_weekly_state', 'coach_weekly_updated_at'])
+    _track_qaf_experience_call(request, 'exp-004_meal_plan', extra_after={'variant': 'apply'})
     return Response(_attach_wow_event_payload(user, {'success': True, 'week_id': week_id}, event_key='qaf_meal_plan_apply', label='Plan semanal aplicado'))
 
 
@@ -11440,6 +11491,7 @@ def qaf_meal_plan_mutate(request):
         variety_level=str(((mutated.get('inputs') or {}).get('variety')) or 'normal'),
         is_applied=bool(is_applied),
     )
+    _track_qaf_experience_call(request, 'exp-004_meal_plan', extra_after={'variant': 'mutate'})
     return Response(_attach_wow_event_payload(user, {'success': True, 'result': mutated, 'text': text, 'quick_actions': quick_actions}, event_key='qaf_meal_plan_mutate', label='Plan semanal ajustado'))
 
 
@@ -11456,6 +11508,7 @@ def qaf_body_trend(request):
     if not user:
         return Response({'error': 'Autenticacion requerida'}, status=status.HTTP_401_UNAUTHORIZED)
     if not _is_premium_active(user):
+        _track_qaf_experience_call(request, 'exp-005_body_trend', extra_after={'premium_gate': True})
         return Response(
             _qaf_premium_gate_payload(
                 'exp-005_body_trend',
@@ -11619,6 +11672,7 @@ def qaf_body_trend(request):
         except Exception:
             pass
 
+    _track_qaf_experience_call(request, 'exp-005_body_trend')
     return Response(_attach_wow_event_payload(user, {'success': True, 'result': res.payload, 'text': text, 'quick_actions': quick_actions}, event_key='qaf_body_trend', label='Tendencia corporal analizada'))
 
 
@@ -11638,6 +11692,7 @@ def qaf_posture(request):
     if not user:
         return Response({'error': 'Autenticacion requerida'}, status=status.HTTP_401_UNAUTHORIZED)
     if not _is_premium_active(user):
+        _track_qaf_experience_call(request, 'exp-006_posture', extra_after={'premium_gate': True})
         return Response(
             _qaf_premium_gate_payload(
                 'exp-006_posture',
@@ -11663,6 +11718,7 @@ def qaf_posture(request):
     }).payload
 
     text = render_professional_summary(res)
+    _track_qaf_experience_call(request, 'exp-006_posture')
     return Response(_attach_wow_event_payload(user, {'success': True, 'result': res, 'text': text}, event_key='qaf_posture', label='Postura evaluada'))
 
 
@@ -11679,6 +11735,7 @@ def qaf_lifestyle(request):
     if not user:
         return Response({'error': 'Autenticacion requerida'}, status=status.HTTP_401_UNAUTHORIZED)
     if not _is_premium_active(user):
+        _track_qaf_experience_call(request, 'exp-007_lifestyle', extra_after={'premium_gate': True})
         return Response(
             _qaf_premium_gate_payload(
                 'exp-007_lifestyle',
@@ -11750,6 +11807,7 @@ def qaf_lifestyle(request):
     except Exception:
         pass
 
+    _track_qaf_experience_call(request, 'exp-007_lifestyle')
     return Response(_attach_wow_event_payload(user, {'success': True, 'result': res, 'text': text, 'daily_metrics': daily_metrics[-7:]}, event_key='qaf_lifestyle', label='Lifestyle actualizado'))
 
 
@@ -11766,6 +11824,7 @@ def qaf_motivation(request):
     if not user:
         return Response({'error': 'Autenticacion requerida'}, status=status.HTTP_401_UNAUTHORIZED)
     if not _is_premium_active(user):
+        _track_qaf_experience_call(request, 'exp-008_motivation', extra_after={'premium_gate': True})
         return Response(
             _qaf_premium_gate_payload(
                 'exp-008_motivation',
@@ -11826,6 +11885,7 @@ def qaf_motivation(request):
     except Exception:
         pass
 
+    _track_qaf_experience_call(request, 'exp-008_motivation')
     return Response(_attach_wow_event_payload(user, {'success': True, 'result': res, 'text': text}, event_key='qaf_motivation', label='Motivación personalizada'))
 
 
@@ -11846,6 +11906,7 @@ def qaf_progression(request):
     if not user:
         return Response({'error': 'Autenticacion requerida'}, status=status.HTTP_401_UNAUTHORIZED)
     if not _is_premium_active(user):
+        _track_qaf_experience_call(request, 'exp-009_progression', extra_after={'premium_gate': True})
         return Response(
             _qaf_premium_gate_payload(
                 'exp-009_progression',
@@ -11940,6 +12001,7 @@ def qaf_progression(request):
     except Exception:
         pass
 
+    _track_qaf_experience_call(request, 'exp-009_progression')
     return Response(_attach_wow_event_payload(user, {'success': True, 'result': res, 'text': text}, event_key='qaf_progression', label='Progresión de entrenamiento'))
 
 
@@ -12025,6 +12087,7 @@ def qaf_muscle_measure(request):
     except Exception:
         pass
 
+    _track_qaf_experience_call(request, 'exp-010_muscle_measure')
     return Response(_attach_wow_event_payload(user, {'success': True, 'result': res, 'text': text}, event_key='qaf_muscle_measure', label='Medición muscular'))
 
 
@@ -12093,6 +12156,7 @@ def qaf_shape_presence(request):
     except Exception:
         pass
 
+    _track_qaf_experience_call(request, 'exp-012_shape_presence')
     return Response(_attach_wow_event_payload(user, {'success': True, 'result': res, 'text': text}, event_key='qaf_shape_presence', label='Shape & Presence actualizado'))
 
 
@@ -12162,6 +12226,7 @@ def qaf_posture_proportion(request):
     except Exception:
         pass
 
+    _track_qaf_experience_call(request, 'exp-013_body_architecture')
     return Response(_attach_wow_event_payload(user, {'success': True, 'result': res, 'text': text}, event_key='qaf_posture_proportion', label='Arquitectura corporal evaluada'))
 
 
@@ -12310,6 +12375,7 @@ def qaf_skin_health(request):
     except Exception:
         qas = []
 
+    _track_qaf_experience_call(request, 'exp-011_skin_health')
     return Response(_attach_wow_event_payload(user, {'success': True, 'result': res, 'text': text, 'quick_actions': qas}, event_key='qaf_skin_health', label='Vitalidad de la piel analizada'))
 
 

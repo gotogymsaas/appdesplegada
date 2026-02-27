@@ -1,5 +1,6 @@
 from django.contrib.auth import get_user_model
 from django.test import TestCase
+from django.utils import timezone
 
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import RefreshToken
@@ -80,6 +81,39 @@ class AdminSecurityTests(TestCase):
         self.user.refresh_from_db()
         self.assertEqual(self.user.plan, "Premium")
         self.assertTrue(AuditLog.objects.filter(action="users.update_admin", entity_id=str(self.user.id)).exists())
+
+    def test_admin_set_premium_enables_14d_trial_when_not_active_billing(self):
+        self._auth(self.admin)
+
+        self.user.plan = "Gratis"
+        self.user.billing_status = "free"
+        self.user.trial_active = False
+        self.user.trial_started_at = None
+        self.user.trial_ends_at = None
+        self.user.save(update_fields=["plan", "billing_status", "trial_active", "trial_started_at", "trial_ends_at"])
+
+        before_call = timezone.now()
+        res = self.client.put(
+            f"/api/users/update_admin/{self.user.id}/",
+            data={"plan": "Premium", "username": self.user.username, "email": self.user.email, "reason": "soporte"},
+            format="json",
+        )
+        after_call = timezone.now()
+
+        self.assertEqual(res.status_code, 200)
+
+        self.user.refresh_from_db()
+        self.assertEqual(self.user.plan, "Premium")
+        self.assertEqual(self.user.billing_status, "trial")
+        self.assertTrue(self.user.trial_active)
+        self.assertIsNotNone(self.user.trial_started_at)
+        self.assertIsNotNone(self.user.trial_ends_at)
+        self.assertGreaterEqual(self.user.trial_started_at, before_call)
+        self.assertLessEqual(self.user.trial_started_at, after_call)
+
+        trial_delta = self.user.trial_ends_at - self.user.trial_started_at
+        self.assertGreaterEqual(trial_delta.total_seconds(), 14 * 24 * 60 * 60 - 5)
+        self.assertLessEqual(trial_delta.total_seconds(), 14 * 24 * 60 * 60 + 5)
 
     def test_push_broadcast_requires_reason_and_audits(self):
         self._auth(self.admin)
