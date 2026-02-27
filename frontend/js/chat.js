@@ -2745,8 +2745,10 @@ async function processMessage(text, file, pendingId, extraPayload = null) {
               const t = String(a.type || '').trim();
               return t.startsWith('posture_');
             });
-            if (filtered.length) appendQuickActions(filtered);
-            return;
+            if (filtered.length) {
+              appendQuickActions(filtered);
+              return;
+            }
           }
 
           if (muscleFlow && muscleFlow.active) {
@@ -2758,8 +2760,10 @@ async function processMessage(text, file, pendingId, extraPayload = null) {
               if (t === 'message' && a.payload && typeof a.payload === 'object' && a.payload.muscle_measure_request) return true;
               return false;
             });
-            if (filtered.length) appendQuickActions(filtered);
-            return;
+            if (filtered.length) {
+              appendQuickActions(filtered);
+              return;
+            }
           }
 
           if (skinFlow && skinFlow.active) {
@@ -2781,8 +2785,10 @@ async function processMessage(text, file, pendingId, extraPayload = null) {
               }
               return false;
             });
-            if (filtered.length) appendQuickActions(filtered);
-            return;
+            if (filtered.length) {
+              appendQuickActions(filtered);
+              return;
+            }
           }
 
           appendQuickActions(actionsIn);
