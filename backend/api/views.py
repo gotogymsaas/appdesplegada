@@ -2756,10 +2756,17 @@ def login(request):
                 'error': 'Usuario y contraseña son requeridos'
             }, status=status.HTTP_400_BAD_REQUEST)
 
-        # Acepta username o email (en el frontend, username técnico = email)
-        user = User.objects.filter(
-            Q(username__iexact=identifier) | Q(email__iexact=identifier)
-        ).first()
+        # Acepta username o email (en el frontend, username técnico = email).
+        # Evitamos OR para reducir costo de búsqueda y favorecer índices.
+        identifier_norm = identifier.lower()
+        if '@' in identifier_norm:
+            user = User.objects.filter(email__iexact=identifier_norm).first()
+            if not user:
+                user = User.objects.filter(username__iexact=identifier_norm).first()
+        else:
+            user = User.objects.filter(username__iexact=identifier_norm).first()
+            if not user:
+                user = User.objects.filter(email__iexact=identifier_norm).first()
         if not user:
             return Response({
                 'success': False,
@@ -9151,6 +9158,23 @@ def chat_n8n(request):
                 mem = cs.get('motivation_memory') if isinstance(cs.get('motivation_memory'), dict) else {}
                 prefs = cs.get('motivation_preferences') if isinstance(cs.get('motivation_preferences'), dict) else {}
 
+                # Estado UI del proceso de motivación: evita reofrecer botones ya usados (anti-loop).
+                ui_state = cs.get('motivation_ui_state') if isinstance(cs.get('motivation_ui_state'), dict) else {}
+                used_labels = ui_state.get('used_labels') if isinstance(ui_state.get('used_labels'), list) else []
+                used_labels = [str(x).strip() for x in used_labels if str(x).strip()]
+                ui_state_dirty = False
+
+                try:
+                    svc_int_mot = request.data.get('service_intent') if isinstance(request.data, dict) and isinstance(request.data.get('service_intent'), dict) else {}
+                    svc_exp_mot = str(svc_int_mot.get('experience') or '').strip().lower()
+                    svc_act_mot = str(svc_int_mot.get('action') or '').strip().lower()
+                    if svc_exp_mot == 'exp-008_motivation' and svc_act_mot in ('start_new', 'start', 'new_eval'):
+                        if used_labels:
+                            used_labels = []
+                            ui_state_dirty = True
+                except Exception:
+                    pass
+
                 # Actualizar preferencias desde botones
                 if isinstance(mr, dict) and isinstance(mr.get('preferences'), dict):
                     prefs = {**prefs, **mr.get('preferences')}
@@ -9169,6 +9193,17 @@ def chat_n8n(request):
                         cs = cs2
                     except Exception:
                         pass
+
+                # Registrar botón usado en este proceso (payload de motivación) para no reinyectarlo.
+                try:
+                    if isinstance(mr, dict) or isinstance(ma, dict):
+                        clicked_label = str(message or '').strip()
+                        if clicked_label and clicked_label not in used_labels:
+                            used_labels.append(clicked_label)
+                            used_labels = used_labels[-20:]
+                            ui_state_dirty = True
+                except Exception:
+                    pass
 
                     # Efectos UX: reconocer y (si aplica) acreditar racha por auto-reporte.
                     try:
@@ -9330,6 +9365,22 @@ def chat_n8n(request):
                     except Exception:
                         pass
 
+                    # Persistir estado UI (botones usados) para evitar loops en la misma conversación.
+                    try:
+                        if ui_state_dirty:
+                            cs2 = dict(cs)
+                            ui2 = cs2.get('motivation_ui_state') if isinstance(cs2.get('motivation_ui_state'), dict) else {}
+                            ui3 = dict(ui2)
+                            ui3['used_labels'] = used_labels[-20:]
+                            ui3['updated_at'] = timezone.now().isoformat()
+                            cs2['motivation_ui_state'] = ui3
+                            user.coach_state = cs2
+                            user.coach_state_updated_at = timezone.now()
+                            user.save(update_fields=['coach_state', 'coach_state_updated_at'])
+                            cs = cs2
+                    except Exception:
+                        pass
+
                     # Quick actions: confirmación mínima (pressure) y CTAs
                     try:
                         if isinstance(motivation_result, dict) and motivation_result.get('decision') == 'needs_confirmation':
@@ -9391,6 +9442,12 @@ def chat_n8n(request):
                                     'text': 'Subir reto mañana',
                                     'payload': {'motivation_request': {'preferences': {'pressure': 'firme'}}},
                                 })
+                        # Anti-loop: ocultar botones ya usados durante el proceso actual.
+                        if used_labels:
+                            motivation_quick_actions_out = [
+                                x for x in motivation_quick_actions_out
+                                if isinstance(x, dict) and str(x.get('label') or '').strip() not in used_labels
+                            ]
                         motivation_quick_actions_out = motivation_quick_actions_out[:6]
                     except Exception:
                         pass
