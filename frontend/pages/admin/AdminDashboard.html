@@ -81,7 +81,13 @@
                 <div class="table-section">
                     <div class="meta-row" style="margin-bottom: 10px;">
                         <h2 style="margin: 0; color: var(--text-main); font-size: 18px;">MRR histórico (referencial)</h2>
-                        <span class="meta-chip" data-range-chip>Últimos 30 días</span>
+                        <select class="range-select chart-range-select" data-chart="mrrHistory" aria-label="Rango MRR histórico">
+                            <option value="30">Días</option>
+                            <option value="84">Semanas</option>
+                            <option value="180">Meses</option>
+                            <option value="365">1 año</option>
+                            <option value="730">2 años</option>
+                        </select>
                     </div>
                     <div class="chart-canvas-wrap chart-tall">
                         <canvas id="mrrHistoryChart"></canvas>
@@ -169,7 +175,13 @@
                 <div class="table-section">
                     <div class="meta-row" style="margin-bottom: 10px;">
                         <h2 style="margin: 0; color: var(--text-main); font-size: 18px;">Felicidad Global</h2>
-                        <span class="meta-chip" data-range-chip>Últimos 30 días</span>
+                        <select class="range-select chart-range-select" data-chart="global" aria-label="Rango Felicidad Global">
+                            <option value="30">Días</option>
+                            <option value="84">Semanas</option>
+                            <option value="180">Meses</option>
+                            <option value="365">1 año</option>
+                            <option value="730">2 años</option>
+                        </select>
                     </div>
                     <div class="chart-canvas-wrap chart-tall">
                         <canvas id="globalChart"></canvas>
@@ -191,7 +203,13 @@
                 <div class="table-section">
                     <div class="meta-row" style="margin-bottom: 10px;">
                         <h2 style="margin: 0; color: var(--text-main); font-size: 18px;">Altas (Premium vs Gratis)</h2>
-                        <span class="meta-chip" data-range-chip>Últimos 30 días</span>
+                        <select class="range-select chart-range-select" data-chart="signups" aria-label="Rango Altas Premium vs Gratis">
+                            <option value="30">Días</option>
+                            <option value="84">Semanas</option>
+                            <option value="180">Meses</option>
+                            <option value="365">1 año</option>
+                            <option value="730">2 años</option>
+                        </select>
                     </div>
                     <div class="chart-canvas-wrap chart-tall">
                         <canvas id="signupsChart"></canvas>
@@ -202,7 +220,13 @@
                 <div class="table-section">
                     <div class="meta-row" style="margin-bottom: 10px;">
                         <h2 style="margin: 0; color: var(--text-main); font-size: 18px;">Tendencia de altas (prom. móvil 7d)</h2>
-                        <span class="meta-chip" data-range-chip>Últimos 30 días</span>
+                        <select class="range-select chart-range-select" data-chart="signupsTrend" aria-label="Rango Tendencia de altas">
+                            <option value="30">Días</option>
+                            <option value="84">Semanas</option>
+                            <option value="180">Meses</option>
+                            <option value="365">1 año</option>
+                            <option value="730">2 años</option>
+                        </select>
                     </div>
                     <div class="chart-canvas-wrap chart-tall">
                         <canvas id="signupsTrendChart"></canvas>
@@ -213,7 +237,13 @@
                 <div class="table-section">
                     <div class="meta-row" style="margin-bottom: 10px;">
                         <h2 style="margin: 0; color: var(--text-main); font-size: 18px;">Usuarios acumulados</h2>
-                        <span class="meta-chip" data-range-chip>Últimos 30 días</span>
+                        <select class="range-select chart-range-select" data-chart="usersCumulative" aria-label="Rango Usuarios acumulados">
+                            <option value="30">Días</option>
+                            <option value="84">Semanas</option>
+                            <option value="180">Meses</option>
+                            <option value="365">1 año</option>
+                            <option value="730">2 años</option>
+                        </select>
                     </div>
                     <div class="chart-canvas-wrap chart-tall">
                         <canvas id="usersCumulativeChart"></canvas>
@@ -224,7 +254,13 @@
                 <div class="table-section">
                     <div class="meta-row" style="margin-bottom: 10px;">
                         <h2 style="margin: 0; color: var(--text-main); font-size: 18px;">% Premium (acumulado)</h2>
-                        <span class="meta-chip" data-range-chip>Últimos 30 días</span>
+                        <select class="range-select chart-range-select" data-chart="premiumShare" aria-label="Rango % Premium acumulado">
+                            <option value="30">Días</option>
+                            <option value="84">Semanas</option>
+                            <option value="180">Meses</option>
+                            <option value="365">1 año</option>
+                            <option value="730">2 años</option>
+                        </select>
                     </div>
                     <div class="chart-canvas-wrap chart-tall">
                         <canvas id="premiumShareChart"></canvas>
@@ -246,7 +282,13 @@
             <div class="table-section">
                 <div class="meta-row" style="margin-bottom: 10px;">
                     <h2 style="margin: 0; color: var(--text-main); font-size: 18px;">Actividad de experiencias (13)</h2>
-                    <span class="meta-chip">Runtime</span>
+                    <select class="range-select chart-range-select" data-chart="opsExperience" aria-label="Rango Actividad de experiencias">
+                        <option value="30">Días</option>
+                        <option value="84">Semanas</option>
+                        <option value="180">Meses</option>
+                        <option value="365">1 año</option>
+                        <option value="730">2 años</option>
+                    </select>
                 </div>
                 <div class="ops-chart-wrap">
                     <canvas id="opsExperienceChart"></canvas>

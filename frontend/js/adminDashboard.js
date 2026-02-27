@@ -6,6 +6,9 @@
   const DEFAULT_DAYS_WINDOW = 90;
   const RANGE_STORAGE_KEY = 'adminDashboardRangeDays';
   const COMPARE_STORAGE_KEY = 'adminDashboardCompareEnabled';
+  const CHART_RANGE_STORAGE_KEY = 'adminDashboardChartRanges';
+  const DEFAULT_CHART_RANGE_DAYS = 30;
+  const CHART_RANGE_KEYS = ['mrrHistory', 'global', 'signups', 'signupsTrend', 'usersCumulative', 'premiumShare', 'opsExperience'];
   const pageMode = (document.body?.dataset?.adminPage || 'metrics').trim().toLowerCase();
 
   const els = {
@@ -90,6 +93,7 @@
 
   let daysWindow = DEFAULT_DAYS_WINDOW;
   let compareEnabled = true;
+  let chartRangeMap = {};
   let globalHistoryCache = null;
 
   let globalChartInstance = null;
@@ -278,6 +282,9 @@
       premiumActiveEst.push(runningPremium);
     }
     const mrrHistory = premiumActiveEst.map((n) => n * price);
+    const mrrHistoryDays = getChartRangeDays('mrrHistory');
+    const mrrHistoryLabels = series.labels.slice(-mrrHistoryDays);
+    const mrrHistorySliced = mrrHistory.slice(-mrrHistoryDays);
 
     // Proyección MRR 30 días: usa promedio móvil (últimos 14 días o menos)
     const tailWindow = Math.min(14, series.premium.length);
@@ -311,11 +318,11 @@
       mrrHistoryChartInstance = new Chart(ctx, {
         type: 'line',
         data: {
-          labels: series.labels,
+          labels: mrrHistoryLabels,
           datasets: [
             {
               label: 'MRR estimado',
-              data: mrrHistory,
+              data: mrrHistorySliced,
               borderColor: secondary,
               backgroundColor: 'rgba(212, 180, 106, 0.10)',
               borderWidth: 2,
@@ -431,7 +438,9 @@
     const d = opsMetricsCache.data || {};
     const benchmark = d.benchmark || {};
     const costs = d.costs || {};
-    const series = Array.isArray(d.series) ? d.series : [];
+    const sourceSeries = Array.isArray(d.series) ? d.series : [];
+    const opsDays = getChartRangeDays('opsExperience');
+    const series = sourceSeries.slice(-opsDays);
     const experiences = Array.isArray(d.experiences) ? d.experiences : [];
     const byKey = Object.fromEntries(EXPERIENCE_ENDPOINT_CATALOG.map((item) => [item.key, item]));
 
@@ -519,16 +528,78 @@
 
   function clampDaysWindow(value) {
     const v = Number(value);
-    if (v === 1 || v === 7 || v === 30 || v === 90 || v === 180 || v === 270 || v === 365 || v === 730) return v;
+    if (v === 1 || v === 7 || v === 30 || v === 84 || v === 90 || v === 180 || v === 270 || v === 365 || v === 730) return v;
     return DEFAULT_DAYS_WINDOW;
+  }
+
+  function clampChartRangeDays(value) {
+    const v = Number(value);
+    if (v === 30 || v === 84 || v === 180 || v === 365 || v === 730) return v;
+    return DEFAULT_CHART_RANGE_DAYS;
   }
 
   function rangeLabelText(days) {
     if (days === 1) return 'último día';
     if (days === 7) return 'última semana';
     if (days === 30) return 'último mes';
+    if (days === 84) return 'últimas 12 semanas';
+    if (days === 180) return 'últimos 6 meses';
+    if (days === 365) return 'último año';
     if (days === 730) return 'últimos 2 años';
     return `últimos ${days} días`;
+  }
+
+  function getChartRangeDays(chartKey) {
+    if (!CHART_RANGE_KEYS.includes(chartKey)) return DEFAULT_CHART_RANGE_DAYS;
+    return clampChartRangeDays(chartRangeMap[chartKey] || DEFAULT_CHART_RANGE_DAYS);
+  }
+
+  function getRequestedDataDays() {
+    let maxDays = Number(daysWindow) || DEFAULT_DAYS_WINDOW;
+    CHART_RANGE_KEYS.forEach((key) => {
+      maxDays = Math.max(maxDays, getChartRangeDays(key));
+    });
+    return maxDays;
+  }
+
+  function loadStoredChartRanges() {
+    try {
+      const raw = localStorage.getItem(CHART_RANGE_STORAGE_KEY);
+      const parsed = raw ? JSON.parse(raw) : {};
+      if (!parsed || typeof parsed !== 'object') {
+        chartRangeMap = {};
+        return;
+      }
+      const next = {};
+      CHART_RANGE_KEYS.forEach((key) => {
+        next[key] = clampChartRangeDays(parsed[key]);
+      });
+      chartRangeMap = next;
+    } catch (e) {
+      chartRangeMap = {};
+    }
+  }
+
+  function saveChartRanges() {
+    try {
+      localStorage.setItem(CHART_RANGE_STORAGE_KEY, JSON.stringify(chartRangeMap));
+    } catch (e) {
+      // ignore
+    }
+  }
+
+  function bindChartRangeSelectors() {
+    const controls = document.querySelectorAll('.chart-range-select[data-chart]');
+    controls.forEach((selectEl) => {
+      const key = String(selectEl.dataset.chart || '').trim();
+      if (!CHART_RANGE_KEYS.includes(key)) return;
+      selectEl.value = String(getChartRangeDays(key));
+      selectEl.addEventListener('change', async (e) => {
+        chartRangeMap[key] = clampChartRangeDays(e.target.value);
+        saveChartRanges();
+        await loadPageData();
+      });
+    });
   }
 
   function syncRangeUI() {
@@ -1301,7 +1372,7 @@
   function loadUserCharts(users) {
     const { primary, secondary, textMuted } = getThemeVars();
 
-    let labels = lastNDaysLabels(daysWindow);
+    let labels = lastNDaysLabels(getRequestedDataDays());
     let signups = countSignupsByDay(users, labels);
     let signupsByPlan = countSignupsByDayAndPlan(users, labels);
 
@@ -1319,7 +1390,17 @@
       }
     }
 
-    const trend = rollingAverage(signups, 7);
+    const signupsDays = getChartRangeDays('signups');
+    const labelsSignups = labels.slice(-signupsDays);
+    const signupsByPlanSliced = {
+      premium: signupsByPlan.premium.slice(-signupsDays),
+      free: signupsByPlan.free.slice(-signupsDays),
+    };
+
+    const trendDays = getChartRangeDays('signupsTrend');
+    const labelsTrend = labels.slice(-trendDays);
+    const signupsTrendSource = signups.slice(-trendDays);
+    const trend = rollingAverage(signupsTrendSource, 7);
 
     // 1) Altas (Premium vs Gratis) - stacked bar
     const signupsEl = els.signupsChart();
@@ -1329,18 +1410,18 @@
       signupsChartInstance = new Chart(ctx, {
         type: 'bar',
         data: {
-          labels,
+          labels: labelsSignups,
           datasets: [
             {
               label: 'Premium',
-              data: signupsByPlan.premium,
+              data: signupsByPlanSliced.premium,
               backgroundColor: 'rgba(212, 180, 106, 0.35)',
               borderWidth: 0,
               stack: 'signups',
             },
             {
               label: 'Gratis',
-              data: signupsByPlan.free,
+              data: signupsByPlanSliced.free,
               backgroundColor: 'rgba(255, 255, 255, 0.10)',
               borderWidth: 0,
               stack: 'signups',
@@ -1381,7 +1462,7 @@
       signupsTrendChartInstance = new Chart(ctx, {
         type: 'line',
         data: {
-          labels,
+          labels: labelsTrend,
           datasets: [
             {
               label: 'Promedio móvil 7d',
@@ -1408,7 +1489,13 @@
     }
 
     // 3) Acumulados y % premium
-    const { cumulativeTotal, premiumShare } = cumulativeSeries(users, labels);
+    const cumulativeDays = getChartRangeDays('usersCumulative');
+    const labelsCumulative = labels.slice(-cumulativeDays);
+    const cumulativeData = cumulativeSeries(users, labelsCumulative);
+
+    const premiumShareDays = getChartRangeDays('premiumShare');
+    const labelsPremiumShare = labels.slice(-premiumShareDays);
+    const premiumShareData = cumulativeSeries(users, labelsPremiumShare);
 
     const cumEl = els.usersCumulativeChart();
     if (cumEl && window.Chart) {
@@ -1417,11 +1504,11 @@
       usersCumulativeChartInstance = new Chart(ctx, {
         type: 'line',
         data: {
-          labels,
+          labels: labelsCumulative,
           datasets: [
             {
               label: 'Usuarios',
-              data: cumulativeTotal,
+              data: cumulativeData.cumulativeTotal,
               borderColor: secondary,
               backgroundColor: 'rgba(212, 180, 106, 0.10)',
               borderWidth: 2,
@@ -1450,11 +1537,11 @@
       premiumShareChartInstance = new Chart(ctx, {
         type: 'line',
         data: {
-          labels,
+          labels: labelsPremiumShare,
           datasets: [
             {
               label: '% Premium',
-              data: premiumShare,
+              data: premiumShareData.premiumShare,
               borderColor: secondary,
               backgroundColor: 'rgba(212, 180, 106, 0.06)',
               borderWidth: 2,
@@ -1527,7 +1614,8 @@
       const data = globalHistoryCache;
       if (!data || data.length === 0) return;
 
-      const sliced = data.slice(-daysWindow);
+      const globalDays = getChartRangeDays('global');
+      const sliced = data.slice(-globalDays);
       const labels = sliced.map((d) => d.date);
       const values = sliced.map((d) => d.value);
 
@@ -1648,7 +1736,8 @@
 
   async function fetchOverview() {
     try {
-      const res = await authFetch(`${API_URL}admin/dashboard/overview/?days=${daysWindow}&timezone=America/Bogota&compare=${compareEnabled ? 'true' : 'false'}`);
+      const requestedDays = getRequestedDataDays();
+      const res = await authFetch(`${API_URL}admin/dashboard/overview/?days=${requestedDays}&timezone=America/Bogota&compare=${compareEnabled ? 'true' : 'false'}`);
       if (!res.ok) return false;
       overviewCache = await res.json();
       return true;
@@ -1659,7 +1748,8 @@
 
   async function fetchSignupsSeries() {
     try {
-      const res = await authFetch(`${API_URL}admin/dashboard/signups_series/?days=${daysWindow}&timezone=America/Bogota`);
+      const requestedDays = getRequestedDataDays();
+      const res = await authFetch(`${API_URL}admin/dashboard/signups_series/?days=${requestedDays}&timezone=America/Bogota`);
       if (!res.ok) return false;
       signupsSeriesCache = await res.json();
       return true;
@@ -1670,7 +1760,8 @@
 
   async function fetchOpsMetrics() {
     try {
-      const res = await authFetch(`${API_URL}admin/dashboard/ops_metrics/?days=${daysWindow}&timezone=America/Bogota`);
+      const requestedDays = getRequestedDataDays();
+      const res = await authFetch(`${API_URL}admin/dashboard/ops_metrics/?days=${requestedDays}&timezone=America/Bogota`);
       if (!res.ok) {
         opsMetricsCache = buildEmptyOpsMetrics(daysWindow);
         return false;
@@ -2423,8 +2514,10 @@
 
     loadStoredDaysWindow();
     loadStoredCompareEnabled();
+    loadStoredChartRanges();
     bindRangeSelect();
     bindCompareToggle();
+    bindChartRangeSelectors();
     syncRangeUI();
     bindBulkInputs();
     bindSelectAll();
