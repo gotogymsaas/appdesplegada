@@ -42,3 +42,30 @@ class ChatShapePresenceTests(TestCase):
 
         # Flujo inicia sin llamar a n8n
         self.assertFalse(mock_post.called)
+
+    @patch("api.views.requests.post")
+    @override_settings(SECURE_SSL_REDIRECT=False)
+    def test_shape_presence_start_new_service_intent_keeps_shape_flow(self, mock_post):
+        resp = self.client.post(
+            "/api/chat/",
+            {
+                "message": "Iniciar evaluación nueva",
+                "sessionId": "",
+                "attachment": "",
+                "attachment_text": "",
+                "username": "juan",
+                "service_intent": {
+                    "experience": "exp-012_shape_presence",
+                    "action": "start_new",
+                },
+            },
+            format="json",
+        )
+
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json() if hasattr(resp, "json") else {}
+        qas = data.get("quick_actions") or []
+
+        self.assertTrue(any(isinstance(x, dict) and x.get("type") == "shape_capture" for x in qas))
+        self.assertFalse(any(isinstance(x, dict) and x.get("type") == "pp_capture" for x in qas))
+        self.assertFalse(mock_post.called)

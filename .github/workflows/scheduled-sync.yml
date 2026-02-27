@@ -15,8 +15,8 @@ jobs:
           INTERNAL_SYNC_TOKEN: ${{ secrets.INTERNAL_SYNC_TOKEN }}
         run: |
           if [ -z "$INTERNAL_SYNC_TOKEN" ]; then
-            echo "Missing secrets.INTERNAL_SYNC_TOKEN" >&2
-            exit 1
+            echo "::warning::Missing secrets.INTERNAL_SYNC_TOKEN. Skipping scheduled sync run."
+            exit 0
           fi
 
           curl -f -sS -X POST "https://api.gotogym.store/api/devices/internal/sync/run_due/" \

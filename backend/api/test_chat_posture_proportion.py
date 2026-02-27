@@ -137,3 +137,26 @@ class ChatPostureProportionTests(TestCase):
         self.assertTrue(any(isinstance(x, dict) and x.get("type") == "message" for x in qas))
         self.assertTrue(any(isinstance(x, dict) and x.get("type") == "pp_capture" for x in qas))
         self.assertFalse(mock_post.called)
+
+    @patch("api.views.requests.post")
+    @override_settings(SECURE_SSL_REDIRECT=False)
+    def test_generic_start_message_does_not_force_posture_proportion(self, mock_post):
+        resp = self.client.post(
+            "/api/chat/",
+            {
+                "message": "iniciar una nueva evaluacion",
+                "sessionId": "",
+                "attachment": "",
+                "attachment_text": "",
+                "username": "juan",
+            },
+            format="json",
+        )
+
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json() if hasattr(resp, "json") else {}
+        out = str(data.get("output") or "").lower()
+        qas = data.get("quick_actions") or []
+
+        self.assertNotIn("arquitectura corporal", out)
+        self.assertFalse(any(isinstance(x, dict) and x.get("type") == "pp_capture" for x in qas))
