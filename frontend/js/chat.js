@@ -2768,10 +2768,16 @@ async function processMessage(text, file, pendingId, extraPayload = null) {
               const t = String(a.type || '').trim();
               if (t === 'open_camera' || t === 'open_attach') return true;
               if (t === 'skin_cancel') return true;
+              if (t === 'services_menu') return true;
               if (t === 'message' && a.payload && typeof a.payload === 'object') {
                 if (a.payload.skin_context_prompt) return true;
                 if (a.payload.skin_context_update) return true;
                 if (a.payload.skin_habits_request) return true;
+                const svc = a.payload.service_intent;
+                if (svc && typeof svc === 'object') {
+                  const exp = String(svc.experience || '').trim().toLowerCase();
+                  if (exp === 'exp-011_skin_health') return true;
+                }
               }
               return false;
             });
