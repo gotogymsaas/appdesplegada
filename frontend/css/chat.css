@@ -451,6 +451,65 @@ body[data-theme="light"] #chat-widget-container {
   fill: #000;
 }
 
+#chat-mic-btn {
+  background: var(--chat-surface-2);
+  border: 1px solid var(--chat-border);
+  color: var(--chat-text);
+  width: 44px;
+  height: 44px;
+  border-radius: 999px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 20px;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+#chat-mic-btn .mic-icon {
+  width: 20px;
+  height: 20px;
+  display: block;
+}
+
+#chat-mic-btn .mic-stop {
+  display: none;
+  font-size: 14px;
+  line-height: 1;
+}
+
+#chat-mic-btn:hover {
+  background: var(--chat-surface-hover);
+}
+
+#chat-mic-btn.recording {
+  border-color: rgba(15, 191, 160, 0.6);
+  background: rgba(15, 191, 160, 0.12);
+  color: var(--chat-primary);
+  animation: chat-mic-pulse 1.2s ease-in-out infinite;
+}
+
+#chat-mic-btn.recording .mic-icon {
+  display: none;
+}
+
+#chat-mic-btn.recording .mic-stop {
+  display: block;
+}
+
+@keyframes chat-mic-pulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(15, 191, 160, 0.24);
+  }
+  70% {
+    box-shadow: 0 0 0 10px rgba(15, 191, 160, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(15, 191, 160, 0);
+  }
+}
+
 /* Botón + a la derecha */
 #chat-plus-btn {
   background: var(--chat-surface-2);
@@ -765,6 +824,11 @@ body[data-theme="light"] #chat-widget-container {
   }
 
   #chat-send-btn {
+    width: 44px;
+    height: 44px;
+  }
+
+  #chat-mic-btn {
     width: 44px;
     height: 44px;
   }

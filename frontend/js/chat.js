@@ -59,7 +59,13 @@ container.innerHTML = `
 
     <textarea id="chat-input" rows="1" placeholder="Escribe tu duda..." autocomplete="off"></textarea>
 
-    <button type="button" id="chat-mic-btn" aria-label="Micrófono" title="Micrófono">🎤</button>
+    <button type="button" id="chat-mic-btn" aria-label="Micrófono" title="Micrófono">
+      <svg class="mic-icon" viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M12 14a3 3 0 0 0 3-3V7a3 3 0 0 0-6 0v4a3 3 0 0 0 3 3z" fill="currentColor"></path>
+        <path d="M19 11a1 1 0 1 0-2 0 5 5 0 0 1-10 0 1 1 0 1 0-2 0 7 7 0 0 0 6 6.92V20H8a1 1 0 1 0 0 2h8a1 1 0 1 0 0-2h-3v-2.08A7 7 0 0 0 19 11z" fill="currentColor"></path>
+      </svg>
+      <span class="mic-stop" aria-hidden="true">■</span>
+    </button>
 
     <button type="submit" id="chat-send-btn" aria-label="Enviar" title="Enviar">
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4l7 7-1.4 1.4L13 7.8V20h-2V7.8L6.4 12.4 5 11l7-7z"/></svg>
@@ -1653,7 +1659,6 @@ function pickTranscript(matches) {
 function setRecordingState(isRecording) {
   if (!micBtn) return;
   micBtn.classList.toggle('recording', !!isRecording);
-  micBtn.textContent = isRecording ? '■' : '🎤';
   micBtn.title = isRecording ? 'Detener grabación' : 'Micrófono';
   micBtn.setAttribute('aria-label', isRecording ? 'Detener grabación' : 'Micrófono');
 
