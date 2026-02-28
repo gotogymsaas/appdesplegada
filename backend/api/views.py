@@ -9641,6 +9641,38 @@ def chat_n8n(request):
                 cs = getattr(user, 'coach_state', {}) or {}
                 mem = cs.get('motivation_memory') if isinstance(cs.get('motivation_memory'), dict) else {}
                 prefs = cs.get('motivation_preferences') if isinstance(cs.get('motivation_preferences'), dict) else {}
+                msg_low_motivation = str(message or '').strip().lower()
+
+                flow0 = cs.get('motivation_flow') if isinstance(cs.get('motivation_flow'), dict) else {}
+                today_local = timezone.localdate().isoformat()
+                flow_day = str(flow0.get('day') or '').strip()
+                flow_stage = str(flow0.get('stage') or '').strip().lower()
+                flow_waiting_tomorrow = (flow_day == today_local and flow_stage == 'awaiting_tomorrow_choice')
+                flow_closed_today = (flow_day == today_local and flow_stage == 'closed')
+
+                recent_accept_today = False
+                try:
+                    acts0 = cs.get('motivation_actions') if isinstance(cs.get('motivation_actions'), list) else []
+                    for it in reversed(acts0[-20:]):
+                        if not isinstance(it, dict):
+                            continue
+                        act = it.get('action') if isinstance(it.get('action'), dict) else {}
+                        if act.get('accept') is not True:
+                            continue
+                        at = str(it.get('at') or '').strip()
+                        if at[:10] == today_local:
+                            recent_accept_today = True
+                        break
+                except Exception:
+                    recent_accept_today = False
+
+                text_tomorrow_pressure = None
+                if msg_low_motivation in ('mantener estabilidad',):
+                    text_tomorrow_pressure = 'suave'
+                elif msg_low_motivation in ('subir reto mañana', 'subir reto manana'):
+                    text_tomorrow_pressure = 'firme'
+
+                text_accept_today = msg_low_motivation in ('✅ lo hago', 'lo hago')
 
                 # Actualizar preferencias desde botones
                 if isinstance(mr, dict) and isinstance(mr.get('preferences'), dict):
@@ -9655,6 +9687,27 @@ def chat_n8n(request):
                             tomorrow_pressure = tp
                 except Exception:
                     tomorrow_pressure = None
+
+                # Fallback robusto: si el cliente solo manda texto del botón, resolver por estado del flujo diario.
+                try:
+                    if tomorrow_pressure is None and (flow_waiting_tomorrow or recent_accept_today) and text_tomorrow_pressure in ('suave', 'medio', 'firme'):
+                        tomorrow_pressure = text_tomorrow_pressure
+                except Exception:
+                    pass
+
+                # Fallback robusto: texto "Lo hago" sin payload.
+                try:
+                    if not isinstance(ma, dict) and text_accept_today and (not flow_closed_today):
+                        ma = {'accept': True, 'source': 'text_fallback'}
+                except Exception:
+                    pass
+
+                # Si recibimos control de continuidad por texto (sin payload), activar rama de motivación.
+                try:
+                    if (flow_waiting_tomorrow or recent_accept_today) and text_tomorrow_pressure in ('suave', 'medio', 'firme'):
+                        want_motivation = True
+                except Exception:
+                    pass
 
                 # Compatibilidad con payload legado: botones de continuidad enviaban motivation_request.
                 # Si el texto/payload corresponde a "mañana", trátalo como preferencia futura.
@@ -9719,6 +9772,16 @@ def chat_n8n(request):
 
                 motivation_requested = bool(want_motivation)
 
+                # Interacciones de control del flujo (payload o texto) deben responder directo desde este módulo.
+                motivation_force_direct_response = bool(isinstance(mr, dict) or isinstance(ma, dict))
+                try:
+                    if (flow_waiting_tomorrow or recent_accept_today) and text_tomorrow_pressure in ('suave', 'medio', 'firme'):
+                        motivation_force_direct_response = True
+                    if flow_closed_today and (text_tomorrow_pressure in ('suave', 'medio', 'firme') or text_accept_today):
+                        motivation_force_direct_response = True
+                except Exception:
+                    pass
+
                 # Estado del modo Renacer para controlar CTAs y evitar loops de botones.
                 renacer_mode_active = False
                 try:
@@ -9755,6 +9818,23 @@ def chat_n8n(request):
                     # Si viene acción explícita, priorizar reconocimiento breve.
                     try:
                         if isinstance(ma, dict) and ma.get('accept') is True:
+                            # Estado del flujo: hoy queda pendiente elegir intensidad de mañana.
+                            try:
+                                cs2 = dict(cs)
+                                cs2['motivation_flow'] = {
+                                    'day': today_local,
+                                    'stage': 'awaiting_tomorrow_choice',
+                                    'updated_at': timezone.now().isoformat(),
+                                }
+                                user.coach_state = cs2
+                                user.coach_state_updated_at = timezone.now()
+                                user.save(update_fields=['coach_state', 'coach_state_updated_at'])
+                                cs = cs2
+                                flow_waiting_tomorrow = True
+                                flow_closed_today = False
+                            except Exception:
+                                pass
+
                             streak_now = int(getattr(user, 'current_streak', 0) or 0)
                             greeting = (f"Hola {user_display_name},\n" if user_display_name else "Hola,\n")
                             motivation_text_for_output_override = (
@@ -9767,6 +9847,11 @@ def chat_n8n(request):
                     try:
                         if tomorrow_pressure in ('suave', 'medio', 'firme'):
                             cs2 = dict(cs)
+                            cs2['motivation_flow'] = {
+                                'day': today_local,
+                                'stage': 'closed',
+                                'updated_at': timezone.now().isoformat(),
+                            }
                             cs2['motivation_tomorrow_preference'] = {
                                 'pressure': tomorrow_pressure,
                                 'set_at': timezone.now().isoformat(),
@@ -9775,6 +9860,8 @@ def chat_n8n(request):
                             user.coach_state_updated_at = timezone.now()
                             user.save(update_fields=['coach_state', 'coach_state_updated_at'])
                             cs = cs2
+                            flow_closed_today = True
+                            flow_waiting_tomorrow = False
 
                             greeting = (f"Hola {user_display_name},\n" if user_display_name else "Hola,\n")
                             if tomorrow_pressure == 'firme':
@@ -9795,6 +9882,18 @@ def chat_n8n(request):
                                     + "Perfecto. Mañana aplico ese nivel de impulso.\n"
                                     "Hoy ya quedó registrada tu constancia."
                                 )
+                    except Exception:
+                        pass
+
+                    # Si el flujo diario ya está cerrado, no regenerar plan en el mismo día.
+                    try:
+                        if flow_closed_today and tomorrow_pressure is None and motivation_text_for_output_override is None:
+                            greeting = (f"Hola {user_display_name},\n" if user_display_name else "Hola,\n")
+                            motivation_text_for_output_override = (
+                                greeting
+                                + "Hoy ya quedó registrada tu constancia.\n"
+                                "Mañana aplico la preferencia que elegiste."
+                            )
                     except Exception:
                         pass
                     try:
@@ -9821,10 +9920,10 @@ def chat_n8n(request):
 
                     from .qaf_motivation.engine import evaluate_motivation, render_professional_summary
 
-                    if tomorrow_pressure in ('suave', 'medio', 'firme'):
+                    if flow_closed_today or tomorrow_pressure in ('suave', 'medio', 'firme'):
                         motivation_result = {
                             'decision': 'accepted',
-                            'decision_reason': 'tomorrow_preference_saved',
+                            'decision_reason': 'today_cycle_closed' if flow_closed_today and tomorrow_pressure is None else 'tomorrow_preference_saved',
                             'meta': {'algorithm': 'exp-008_motivacion_psicologica_v0', 'as_of': str(date.today())},
                         }
                     else:
@@ -9886,7 +9985,7 @@ def chat_n8n(request):
 
                     # Quick actions: confirmación mínima (pressure) y CTAs
                     try:
-                        if tomorrow_pressure in ('suave', 'medio', 'firme'):
+                        if flow_closed_today or tomorrow_pressure in ('suave', 'medio', 'firme'):
                             motivation_quick_actions_out = []
                         elif isinstance(motivation_result, dict) and motivation_result.get('decision') == 'needs_confirmation':
                             motivation_quick_actions_out.extend([
@@ -9988,7 +10087,7 @@ def chat_n8n(request):
                     # UX: si el usuario está interactuando con botones/payloads de motivación,
                     # respondemos directo para no depender de n8n (más consistente y rápido).
                     try:
-                        if (isinstance(mr, dict) or isinstance(ma, dict)) and motivation_text_for_output_override:
+                        if motivation_force_direct_response and motivation_text_for_output_override:
                             qa_existing = quick_actions_out if isinstance(quick_actions_out, list) else []
                             qa_existing2 = [x for x in qa_existing if isinstance(x, dict)]
                             out_actions = (qa_existing2 + motivation_quick_actions_out)[:6] if motivation_quick_actions_out else qa_existing2[:6]
