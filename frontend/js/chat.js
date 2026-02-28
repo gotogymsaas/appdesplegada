@@ -13,6 +13,17 @@ if (existing) existing.remove();
 console.log("Chat oculto: Página de autenticación.");
 return;
 }
+
+// Guardrail anti-loop: si ya se inicializó en esta página, no volver a montar ni re-registrar listeners.
+if (window.__GTG_CHAT_WIDGET_INITIALIZED__) {
+return;
+}
+window.__GTG_CHAT_WIDGET_INITIALIZED__ = true;
+
+// Si por cualquier motivo ya existe el contenedor, no duplicarlo.
+if (document.getElementById('chat-widget-container')) {
+return;
+}
 // 1. Inyectar CSS
 const link = document.createElement('link');
 link.rel = "stylesheet";
@@ -48,13 +59,14 @@ container.innerHTML = `
 
     <textarea id="chat-input" rows="1" placeholder="Escribe tu duda..." autocomplete="off"></textarea>
 
+    <button type="button" id="chat-mic-btn" aria-label="Micrófono" title="Micrófono">🎤</button>
+
     <button type="submit" id="chat-send-btn" aria-label="Enviar" title="Enviar">
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4l7 7-1.4 1.4L13 7.8V20h-2V7.8L6.4 12.4 5 11l7-7z"/></svg>
     </button>
   </div>
 
   <div id="chat-tools-menu" hidden>
-    <button type="button" id="chat-tool-mic">🎤 Micrófono</button>
     <button type="button" id="chat-tool-camera">📷 Tomar foto</button>
     <button type="button" id="chat-tool-attach">📎 Adjuntar</button>
   </div>
@@ -75,11 +87,12 @@ const fileInput = document.getElementById('chat-file-input');
 const cameraInput = document.getElementById('chat-camera-input');
 const attachmentPreview = document.getElementById('chat-attachment-preview');
 const plusBtn = document.getElementById('chat-plus-btn');
+const inlineMicBtn = document.getElementById('chat-mic-btn');
 const toolsMenu = document.getElementById('chat-tools-menu');
 const toolMicBtn = document.getElementById('chat-tool-mic');
 const toolCameraBtn = document.getElementById('chat-tool-camera');
 const toolAttachBtn = document.getElementById('chat-tool-attach');
-const micBtn = toolMicBtn;
+const micBtn = inlineMicBtn || toolMicBtn;
 const messages = document.getElementById('chat-messages');
 
 // --- Exp-006 Postura (pose-estimation en cliente, sin subir fotos) ---
@@ -1640,7 +1653,9 @@ function pickTranscript(matches) {
 function setRecordingState(isRecording) {
   if (!micBtn) return;
   micBtn.classList.toggle('recording', !!isRecording);
-  micBtn.textContent = isRecording ? '■ Detener' : '🎤 Micrófono';
+  micBtn.textContent = isRecording ? '■' : '🎤';
+  micBtn.title = isRecording ? 'Detener grabación' : 'Micrófono';
+  micBtn.setAttribute('aria-label', isRecording ? 'Detener grabación' : 'Micrófono');
 
   scheduleFooterMetricsUpdate();
 }

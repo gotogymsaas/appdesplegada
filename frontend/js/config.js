@@ -218,13 +218,16 @@
 // Detecta si estamos en el navegador y carga el script del chat automáticamente
   if (typeof document !== 'undefined') {
     const CHAT_WIDGET_VERSION = '2026-02-21-8';
-    const script = document.createElement('script');
-    // Asumimos que la estructura es /js/chat.js relativa a la raíz del servidor web (port 5500)
-    // Como config.js suele estar en /js/config.js, podemos intentar ruta relativa si la absoluta falla
-    // Pero http://192.168.1.9:5500/js/chat.js es lo más seguro.
-    script.src = `${window.location.origin}/js/chat.js?v=${CHAT_WIDGET_VERSION}`;
-    script.async = true;
-    document.body.appendChild(script);
+    if (!document.querySelector('script[data-gtg-chat-widget="1"]')) {
+      const script = document.createElement('script');
+      // Asumimos que la estructura es /js/chat.js relativa a la raíz del servidor web (port 5500)
+      // Como config.js suele estar en /js/config.js, podemos intentar ruta relativa si la absoluta falla
+      // Pero http://192.168.1.9:5500/js/chat.js es lo más seguro.
+      script.src = `${window.location.origin}/js/chat.js?v=${CHAT_WIDGET_VERSION}`;
+      script.async = true;
+      script.dataset.gtgChatWidget = '1';
+      document.body.appendChild(script);
+    }
 
     // Notifications: no cargar en páginas de autenticación.
     const path = (window.location && window.location.pathname) ? window.location.pathname : '';
