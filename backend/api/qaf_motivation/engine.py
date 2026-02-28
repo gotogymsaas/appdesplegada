@@ -192,6 +192,8 @@ def evaluate_motivation(payload: dict[str, Any]) -> MotivationResult:
         "firme",
         "✅ lo hago",
         "lo hago",
+        "mantener estabilidad",
+        "subir reto mañana",
         "modo fácil 7 días",
         "🟡 modo fácil 7 días",
     ) or (len(msg_low) <= 3)

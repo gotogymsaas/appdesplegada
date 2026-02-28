@@ -35,6 +35,7 @@ from .models import (
     WebPushSubscription,
     AuditLog,
     QAFSoftMemoryPortion,
+    CloudCostSnapshot,
 )
 from .if_questions import IF_QUESTIONS
 from .serializers import UserSerializer
@@ -44,6 +45,7 @@ from .serializers import UserSerializer
 from .gamification_service import update_user_streak, build_gamification_status, claim_daily_wow_reward, award_wow_event
 from datetime import date, datetime, timedelta, timezone as dt_timezone
 from django.utils import timezone
+from django.core.cache import cache
 from django.db.models import Avg, Q, Count
 from django.db import IntegrityError
 from django.db.models.functions import TruncDate
@@ -1040,6 +1042,367 @@ def _load_real_azure_cost_from_csv(date_from, date_to):
             }
     except Exception:
         return None
+
+
+def _env_int(name, default):
+    try:
+        return int(str(os.getenv(name, str(default)) or default).strip())
+    except Exception:
+        return int(default)
+
+
+def _azure_cost_scope_default():
+    explicit_scope = str(os.getenv('AZURE_COST_SCOPE') or '').strip()
+    if explicit_scope:
+        return explicit_scope
+    subscription_id = str(os.getenv('AZURE_SUBSCRIPTION_ID') or '').strip()
+    if subscription_id:
+        return f'/subscriptions/{subscription_id}'
+    return ''
+
+
+def _azure_cost_cache_key(scope, date_from, date_to, tz_name):
+    return f"admin:cloud_cost:{scope}:{date_from.isoformat()}:{date_to.isoformat()}:{tz_name}"
+
+
+def _azure_get_management_token():
+    tenant_id = str(os.getenv('AZURE_TENANT_ID') or '').strip()
+    client_id = str(os.getenv('AZURE_CLIENT_ID') or '').strip()
+    client_secret = str(os.getenv('AZURE_CLIENT_SECRET') or '').strip()
+
+    if not tenant_id or not client_id or not client_secret:
+        return None
+
+    token_url = f'https://login.microsoftonline.com/{tenant_id}/oauth2/v2.0/token'
+    data = {
+        'grant_type': 'client_credentials',
+        'client_id': client_id,
+        'client_secret': client_secret,
+        'scope': 'https://management.azure.com/.default',
+    }
+    try:
+        timeout = max(4, min(30, _env_int('AZURE_COST_HTTP_TIMEOUT_SEC', 12)))
+        resp = requests.post(token_url, data=data, timeout=timeout)
+        if not resp.ok:
+            return None
+        payload = resp.json() if (resp.headers.get('Content-Type') or '').lower().startswith('application/json') else {}
+        token = payload.get('access_token') if isinstance(payload, dict) else None
+        if token:
+            return str(token)
+    except Exception:
+        return None
+    return None
+
+
+def _extract_grouped_cost_rows(payload, group_name, usd_to_cop):
+    if not isinstance(payload, dict):
+        return []
+    properties = payload.get('properties') if isinstance(payload.get('properties'), dict) else payload
+    columns = properties.get('columns') if isinstance(properties.get('columns'), list) else []
+    rows = properties.get('rows') if isinstance(properties.get('rows'), list) else []
+    if not columns or not rows:
+        return []
+
+    names = [str(col.get('name') or '') if isinstance(col, dict) else str(col or '') for col in columns]
+
+    cost_idx = None
+    for candidate in ('PreTaxCost', 'Cost', 'CostUSD', 'CostInBillingCurrency'):
+        if candidate in names:
+            cost_idx = names.index(candidate)
+            break
+    if cost_idx is None:
+        for idx, name in enumerate(names):
+            lower = name.strip().lower()
+            if 'cost' in lower and 'quantity' not in lower:
+                cost_idx = idx
+                break
+
+    group_idx = names.index(group_name) if group_name in names else None
+    currency_idx = None
+    for candidate in ('BillingCurrency', 'BillingCurrencyCode', 'Currency'):
+        if candidate in names:
+            currency_idx = names.index(candidate)
+            break
+
+    if cost_idx is None:
+        return []
+
+    grouped = {}
+    for row in rows:
+        if not isinstance(row, list):
+            continue
+        if cost_idx >= len(row):
+            continue
+
+        try:
+            amount = float(row[cost_idx] or 0.0)
+        except Exception:
+            continue
+
+        if amount < 0:
+            continue
+
+        key = 'unknown'
+        if group_idx is not None and group_idx < len(row):
+            key = str(row[group_idx] or 'unknown').strip() or 'unknown'
+
+        currency = 'USD'
+        if currency_idx is not None and currency_idx < len(row):
+            currency = str(row[currency_idx] or 'USD').strip().upper() or 'USD'
+
+        if key not in grouped:
+            grouped[key] = {
+                'name': key,
+                'cost_usd': 0.0,
+                'cost_cop': 0.0,
+            }
+
+        if currency in ('COP', 'COL$', 'CO$', 'PESO COLOMBIANO'):
+            grouped[key]['cost_cop'] += amount
+            grouped[key]['cost_usd'] += (amount / usd_to_cop) if usd_to_cop else 0.0
+        else:
+            grouped[key]['cost_usd'] += amount
+            grouped[key]['cost_cop'] += amount * usd_to_cop
+
+    out = list(grouped.values())
+    out.sort(key=lambda item: float(item.get('cost_cop') or 0.0), reverse=True)
+    return out
+
+
+def _azure_cost_query(scope, date_from, date_to, usd_to_cop):
+    token = _azure_get_management_token()
+    if not token:
+        return None
+
+    scope = str(scope or '').strip()
+    if not scope:
+        return None
+
+    api_version = str(os.getenv('AZURE_COST_QUERY_API_VERSION') or '2023-03-01').strip()
+    endpoint = f'https://management.azure.com{scope}/providers/Microsoft.CostManagement/query?api-version={api_version}'
+    timeout = max(4, min(30, _env_int('AZURE_COST_HTTP_TIMEOUT_SEC', 12)))
+
+    base_dataset = {
+        'granularity': 'Daily',
+        'aggregation': {
+            'totalCost': {
+                'name': 'PreTaxCost',
+                'function': 'Sum',
+            }
+        },
+    }
+
+    date_from_iso = f'{date_from.isoformat()}T00:00:00Z'
+    date_to_iso = f'{date_to.isoformat()}T23:59:59Z'
+
+    def _query_group(group_name):
+        body = {
+            'type': 'ActualCost',
+            'timeframe': 'Custom',
+            'timePeriod': {
+                'from': date_from_iso,
+                'to': date_to_iso,
+            },
+            'dataset': {
+                **base_dataset,
+                'grouping': [
+                    {
+                        'type': 'Dimension',
+                        'name': group_name,
+                    }
+                ],
+            },
+        }
+        headers = {
+            'Authorization': f'Bearer {token}',
+            'Content-Type': 'application/json',
+        }
+        try:
+            resp = requests.post(endpoint, headers=headers, json=body, timeout=timeout)
+            if not resp.ok:
+                return None
+            payload = resp.json() if (resp.headers.get('Content-Type') or '').lower().startswith('application/json') else {}
+            return _extract_grouped_cost_rows(payload, group_name, usd_to_cop)
+        except Exception:
+            return None
+
+    by_service = _query_group('ServiceName')
+    by_resource_group = _query_group('ResourceGroup')
+
+    if not isinstance(by_service, list) and not isinstance(by_resource_group, list):
+        return None
+
+    if not isinstance(by_service, list):
+        by_service = []
+    if not isinstance(by_resource_group, list):
+        by_resource_group = []
+
+    total_cop = 0.0
+    total_usd = 0.0
+    source_rows = by_service if by_service else by_resource_group
+    for row in source_rows:
+        try:
+            total_cop += float(row.get('cost_cop') or 0.0)
+            total_usd += float(row.get('cost_usd') or 0.0)
+        except Exception:
+            continue
+
+    if total_cop <= 0 and total_usd <= 0:
+        return None
+
+    now_utc = timezone.now().astimezone(dt_timezone.utc)
+    return {
+        'source': 'azure_cost_management',
+        'scope': scope,
+        'actual_total_usd': float(total_usd),
+        'actual_total_cop': float(total_cop),
+        'by_service': by_service,
+        'by_resource_group': by_resource_group,
+        'last_refresh_utc': now_utc.isoformat(),
+        'reconciliation_lag_hours': float(max(0, _env_int('AZURE_COST_EXPECTED_LAG_HOURS', 8))),
+        'source_meta': {
+            'api_version': api_version,
+            'timeframe': {
+                'dateFrom': date_from.isoformat(),
+                'dateTo': date_to.isoformat(),
+            },
+        },
+    }
+
+
+def _build_cloud_cost_snapshot_payload(snapshot):
+    if not snapshot:
+        return None
+    refreshed = snapshot.refreshed_at.astimezone(dt_timezone.utc).isoformat() if snapshot.refreshed_at else None
+    return {
+        'source': str(snapshot.source or 'estimated_tokens'),
+        'scope': str(snapshot.scope or ''),
+        'actual_total_usd': float(snapshot.actual_cost_usd or 0.0),
+        'actual_total_cop': float(snapshot.actual_cost_cop or 0.0),
+        'reconciled_total_usd': float(snapshot.actual_cost_usd or 0.0),
+        'reconciled_total_cop': float(snapshot.actual_cost_cop or 0.0),
+        'last_refresh_utc': refreshed,
+        'reconciliation_lag_hours': float(snapshot.lag_hours or 0.0),
+        'estimation_error_pct': snapshot.estimation_error_pct,
+        'by_service': list(snapshot.by_service or []),
+        'by_resource_group': list(snapshot.by_resource_group or []),
+        'source_meta': dict(snapshot.extra_meta or {}),
+    }
+
+
+def _resolve_cloud_cost_realtime(range_info, estimated_total_usd, estimated_total_cop, usd_to_cop, scope=''):
+    scope = str(scope or '').strip() or _azure_cost_scope_default()
+    tz_name = str(range_info['tz'])
+    date_from = range_info['date_from']
+    date_to = range_info['date_to']
+
+    ttl_sec = max(60, min(3600, _env_int('AZURE_COST_CACHE_TTL_SEC', 600)))
+    cache_key = _azure_cost_cache_key(scope or 'noscope', date_from, date_to, tz_name)
+
+    cached = cache.get(cache_key)
+    if isinstance(cached, dict):
+        return cached
+
+    now = timezone.now()
+
+    if scope:
+        snapshot = (
+            CloudCostSnapshot.objects.filter(
+                scope=scope,
+                date_from=date_from,
+                date_to=date_to,
+                timezone=tz_name,
+            )
+            .order_by('-refreshed_at')
+            .first()
+        )
+        if snapshot and snapshot.refreshed_at:
+            age = (now - snapshot.refreshed_at).total_seconds()
+            if age <= ttl_sec:
+                payload = _build_cloud_cost_snapshot_payload(snapshot)
+                if isinstance(payload, dict):
+                    cache.set(cache_key, payload, ttl_sec)
+                    return payload
+
+    azure_real = _azure_cost_query(scope, date_from, date_to, usd_to_cop) if scope else None
+    if isinstance(azure_real, dict):
+        actual_usd = float(azure_real.get('actual_total_usd') or 0.0)
+        actual_cop = float(azure_real.get('actual_total_cop') or 0.0)
+        estimation_error_pct = None
+        if actual_cop > 0:
+            estimation_error_pct = ((float(estimated_total_cop or 0.0) - actual_cop) / actual_cop) * 100.0
+
+        if scope:
+            CloudCostSnapshot.objects.update_or_create(
+                scope=scope,
+                date_from=date_from,
+                date_to=date_to,
+                timezone=tz_name,
+                defaults={
+                    'source': 'azure_cost_management',
+                    'actual_cost_usd': actual_usd,
+                    'actual_cost_cop': actual_cop,
+                    'estimated_cost_usd': float(estimated_total_usd or 0.0),
+                    'estimated_cost_cop': float(estimated_total_cop or 0.0),
+                    'estimation_error_pct': estimation_error_pct,
+                    'lag_hours': float(azure_real.get('reconciliation_lag_hours') or 0.0),
+                    'by_service': list(azure_real.get('by_service') or []),
+                    'by_resource_group': list(azure_real.get('by_resource_group') or []),
+                    'extra_meta': dict(azure_real.get('source_meta') or {}),
+                },
+            )
+
+        payload = {
+            **azure_real,
+            'reconciled_total_usd': actual_usd,
+            'reconciled_total_cop': actual_cop,
+            'estimation_error_pct': estimation_error_pct,
+        }
+        cache.set(cache_key, payload, ttl_sec)
+        return payload
+
+    real_cost = _load_real_azure_cost_from_csv(date_from, date_to)
+    if isinstance(real_cost, dict) and real_cost.get('rows_count'):
+        currency = str(real_cost.get('currency') or '').strip().upper()
+        total_cost = float(real_cost.get('total_cost') or 0.0)
+        actual_cop = total_cost if currency in ('COP', 'COL$', 'CO$', 'PESO COLOMBIANO') else (total_cost * usd_to_cop)
+        actual_usd = (total_cost / usd_to_cop) if currency in ('COP', 'COL$', 'CO$', 'PESO COLOMBIANO') and usd_to_cop else total_cost
+        estimation_error_pct = None
+        if actual_cop > 0:
+            estimation_error_pct = ((float(estimated_total_cop or 0.0) - actual_cop) / actual_cop) * 100.0
+        payload = {
+            'source': 'azure_billing_csv',
+            'scope': scope,
+            'actual_total_usd': float(actual_usd),
+            'actual_total_cop': float(actual_cop),
+            'reconciled_total_usd': float(actual_usd),
+            'reconciled_total_cop': float(actual_cop),
+            'last_refresh_utc': timezone.now().astimezone(dt_timezone.utc).isoformat(),
+            'reconciliation_lag_hours': float(max(0, _env_int('AZURE_COST_EXPECTED_LAG_HOURS', 8))),
+            'estimation_error_pct': estimation_error_pct,
+            'by_service': [],
+            'by_resource_group': [],
+            'source_meta': real_cost,
+        }
+        cache.set(cache_key, payload, ttl_sec)
+        return payload
+
+    payload = {
+        'source': 'estimated_tokens',
+        'scope': scope,
+        'actual_total_usd': float(estimated_total_usd or 0.0),
+        'actual_total_cop': float(estimated_total_cop or 0.0),
+        'reconciled_total_usd': float(estimated_total_usd or 0.0),
+        'reconciled_total_cop': float(estimated_total_cop or 0.0),
+        'last_refresh_utc': timezone.now().astimezone(dt_timezone.utc).isoformat(),
+        'reconciliation_lag_hours': 0.0,
+        'estimation_error_pct': 0.0,
+        'by_service': [],
+        'by_resource_group': [],
+        'source_meta': None,
+    }
+    cache.set(cache_key, payload, ttl_sec)
+    return payload
 
 
 @api_view(['GET', 'OPTIONS'])
@@ -9283,6 +9646,29 @@ def chat_n8n(request):
                 if isinstance(mr, dict) and isinstance(mr.get('preferences'), dict):
                     prefs = {**prefs, **mr.get('preferences')}
 
+                # Preferencia para mañana (flujo post-checkin): cerrar turno sin regenerar plan de hoy.
+                tomorrow_pressure = None
+                try:
+                    if isinstance(ma, dict):
+                        tp = str(ma.get('tomorrow_pressure') or '').strip().lower()
+                        if tp in ('suave', 'medio', 'firme'):
+                            tomorrow_pressure = tp
+                except Exception:
+                    tomorrow_pressure = None
+
+                # Compatibilidad con payload legado: botones de continuidad enviaban motivation_request.
+                # Si el texto/payload corresponde a "mañana", trátalo como preferencia futura.
+                try:
+                    if tomorrow_pressure is None and isinstance(mr, dict) and isinstance(mr.get('preferences'), dict):
+                        msg_low = str(message or '').strip().lower()
+                        p_legacy = str((mr.get('preferences') or {}).get('pressure') or '').strip().lower()
+                        if 'mantener estabilidad' in msg_low and p_legacy in ('suave', 'medio', 'firme'):
+                            tomorrow_pressure = p_legacy
+                        elif 'subir reto mañana' in msg_low and p_legacy in ('suave', 'medio', 'firme'):
+                            tomorrow_pressure = p_legacy
+                except Exception:
+                    pass
+
                 # Registrar acciones (lo hago / modo fácil) como memoria simple
                 if isinstance(ma, dict):
                     try:
@@ -9379,6 +9765,39 @@ def chat_n8n(request):
                     except Exception:
                         pass
                     try:
+                        if tomorrow_pressure in ('suave', 'medio', 'firme'):
+                            cs2 = dict(cs)
+                            cs2['motivation_tomorrow_preference'] = {
+                                'pressure': tomorrow_pressure,
+                                'set_at': timezone.now().isoformat(),
+                            }
+                            user.coach_state = cs2
+                            user.coach_state_updated_at = timezone.now()
+                            user.save(update_fields=['coach_state', 'coach_state_updated_at'])
+                            cs = cs2
+
+                            greeting = (f"Hola {user_display_name},\n" if user_display_name else "Hola,\n")
+                            if tomorrow_pressure == 'firme':
+                                motivation_text_for_output_override = (
+                                    greeting
+                                    + "Perfecto. Mañana subimos un poco el reto.\n"
+                                    "Hoy ya quedó registrada tu constancia."
+                                )
+                            elif tomorrow_pressure == 'suave':
+                                motivation_text_for_output_override = (
+                                    greeting
+                                    + "Perfecto. Mañana mantenemos estabilidad.\n"
+                                    "Hoy ya quedó registrada tu constancia."
+                                )
+                            else:
+                                motivation_text_for_output_override = (
+                                    greeting
+                                    + "Perfecto. Mañana aplico ese nivel de impulso.\n"
+                                    "Hoy ya quedó registrada tu constancia."
+                                )
+                    except Exception:
+                        pass
+                    try:
                         if isinstance(ma, dict) and str(ma.get('mode') or '').strip().lower() == 'renacer_7d':
                             greeting = (f"Hola {user_display_name},\n" if user_display_name else "Hola,\n")
                             motivation_text_for_output_override = (
@@ -9402,13 +9821,20 @@ def chat_n8n(request):
 
                     from .qaf_motivation.engine import evaluate_motivation, render_professional_summary
 
-                    motivation_result = evaluate_motivation({
-                        'message': str(message or ''),
-                        'memory': mem,
-                        'preferences': prefs,
-                        'gamification': gam,
-                        'lifestyle': lifestyle_last or {},
-                    }).payload
+                    if tomorrow_pressure in ('suave', 'medio', 'firme'):
+                        motivation_result = {
+                            'decision': 'accepted',
+                            'decision_reason': 'tomorrow_preference_saved',
+                            'meta': {'algorithm': 'exp-008_motivacion_psicologica_v0', 'as_of': str(date.today())},
+                        }
+                    else:
+                        motivation_result = evaluate_motivation({
+                            'message': str(message or ''),
+                            'memory': mem,
+                            'preferences': prefs,
+                            'gamification': gam,
+                            'lifestyle': lifestyle_last or {},
+                        }).payload
 
                     # UX: permitir que el renderer personalice el saludo.
                     try:
@@ -9460,7 +9886,9 @@ def chat_n8n(request):
 
                     # Quick actions: confirmación mínima (pressure) y CTAs
                     try:
-                        if isinstance(motivation_result, dict) and motivation_result.get('decision') == 'needs_confirmation':
+                        if tomorrow_pressure in ('suave', 'medio', 'firme'):
+                            motivation_quick_actions_out = []
+                        elif isinstance(motivation_result, dict) and motivation_result.get('decision') == 'needs_confirmation':
                             motivation_quick_actions_out.extend([
                                 {
                                     'label': 'Suave',
@@ -9511,13 +9939,13 @@ def chat_n8n(request):
                                     'label': 'Mantener estabilidad',
                                     'type': 'message',
                                     'text': 'Mantener estabilidad',
-                                    'payload': {'motivation_request': {'preferences': {'pressure': 'suave'}}},
+                                    'payload': {'motivation_action': {'tomorrow_pressure': 'suave'}},
                                 })
                                 motivation_quick_actions_out.append({
                                     'label': 'Subir reto mañana',
                                     'type': 'message',
                                     'text': 'Subir reto mañana',
-                                    'payload': {'motivation_request': {'preferences': {'pressure': 'firme'}}},
+                                    'payload': {'motivation_action': {'tomorrow_pressure': 'firme'}},
                                 })
 
                         # Anti-loop UX: si el usuario acaba de pulsar un botón de motivación,
