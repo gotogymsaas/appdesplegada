@@ -72,6 +72,12 @@ container.innerHTML = `
     </button>
   </div>
 
+  <div id="chat-voice-status" hidden aria-live="polite">
+    <span class="voice-dot" aria-hidden="true"></span>
+    <span class="voice-label">Grabando</span>
+    <span id="chat-voice-time">00:00</span>
+  </div>
+
   <div id="chat-tools-menu" hidden>
     <button type="button" id="chat-tool-camera">📷 Tomar foto</button>
     <button type="button" id="chat-tool-attach">📎 Adjuntar</button>
@@ -94,6 +100,8 @@ const cameraInput = document.getElementById('chat-camera-input');
 const attachmentPreview = document.getElementById('chat-attachment-preview');
 const plusBtn = document.getElementById('chat-plus-btn');
 const inlineMicBtn = document.getElementById('chat-mic-btn');
+const voiceStatusEl = document.getElementById('chat-voice-status');
+const voiceTimeEl = document.getElementById('chat-voice-time');
 const toolsMenu = document.getElementById('chat-tools-menu');
 const toolMicBtn = document.getElementById('chat-tool-mic');
 const toolCameraBtn = document.getElementById('chat-tool-camera');
@@ -1383,6 +1391,8 @@ let voiceHandled = false;
 let activeVoiceMode = null;
 let nativeSpeechPlugin = null;
 let nativeSpeechListener = null;
+let voiceTimerInterval = null;
+let voiceStartedAtMs = 0;
 
 const MAX_INPUT_HEIGHT = 120;
 
@@ -1656,11 +1666,51 @@ function pickTranscript(matches) {
   return String(matches[0] || '').trim();
 }
 
+function formatVoiceElapsed(ms) {
+  const totalSeconds = Math.max(0, Math.floor((ms || 0) / 1000));
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+}
+
+function stopVoiceUiTimer() {
+  if (voiceTimerInterval) {
+    clearInterval(voiceTimerInterval);
+    voiceTimerInterval = null;
+  }
+  voiceStartedAtMs = 0;
+  if (voiceTimeEl) voiceTimeEl.textContent = '00:00';
+}
+
+function startVoiceUiTimer() {
+  stopVoiceUiTimer();
+  voiceStartedAtMs = Date.now();
+  if (voiceTimeEl) voiceTimeEl.textContent = '00:00';
+  voiceTimerInterval = setInterval(() => {
+    if (!voiceTimeEl || !voiceStartedAtMs) return;
+    voiceTimeEl.textContent = formatVoiceElapsed(Date.now() - voiceStartedAtMs);
+  }, 250);
+}
+
+function setVoiceStatusVisible(isRecording) {
+  if (!voiceStatusEl) return;
+  if (isRecording) {
+    voiceStatusEl.hidden = false;
+    startVoiceUiTimer();
+    scheduleFooterMetricsUpdate();
+    return;
+  }
+  voiceStatusEl.hidden = true;
+  stopVoiceUiTimer();
+  scheduleFooterMetricsUpdate();
+}
+
 function setRecordingState(isRecording) {
   if (!micBtn) return;
   micBtn.classList.toggle('recording', !!isRecording);
   micBtn.title = isRecording ? 'Detener grabación' : 'Micrófono';
   micBtn.setAttribute('aria-label', isRecording ? 'Detener grabación' : 'Micrófono');
+  setVoiceStatusVisible(!!isRecording);
 
   scheduleFooterMetricsUpdate();
 }
