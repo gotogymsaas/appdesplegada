@@ -116,6 +116,86 @@
       background: rgba(255, 255, 255, 0.02);
       cursor: not-allowed;
     }
+
+        .danger-zone {
+            margin-top: 10px;
+        }
+
+        .btn-danger-outline {
+            background: transparent;
+            border: 2px solid var(--error);
+            color: var(--error);
+        }
+
+        .btn-danger-outline:hover {
+            opacity: 0.9;
+        }
+
+        .delete-modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: var(--menu-overlay-bg);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 10010;
+            padding: 20px;
+        }
+
+        .delete-modal-overlay.active {
+            display: flex;
+        }
+
+        .delete-modal {
+            width: 100%;
+            max-width: 450px;
+            background: var(--card-bg);
+            border-radius: var(--radius-md);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            padding: 20px;
+        }
+
+        .delete-modal-title {
+            font-size: 20px;
+            color: var(--secondary);
+            margin-bottom: 10px;
+        }
+
+        .delete-modal-text {
+            color: var(--text-muted);
+            font-size: 14px;
+            line-height: 1.5;
+            margin-bottom: 15px;
+        }
+
+        .delete-modal-actions {
+            display: flex;
+            gap: 10px;
+            margin-top: 6px;
+        }
+
+        .delete-modal-actions .btn {
+            margin-bottom: 0;
+            width: 100%;
+        }
+
+        .delete-step {
+            display: none;
+        }
+
+        .delete-step.active {
+            display: block;
+        }
+
+        .danger-note {
+            font-size: 12px;
+            color: var(--text-muted);
+            margin-top: -8px;
+            margin-bottom: 12px;
+        }
   </style>
 </head>
 
@@ -242,7 +322,58 @@
             <button type="submit" class="btn btn-primary" style="margin-top: 30px;">
                 Guardar Cambios
             </button>
+
+            <div class="danger-zone">
+                <button type="button" class="btn btn-danger-outline" onclick="openDeleteAccountModal()">
+                    Eliminar cuenta
+                </button>
+            </div>
         </form>
+    </div>
+
+    <div id="deleteAccountModal" class="delete-modal-overlay" role="dialog" aria-modal="true" aria-labelledby="deleteAccountModalTitle">
+        <div class="delete-modal">
+            <div id="deleteStep1" class="delete-step active">
+                <h2 id="deleteAccountModalTitle" class="delete-modal-title">Eliminar cuenta</h2>
+                <p class="delete-modal-text">
+                    Esta acción desactivará tu acceso y comenzará el proceso de eliminación/anonimización de tu cuenta.
+                </p>
+                <p class="delete-modal-text">
+                    Si deseas continuar, confirma en el siguiente paso.
+                </p>
+                <div class="delete-modal-actions">
+                    <button type="button" class="btn btn-outline-teal" onclick="closeDeleteAccountModal()">Cancelar</button>
+                    <button type="button" class="btn btn-danger-outline" onclick="goToDeleteStep2()">Continuar</button>
+                </div>
+            </div>
+
+            <div id="deleteStep2" class="delete-step">
+                <h2 class="delete-modal-title">Confirmación final</h2>
+                <p class="delete-modal-text">Escribe <strong>ELIMINAR</strong>, tu contraseña actual y un motivo.</p>
+
+                <div class="form-group">
+                    <input type="text" id="deleteConfirmText" class="input-field" placeholder=" " autocomplete="off">
+                    <label class="input-label">Escribe ELIMINAR</label>
+                </div>
+
+                <div class="form-group">
+                    <input type="password" id="deleteCurrentPassword" class="input-field" placeholder=" " autocomplete="current-password">
+                    <label class="input-label">Contraseña actual</label>
+                </div>
+
+                <div class="form-group">
+                    <input type="text" id="deleteReason" class="input-field" placeholder=" " maxlength="200">
+                    <label class="input-label">Motivo de eliminación</label>
+                </div>
+
+                <div class="danger-note">Al confirmar se cerrará tu sesión.</div>
+
+                <div class="delete-modal-actions">
+                    <button type="button" class="btn btn-outline-teal" onclick="goToDeleteStep1()">Atrás</button>
+                    <button id="confirmDeleteBtn" type="button" class="btn btn-danger-outline" onclick="submitDeleteAccount()">Eliminar cuenta</button>
+                </div>
+            </div>
+        </div>
     </div>
     
     <!-- Menu Overlay -->
@@ -264,6 +395,7 @@
     <script src="../../js/../../js/config.js"></script>
     <script>
         let isPhotoSaving = false;
+        let isDeletingAccount = false;
         let lastPreviewSignature = "";
         let lastPreviewAt = 0;
         let lastPickerOpenAt = 0;
@@ -372,6 +504,113 @@
                 window.history.back();
             } else {
                 window.location.href = '../profile/Perfil.html';
+            }
+        }
+
+        function openDeleteAccountModal() {
+            const modal = document.getElementById('deleteAccountModal');
+            if (!modal) return;
+            goToDeleteStep1();
+            modal.classList.add('active');
+        }
+
+        function closeDeleteAccountModal() {
+            const modal = document.getElementById('deleteAccountModal');
+            if (!modal) return;
+            modal.classList.remove('active');
+            resetDeleteModalFields();
+        }
+
+        function goToDeleteStep1() {
+            const step1 = document.getElementById('deleteStep1');
+            const step2 = document.getElementById('deleteStep2');
+            if (step1) step1.classList.add('active');
+            if (step2) step2.classList.remove('active');
+        }
+
+        function goToDeleteStep2() {
+            const step1 = document.getElementById('deleteStep1');
+            const step2 = document.getElementById('deleteStep2');
+            if (step1) step1.classList.remove('active');
+            if (step2) step2.classList.add('active');
+        }
+
+        function resetDeleteModalFields() {
+            const confirmInput = document.getElementById('deleteConfirmText');
+            const passwordInput = document.getElementById('deleteCurrentPassword');
+            const reasonInput = document.getElementById('deleteReason');
+            if (confirmInput) confirmInput.value = '';
+            if (passwordInput) passwordInput.value = '';
+            if (reasonInput) reasonInput.value = '';
+            setDeleteAccountLoading(false);
+        }
+
+        function setDeleteAccountLoading(isLoading) {
+            const confirmBtn = document.getElementById('confirmDeleteBtn');
+            if (!confirmBtn) return;
+            confirmBtn.disabled = !!isLoading;
+            confirmBtn.textContent = isLoading ? 'Eliminando...' : 'Eliminar cuenta';
+        }
+
+        async function submitDeleteAccount() {
+            if (isDeletingAccount) return;
+
+            const confirmText = (document.getElementById('deleteConfirmText')?.value || '').trim();
+            const currentPassword = (document.getElementById('deleteCurrentPassword')?.value || '').trim();
+            const reason = (document.getElementById('deleteReason')?.value || '').trim();
+            const user = JSON.parse(localStorage.getItem('user') || '{}');
+            const username = (user.username || document.getElementById('username')?.value || '').trim();
+
+            if (confirmText !== 'ELIMINAR') {
+                showToast('Debes escribir ELIMINAR para confirmar', 'error');
+                return;
+            }
+            if (!currentPassword) {
+                showToast('Ingresa tu contraseña actual', 'error');
+                return;
+            }
+            if (!reason) {
+                showToast('El motivo es obligatorio', 'error');
+                return;
+            }
+            if (!username) {
+                showToast('No fue posible identificar tu usuario', 'error');
+                return;
+            }
+
+            isDeletingAccount = true;
+            setDeleteAccountLoading(true);
+
+            try {
+                const response = await authFetch(`${API_URL}users/delete_my_account/`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        username,
+                        current_password: currentPassword,
+                        reason,
+                        confirm_text: confirmText,
+                    }),
+                });
+
+                const { data, text } = await readResponseData(response);
+
+                if (response.ok) {
+                    showToast('Cuenta eliminada correctamente', 'success');
+                    localStorage.removeItem('user');
+                    localStorage.removeItem('isLoggedIn');
+                    setTimeout(() => {
+                        window.location.href = '/pages/auth/indexInicioDeSesion.html';
+                    }, 800);
+                } else {
+                    showToast('Error: ' + getErrorMessage(response, data, text), 'error');
+                }
+            } catch (error) {
+                console.error(error);
+                showToast('Error de conexión', 'error');
+            } finally {
+                isDeletingAccount = false;
+                setDeleteAccountLoading(false);
             }
         }
 
@@ -682,6 +921,21 @@
             localStorage.removeItem("isLoggedIn");
             window.location.href = '/pages/auth/indexInicioDeSesion.html';
         }
+
+        document.getElementById('deleteAccountModal')?.addEventListener('click', (event) => {
+            if (event.target && event.target.id === 'deleteAccountModal') {
+                closeDeleteAccountModal();
+            }
+        });
+
+        document.addEventListener('keydown', (event) => {
+            if (event.key === 'Escape') {
+                const modal = document.getElementById('deleteAccountModal');
+                if (modal && modal.classList.contains('active')) {
+                    closeDeleteAccountModal();
+                }
+            }
+        });
         
         function showToast(message, type = "success") {
             const toast = document.getElementById("toast");

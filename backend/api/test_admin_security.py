@@ -5,7 +5,7 @@ from django.utils import timezone
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import RefreshToken
 
-from .models import AuditLog
+from .models import AuditLog, UserDocument, PushToken
 
 
 class AdminSecurityTests(TestCase):
@@ -128,3 +128,83 @@ class AdminSecurityTests(TestCase):
         )
         self.assertIn(res.status_code, (200, 400))
         self.assertTrue(AuditLog.objects.filter(action="push.broadcast").exists())
+
+
+class SelfDeleteAccountTests(TestCase):
+    def setUp(self):
+        self.client = APIClient()
+        User = get_user_model()
+
+        self.user = User.objects.create_user(
+            username="self1",
+            email="self1@example.com",
+            password="User12345",
+            plan="Premium",
+            full_name="Self User",
+            profession="Developer",
+        )
+
+    def _auth(self, user):
+        token = str(RefreshToken.for_user(user).access_token)
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {token}")
+
+    def test_self_delete_requires_valid_confirmation_text(self):
+        self._auth(self.user)
+        res = self.client.post(
+            "/api/users/delete_my_account/",
+            data={
+                "username": self.user.username,
+                "confirm_text": "BORRAR",
+                "current_password": "User12345",
+                "reason": "solicitud titular",
+            },
+            format="json",
+        )
+        self.assertEqual(res.status_code, 400)
+
+    def test_self_delete_requires_current_password(self):
+        self._auth(self.user)
+        res = self.client.post(
+            "/api/users/delete_my_account/",
+            data={
+                "username": self.user.username,
+                "confirm_text": "ELIMINAR",
+                "current_password": "WrongPass123",
+                "reason": "solicitud titular",
+            },
+            format="json",
+        )
+        self.assertEqual(res.status_code, 400)
+
+    def test_self_delete_success_anonymizes_and_cleans_related_data(self):
+        self._auth(self.user)
+
+        UserDocument.objects.create(
+            user=self.user,
+            doc_type="nutrition_plan",
+            file_name="plan.pdf",
+            file_url="https://api.gotogym.store/media/nutrition_plans/self1/plan.pdf",
+            extracted_text="texto",
+        )
+        PushToken.objects.create(user=self.user, token="tok-self-delete-1", platform="android")
+
+        res = self.client.post(
+            "/api/users/delete_my_account/",
+            data={
+                "username": self.user.username,
+                "confirm_text": "ELIMINAR",
+                "current_password": "User12345",
+                "reason": "solicitud titular",
+            },
+            format="json",
+        )
+        self.assertEqual(res.status_code, 200)
+
+        self.user.refresh_from_db()
+        self.assertFalse(self.user.is_active)
+        self.assertTrue(self.user.email.endswith("@example.invalid"))
+        self.assertTrue(self.user.username.startswith("deleted_"))
+        self.assertIsNone(self.user.full_name)
+        self.assertEqual(UserDocument.objects.filter(user=self.user).count(), 0)
+        self.assertEqual(PushToken.objects.filter(user=self.user).count(), 0)
+        self.assertTrue(AuditLog.objects.filter(action="users.self_delete", entity_id=str(self.user.id)).exists())

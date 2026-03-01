@@ -13,7 +13,13 @@ import time
 import csv
 from typing import Any
 
-from devices.models import DeviceConnection, FitnessSync as DevicesFitnessSync
+from devices.models import (
+    DeviceConnection,
+    FitnessSync as DevicesFitnessSync,
+    UserSyncCheckpoint,
+    SyncRequest,
+    WhoopRawRecord,
+)
 from devices.scheduler_service import enqueue_sync_request
 from devices.sync_service import sync_device
 
@@ -50,7 +56,7 @@ from datetime import date, datetime, timedelta, timezone as dt_timezone
 from django.utils import timezone
 from django.core.cache import cache
 from django.db.models import Avg, Q, Count
-from django.db import IntegrityError
+from django.db import IntegrityError, transaction
 from django.db.models.functions import TruncDate
 import sys
 try:
@@ -2237,6 +2243,7 @@ def _soft_delete_user(user: User):
     stamp = timezone.now().strftime("%Y%m%d%H%M%S")
     original_email = user.email
     original_username = user.username
+    original_full_name = user.full_name
     user.is_active = False
     try:
         user.set_unusable_password()
@@ -2246,8 +2253,149 @@ def _soft_delete_user(user: User):
     user.email = f"deleted_{user.id}_{stamp}@example.invalid"
     user.username = f"deleted_{user.id}_{stamp}"
     user.full_name = None
-    user.save(update_fields=["is_active", "email", "username", "full_name", "password"])
-    return {"email": original_email, "username": original_username}
+    user.first_name = ""
+    user.last_name = ""
+    user.sex = None
+    user.age = None
+    user.weight = None
+    user.height = None
+    user.profession = None
+    user.favorite_exercise_time = None
+    user.favorite_sport = None
+    user.goal_type = None
+    user.activity_level = None
+    user.daily_target_kcal_override = None
+    user.happiness_index = None
+    user.scores = {}
+    user.current_streak = 0
+    user.last_streak_date = None
+    user.badges = []
+    user.profile_picture = None
+    user.trial_active = False
+    user.trial_started_at = None
+    user.trial_ends_at = None
+    user.subscription_provider = None
+    user.subscription_id = None
+    user.current_period_end = None
+    user.cancel_at_period_end = False
+    user.last_payment_status = None
+    user.billing_status = "free"
+    user.coach_state = {}
+    user.coach_state_updated_at = None
+    user.coach_weekly_state = {}
+    user.coach_weekly_updated_at = None
+    user.terms_accepted_ip = None
+    user.terms_accepted_user_agent = ""
+    user.terms_accepted_source = ""
+    user.timezone = ""
+    user.save(update_fields=[
+        "is_active",
+        "email",
+        "username",
+        "full_name",
+        "first_name",
+        "last_name",
+        "password",
+        "sex",
+        "age",
+        "weight",
+        "height",
+        "profession",
+        "favorite_exercise_time",
+        "favorite_sport",
+        "goal_type",
+        "activity_level",
+        "daily_target_kcal_override",
+        "happiness_index",
+        "scores",
+        "current_streak",
+        "last_streak_date",
+        "badges",
+        "profile_picture",
+        "trial_active",
+        "trial_started_at",
+        "trial_ends_at",
+        "subscription_provider",
+        "subscription_id",
+        "current_period_end",
+        "cancel_at_period_end",
+        "last_payment_status",
+        "billing_status",
+        "coach_state",
+        "coach_state_updated_at",
+        "coach_weekly_state",
+        "coach_weekly_updated_at",
+        "terms_accepted_ip",
+        "terms_accepted_user_agent",
+        "terms_accepted_source",
+        "timezone",
+    ])
+    return {"email": original_email, "username": original_username, "full_name": original_full_name}
+
+
+def _delete_local_file_if_exists(file_url: str):
+    try:
+        if not file_url:
+            return
+        parsed = urlparse(str(file_url))
+        path = parsed.path or ""
+        if not path.startswith("/media/"):
+            return
+        media_root = str(getattr(settings, "MEDIA_ROOT", "") or "").strip()
+        if not media_root:
+            return
+        relative_path = path.replace("/media/", "", 1).lstrip("/")
+        full_path = os.path.join(media_root, relative_path)
+        if os.path.isfile(full_path):
+            os.remove(full_path)
+    except Exception:
+        pass
+
+
+def _cleanup_user_personal_data(user: User):
+    summary = {}
+
+    user_docs = list(UserDocument.objects.filter(user=user))
+    for doc in user_docs:
+        _delete_blob_if_exists(doc.file_url)
+        _delete_local_file_if_exists(doc.file_url)
+    summary["user_documents_deleted"] = len(user_docs)
+    UserDocument.objects.filter(user=user).delete()
+
+    summary["happiness_records_deleted"] = HappinessRecord.objects.filter(user=user).count()
+    HappinessRecord.objects.filter(user=user).delete()
+
+    summary["if_answers_deleted"] = IFAnswer.objects.filter(user=user).count()
+    IFAnswer.objects.filter(user=user).delete()
+
+    summary["terms_acceptances_deleted"] = TermsAcceptance.objects.filter(user=user).count()
+    TermsAcceptance.objects.filter(user=user).delete()
+
+    summary["qaf_soft_memory_deleted"] = QAFSoftMemoryPortion.objects.filter(user=user).count()
+    QAFSoftMemoryPortion.objects.filter(user=user).delete()
+
+    summary["push_tokens_deleted"] = PushToken.objects.filter(user=user).count()
+    PushToken.objects.filter(user=user).delete()
+
+    summary["web_push_subscriptions_deleted"] = WebPushSubscription.objects.filter(user=user).count()
+    WebPushSubscription.objects.filter(user=user).delete()
+
+    summary["device_connections_deleted"] = DeviceConnection.objects.filter(user=user).count()
+    DeviceConnection.objects.filter(user=user).delete()
+
+    summary["fitness_sync_deleted"] = DevicesFitnessSync.objects.filter(user=user).count()
+    DevicesFitnessSync.objects.filter(user=user).delete()
+
+    summary["sync_checkpoints_deleted"] = UserSyncCheckpoint.objects.filter(user=user).count()
+    UserSyncCheckpoint.objects.filter(user=user).delete()
+
+    summary["sync_requests_deleted"] = SyncRequest.objects.filter(user=user).count()
+    SyncRequest.objects.filter(user=user).delete()
+
+    summary["whoop_raw_records_deleted"] = WhoopRawRecord.objects.filter(user=user).count()
+    WhoopRawRecord.objects.filter(user=user).delete()
+
+    return summary
 
 
 def _send_password_reset_email(to_email: str, reset_url: str) -> bool:
@@ -4220,6 +4368,76 @@ def delete_user(request, user_id):
         return Response({'success': True, 'message': 'Usuario eliminado (lógico) correctamente'})
     except Exception as e:
         return Response({'error': 'Error al eliminar usuario'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['POST', 'OPTIONS'])
+@authentication_classes([JWTAuthentication])
+@permission_classes([IsAuthenticatedOrOptions])
+def delete_my_account(request):
+    if request.method == 'OPTIONS':
+        return Response(status=status.HTTP_200_OK)
+
+    data = request.data if isinstance(request.data, dict) else {}
+    user = getattr(request, "user", None)
+
+    if not user or not getattr(user, "is_authenticated", False):
+        return Response({'error': 'Authentication required'}, status=status.HTTP_401_UNAUTHORIZED)
+
+    confirm_text = (data.get('confirm_text') or '').strip().upper()
+    current_password = data.get('current_password') or ''
+    reason = (data.get('reason') or '').strip()
+    requested_username = (data.get('username') or '').strip()
+
+    if requested_username and requested_username != user.username:
+        return Response({'error': 'Forbidden'}, status=status.HTTP_403_FORBIDDEN)
+
+    if confirm_text != 'ELIMINAR':
+        return Response({'error': 'Debes confirmar con ELIMINAR'}, status=status.HTTP_400_BAD_REQUEST)
+
+    if not current_password:
+        return Response({'error': 'current_password requerido'}, status=status.HTTP_400_BAD_REQUEST)
+
+    if not user.check_password(current_password):
+        return Response({'error': 'Contraseña actual incorrecta'}, status=status.HTTP_400_BAD_REQUEST)
+
+    if not reason:
+        return Response({'error': 'reason requerido'}, status=status.HTTP_400_BAD_REQUEST)
+
+    if user.is_superuser:
+        return Response({'error': 'No se puede auto-eliminar un superusuario'}, status=status.HTTP_403_FORBIDDEN)
+
+    before = {
+        "id": user.id,
+        "username": user.username,
+        "email": user.email,
+        "plan": user.plan,
+        "is_active": getattr(user, "is_active", True),
+    }
+
+    try:
+        with transaction.atomic():
+            cleanup = _cleanup_user_personal_data(user)
+            original = _soft_delete_user(user)
+
+        after = {
+            "id": user.id,
+            "is_active": False,
+            "anonymized": True,
+            "cleanup": cleanup,
+            "original": original,
+        }
+        _audit_log(
+            request,
+            action="users.self_delete",
+            entity_type="user",
+            entity_id=str(user.id),
+            before=before,
+            after=after,
+            reason=reason,
+        )
+        return Response({'success': True, 'message': 'Cuenta eliminada correctamente'})
+    except Exception:
+        return Response({'error': 'No fue posible eliminar la cuenta'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 @api_view(['PUT', 'OPTIONS'])
