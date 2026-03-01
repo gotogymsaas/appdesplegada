@@ -897,10 +897,32 @@ def _track_qaf_experience_call(request, experience_key: str, *, status_code: int
     exp_key = _normalize_experience_key(experience_key)
     if not exp_key:
         return
+
+    django_req = getattr(request, '_request', request)
+    started_perf = getattr(django_req, '_ops_started_perf', None)
+
     after = {
         'status_code': int(status_code),
         'source': 'qaf_endpoint',
     }
+
+    if isinstance(started_perf, (int, float)):
+        try:
+            latency_ms = int(round((time.perf_counter() - float(started_perf)) * 1000.0))
+            if latency_ms >= 0:
+                after['latency_ms_total'] = latency_ms
+                after['latency_ms_qaf'] = latency_ms
+                after['latency_ms_n8n'] = int(after.get('latency_ms_n8n') or 0)
+        except Exception:
+            pass
+
+    bench = _bench_event_get(request)
+    if isinstance(bench, dict):
+        for key in ('latency_ms_total', 'latency_ms_n8n', 'latency_ms_qaf', 'tokens_in', 'tokens_out'):
+            val = bench.get(key)
+            if val is not None and key not in after:
+                after[key] = val
+
     if isinstance(extra_after, dict):
         after.update(extra_after)
     _audit_log(
@@ -1608,6 +1630,36 @@ def admin_dashboard_ops_metrics(request):
             requests_success += 1
         if status_code >= 400 or bool(after.get('error')):
             requests_error += 1
+
+        for key_name, acc_sum_name, acc_count_name in (
+            ('latency_ms_total', 'latency_total_sum', 'latency_total_count'),
+            ('latency_ms_n8n', 'latency_n8n_sum', 'latency_n8n_count'),
+            ('latency_ms_qaf', 'latency_qaf_sum', 'latency_qaf_count'),
+        ):
+            try:
+                val = float(after.get(key_name))
+            except Exception:
+                val = None
+            if val is None or val < 0:
+                continue
+            if acc_sum_name == 'latency_total_sum':
+                latency_total_sum += val
+                latency_total_count += 1
+            elif acc_sum_name == 'latency_n8n_sum':
+                latency_n8n_sum += val
+                latency_n8n_count += 1
+            else:
+                latency_qaf_sum += val
+                latency_qaf_count += 1
+
+        try:
+            tokens_in_total += int(float(after.get('tokens_in') or 0))
+        except Exception:
+            pass
+        try:
+            tokens_out_total += int(float(after.get('tokens_out') or 0))
+        except Exception:
+            pass
 
         if actor_id:
             try:

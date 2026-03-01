@@ -70,6 +70,13 @@ class BenchmarkChatMiddleware:
         self.get_response = get_response
 
     def __call__(self, request):
+        try:
+            req_path = str(getattr(request, 'path', '') or '')
+            if request.method == 'POST' and (req_path == '/api/chat/' or req_path.startswith('/api/qaf/')):
+                setattr(request, '_ops_started_perf', time.perf_counter())
+        except Exception:
+            pass
+
         # Feature-flag para no inundar logs en prod si no se requiere.
         enabled = (os.getenv("BENCHMARK_CHAT_LOGS", "") or "").strip().lower() in (
             "1",
