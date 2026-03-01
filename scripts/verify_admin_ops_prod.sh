@@ -6,13 +6,21 @@ API_BASE="${API_BASE%/}"
 DAYS="${GTG_DAYS:-30}"
 TZ_NAME="${GTG_TZ:-America/Bogota}"
 
-printf "GTG_ADMIN_USERNAME: "
-read -r GTG_ADMIN_USERNAME
-printf "GTG_ADMIN_PASSWORD: "
-stty -echo
-read -r GTG_ADMIN_PASSWORD
-stty echo
-printf "\n"
+GTG_ADMIN_USERNAME="${GTG_ADMIN_USERNAME:-}"
+GTG_ADMIN_PASSWORD="${GTG_ADMIN_PASSWORD:-}"
+
+if [[ -z "${GTG_ADMIN_USERNAME}" ]]; then
+  printf "GTG_ADMIN_USERNAME: "
+  read -r GTG_ADMIN_USERNAME
+fi
+
+if [[ -z "${GTG_ADMIN_PASSWORD}" ]]; then
+  printf "GTG_ADMIN_PASSWORD: "
+  stty -echo
+  read -r GTG_ADMIN_PASSWORD
+  stty echo
+  printf "\n"
+fi
 
 if [[ -z "${GTG_ADMIN_USERNAME}" || -z "${GTG_ADMIN_PASSWORD}" ]]; then
   echo "ERROR: Usuario/contraseña vacíos."
