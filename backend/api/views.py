@@ -986,11 +986,35 @@ def _load_real_azure_cost_from_csv(date_from, date_to):
             if not headers:
                 return None
 
+            normalized_headers = {
+                str(h).strip().lower(): h
+                for h in headers
+                if str(h or '').strip()
+            }
+
+            def _pick_header(candidates):
+                for candidate in candidates:
+                    raw = str(candidate or '').strip()
+                    if not raw:
+                        continue
+                    if raw in headers:
+                        return raw
+                    hit = normalized_headers.get(raw.lower())
+                    if hit:
+                        return hit
+                return None
+
             date_column = None
-            for candidate in ('Date', 'UsageDate', 'Usage Date'):
-                if candidate in headers:
-                    date_column = candidate
-                    break
+            date_column = _pick_header(
+                (
+                    'Date',
+                    'UsageDate',
+                    'Usage Date',
+                    'date',
+                    'servicePeriodStartDate',
+                    'servicePeriodEndDate',
+                )
+            )
             if date_column is None:
                 for h in headers:
                     if 'date' in str(h).strip().lower():
@@ -998,10 +1022,18 @@ def _load_real_azure_cost_from_csv(date_from, date_to):
                         break
 
             cost_column = None
-            for candidate in ('CostInBillingCurrency', 'PreTaxCost', 'Cost', 'CostInUsd'):
-                if candidate in headers:
-                    cost_column = candidate
-                    break
+            cost_column = _pick_header(
+                (
+                    'CostInBillingCurrency',
+                    'costInBillingCurrency',
+                    'PreTaxCost',
+                    'preTaxCost',
+                    'Cost',
+                    'cost',
+                    'CostInUsd',
+                    'costInUsd',
+                )
+            )
             if cost_column is None:
                 for h in headers:
                     hl = str(h).strip().lower()
@@ -1010,10 +1042,17 @@ def _load_real_azure_cost_from_csv(date_from, date_to):
                         break
 
             currency_column = None
-            for candidate in ('BillingCurrencyCode', 'Currency', 'Billing Currency'):
-                if candidate in headers:
-                    currency_column = candidate
-                    break
+            currency_column = _pick_header(
+                (
+                    'BillingCurrencyCode',
+                    'billingCurrencyCode',
+                    'BillingCurrency',
+                    'billingCurrency',
+                    'Currency',
+                    'currency',
+                    'Billing Currency',
+                )
+            )
 
             if not date_column or not cost_column:
                 return None

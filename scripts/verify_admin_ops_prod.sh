@@ -100,4 +100,48 @@ jq '{
   experiencias_total: (.data.experiences | length)
 }' "$op_body"
 
+echo ""
+echo "=== VERIFICACIÓN AUTOMÁTICA (PASS/FAIL) ==="
+
+source_value=$(jq -r '.data.costs.source // ""' "$op_body")
+active_users=$(jq -r '.data.costs.active_users_range // 0' "$op_body")
+cost_per_user=$(jq -r '.data.costs.cost_per_active_user_cop // "null"' "$op_body")
+tokens_in=$(jq -r '.data.benchmark.tokens_in_total // 0' "$op_body")
+tokens_out=$(jq -r '.data.benchmark.tokens_out_total // 0' "$op_body")
+req_total=$(jq -r '.data.benchmark.requests_total // 0' "$op_body")
+series_days=$(jq -r '(.data.series | length) // 0' "$op_body")
+exp_total=$(jq -r '(.data.experiences | length) // 0' "$op_body")
+
+pass=0
+fail=0
+
+check_item() {
+  local ok="$1"
+  local label="$2"
+  local detail="$3"
+  if [[ "$ok" == "1" ]]; then
+    echo "[PASS] $label: $detail"
+    pass=$((pass+1))
+  else
+    echo "[FAIL] $label: $detail"
+    fail=$((fail+1))
+  fi
+}
+
+check_item "$( [[ "$req_total" -gt 0 ]] && echo 1 || echo 0 )" "Actividad" "requests_total=$req_total"
+check_item "$( [[ "$series_days" -gt 0 ]] && echo 1 || echo 0 )" "Serie temporal" "series_dias=$series_days"
+check_item "$( [[ "$exp_total" -ge 13 ]] && echo 1 || echo 0 )" "Catálogo experiencias" "experiencias_total=$exp_total"
+check_item "$( [[ "$source_value" == "azure_billing_csv" || "$source_value" == "azure_cost_management" ]] && echo 1 || echo 0 )" "Fuente de costo real" "source=$source_value"
+check_item "$( [[ "$active_users" -gt 0 ]] && echo 1 || echo 0 )" "Usuarios activos" "active_users_range=$active_users"
+check_item "$( [[ "$cost_per_user" != "null" && "$cost_per_user" != "0" && "$cost_per_user" != "0.0" ]] && echo 1 || echo 0 )" "Costo unitario" "cost_per_active_user_cop=$cost_per_user"
+check_item "$( [[ "$tokens_in" -gt 0 || "$tokens_out" -gt 0 ]] && echo 1 || echo 0 )" "Tokens medidos" "tokens_in_total=$tokens_in tokens_out_total=$tokens_out"
+
+echo ""
+echo "Resumen: PASS=$pass FAIL=$fail"
+if [[ "$fail" -gt 0 ]]; then
+  echo "Acción: hay faltantes para un reporte financiero confiable en tiempo real."
+else
+  echo "Estado: bloque operativo listo para lectura ejecutiva/inversionistas."
+fi
+
 unset GTG_ADMIN_PASSWORD TOKEN
