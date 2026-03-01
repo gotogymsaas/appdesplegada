@@ -1076,12 +1076,30 @@ def _load_real_azure_cost_from_csv(date_from, date_to):
                 )
             )
 
+            quantity_column = _pick_header(
+                (
+                    'quantity',
+                    'Quantity',
+                    'usageQuantity',
+                    'UsageQuantity',
+                )
+            )
+            meter_name_column = _pick_header(
+                (
+                    'meterName',
+                    'MeterName',
+                    'meter',
+                    'Meter',
+                )
+            )
+
             if not date_column or not cost_column:
                 return None
 
             total_cost = 0.0
             rows_count = 0
             currency = None
+            token_quantity_total = 0.0
             for row in reader:
                 if not isinstance(row, dict):
                     continue
@@ -1093,6 +1111,14 @@ def _load_real_azure_cost_from_csv(date_from, date_to):
                     continue
                 total_cost += float(amount)
                 rows_count += 1
+
+                if quantity_column and meter_name_column:
+                    meter_name = str(row.get(meter_name_column) or '').strip().lower()
+                    if 'token' in meter_name:
+                        quantity = _parse_billing_amount(row.get(quantity_column))
+                        if quantity is not None and quantity > 0:
+                            token_quantity_total += float(quantity)
+
                 if not currency and currency_column:
                     currency = str(row.get(currency_column) or '').strip().upper() or None
 
@@ -1103,6 +1129,7 @@ def _load_real_azure_cost_from_csv(date_from, date_to):
                 'file_name': csv_path.name,
                 'date_column': str(date_column),
                 'cost_column': str(cost_column),
+                'token_quantity_total': float(token_quantity_total),
             }
     except Exception:
         return None
@@ -1732,6 +1759,14 @@ def admin_dashboard_ops_metrics(request):
         cost_source_meta = cloud_cost.get('source_meta')
         try:
             reconciled_total_usd = float(cloud_cost.get('reconciled_total_usd') or cloud_cost.get('actual_total_usd') or reconciled_total_usd)
+        except Exception:
+            pass
+
+    if int(tokens_in_total or 0) <= 0 and int(tokens_out_total or 0) <= 0 and cost_source == 'azure_billing_csv' and isinstance(cost_source_meta, dict):
+        try:
+            token_qty = int(float(cost_source_meta.get('token_quantity_total') or 0.0))
+            if token_qty > 0:
+                tokens_out_total = token_qty
         except Exception:
             pass
         try:
