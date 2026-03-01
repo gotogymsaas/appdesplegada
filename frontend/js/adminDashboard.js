@@ -459,7 +459,9 @@
       els.opsTokensTotal().innerText = `${(tIn + tOut).toLocaleString('es-CO')}`;
     }
     if (els.opsCostCop()) {
-      const v = Number(costs.estimated_total_cop);
+      const reconciled = Number(costs.reconciled_total_cop);
+      const estimated = Number(costs.estimated_total_cop);
+      const v = Number.isFinite(reconciled) ? reconciled : estimated;
       els.opsCostCop().innerText = Number.isFinite(v) ? formatCOP(v) : formatCOP(0);
     }
     if (els.opsCostPerUser()) {
