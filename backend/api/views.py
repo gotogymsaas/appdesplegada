@@ -35,8 +35,11 @@ from .models import (
     WebPushSubscription,
     AuditLog,
     QAFSoftMemoryPortion,
-    CloudCostSnapshot,
 )
+try:
+    from .models import CloudCostSnapshot
+except Exception:
+    CloudCostSnapshot = None
 from .if_questions import IF_QUESTIONS
 from .serializers import UserSerializer
 # Importar el servicio ML
@@ -1305,7 +1308,7 @@ def _resolve_cloud_cost_realtime(range_info, estimated_total_usd, estimated_tota
 
     now = timezone.now()
 
-    if scope:
+    if scope and CloudCostSnapshot is not None:
         snapshot = (
             CloudCostSnapshot.objects.filter(
                 scope=scope,
@@ -1332,7 +1335,7 @@ def _resolve_cloud_cost_realtime(range_info, estimated_total_usd, estimated_tota
         if actual_cop > 0:
             estimation_error_pct = ((float(estimated_total_cop or 0.0) - actual_cop) / actual_cop) * 100.0
 
-        if scope:
+        if scope and CloudCostSnapshot is not None:
             CloudCostSnapshot.objects.update_or_create(
                 scope=scope,
                 date_from=date_from,
