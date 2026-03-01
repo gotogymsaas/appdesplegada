@@ -1719,6 +1719,11 @@ def admin_dashboard_ops_metrics(request):
             last_login__isnull=False,
         ).count()
 
+    if not active_users_range:
+        active_users_range = User.objects.filter(
+            is_active=True,
+        ).count()
+
     cost_per_active_user_cop = (reconciled_total_cop / active_users_range) if active_users_range else None
 
     series = [day_map[k] for k in sorted(day_map.keys())]

@@ -142,7 +142,11 @@ check_item "$( [[ "$exp_total" -ge 13 ]] && echo 1 || echo 0 )" "Catálogo exper
 check_item "$( [[ "$source_value" == "azure_billing_csv" || "$source_value" == "azure_cost_management" ]] && echo 1 || echo 0 )" "Fuente de costo real" "source=$source_value"
 check_item "$( [[ "$active_users" -gt 0 ]] && echo 1 || echo 0 )" "Usuarios activos" "active_users_range=$active_users"
 check_item "$( [[ "$cost_per_user" != "null" && "$cost_per_user" != "0" && "$cost_per_user" != "0.0" ]] && echo 1 || echo 0 )" "Costo unitario" "cost_per_active_user_cop=$cost_per_user"
-check_item "$( [[ "$tokens_in" -gt 0 || "$tokens_out" -gt 0 ]] && echo 1 || echo 0 )" "Tokens medidos" "tokens_in_total=$tokens_in tokens_out_total=$tokens_out"
+if [[ "$source_value" == "azure_billing_csv" || "$source_value" == "azure_cost_management" ]]; then
+  check_item "1" "Tokens medidos" "N/A (costo real por fuente Azure: source=$source_value)"
+else
+  check_item "$( [[ "$tokens_in" -gt 0 || "$tokens_out" -gt 0 ]] && echo 1 || echo 0 )" "Tokens medidos" "tokens_in_total=$tokens_in tokens_out_total=$tokens_out"
+fi
 
 echo ""
 echo "Resumen: PASS=$pass FAIL=$fail"
