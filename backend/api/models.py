@@ -260,3 +260,35 @@ class QAFSoftMemoryPortion(models.Model):
     def __str__(self):
         return f"{self.user.username}:{self.item_id} {self.grams_last}g"
 
+
+class CloudCostSnapshot(models.Model):
+    scope = models.CharField(max_length=255)
+    date_from = models.DateField()
+    date_to = models.DateField()
+    timezone = models.CharField(max_length=64)
+
+    source = models.CharField(max_length=64, default="")
+    actual_cost_usd = models.FloatField(default=0.0)
+    actual_cost_cop = models.FloatField(default=0.0)
+    estimated_cost_usd = models.FloatField(default=0.0)
+    estimated_cost_cop = models.FloatField(default=0.0)
+    estimation_error_pct = models.FloatField(null=True, blank=True)
+    lag_hours = models.FloatField(default=0.0)
+
+    by_service = models.JSONField(default=list, blank=True)
+    by_resource_group = models.JSONField(default=list, blank=True)
+    extra_meta = models.JSONField(default=dict, blank=True)
+
+    refreshed_at = models.DateTimeField(auto_now=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ("scope", "date_from", "date_to", "timezone")
+        indexes = [
+            models.Index(fields=["scope", "date_from", "date_to", "timezone"]),
+            models.Index(fields=["refreshed_at"]),
+        ]
+
+    def __str__(self):
+        return f"{self.scope} {self.date_from}..{self.date_to} ({self.timezone})"
+
