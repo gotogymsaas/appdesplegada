@@ -1669,23 +1669,23 @@ def admin_dashboard_ops_metrics(request):
 
     estimated_total_usd = (tokens_in_total / 1000.0) * in_cost_per_1k + (tokens_out_total / 1000.0) * out_cost_per_1k
     estimated_total_cop = estimated_total_usd * usd_to_cop
+    reconciled_total_usd = estimated_total_usd
+    reconciled_total_cop = estimated_total_cop
     cost_source = 'estimated_tokens'
     cost_source_meta = None
 
-    real_cost = _load_real_azure_cost_from_csv(range_info['date_from'], range_info['date_to'])
-    if isinstance(real_cost, dict) and real_cost.get('rows_count'):
-        currency = str(real_cost.get('currency') or '').strip().upper()
-        total_cost = float(real_cost.get('total_cost') or 0.0)
-        if currency in ('COP', 'COL$', 'CO$', 'PESO COLOMBIANO'):
-            estimated_total_cop = total_cost
-            estimated_total_usd = (total_cost / usd_to_cop) if usd_to_cop else 0.0
-            cost_source = 'azure_billing_csv'
-            cost_source_meta = real_cost
-        elif currency in ('USD', 'US$', '$', ''):
-            estimated_total_usd = total_cost
-            estimated_total_cop = total_cost * usd_to_cop
-            cost_source = 'azure_billing_csv'
-            cost_source_meta = real_cost
+    cloud_cost = _resolve_cloud_cost_realtime(range_info, estimated_total_usd, estimated_total_cop, usd_to_cop)
+    if isinstance(cloud_cost, dict):
+        cost_source = str(cloud_cost.get('source') or cost_source)
+        cost_source_meta = cloud_cost.get('source_meta')
+        try:
+            reconciled_total_usd = float(cloud_cost.get('reconciled_total_usd') or cloud_cost.get('actual_total_usd') or reconciled_total_usd)
+        except Exception:
+            pass
+        try:
+            reconciled_total_cop = float(cloud_cost.get('reconciled_total_cop') or cloud_cost.get('actual_total_cop') or reconciled_total_cop)
+        except Exception:
+            pass
 
     if not active_actor_ids:
         try:
@@ -1712,7 +1712,7 @@ def admin_dashboard_ops_metrics(request):
             last_login__gte=range_info['start_utc'],
             last_login__lte=range_info['end_utc'],
         ).count()
-    cost_per_active_user_cop = (estimated_total_cop / active_users_range) if active_users_range else None
+    cost_per_active_user_cop = (reconciled_total_cop / active_users_range) if active_users_range else None
 
     series = [day_map[k] for k in sorted(day_map.keys())]
 
@@ -1736,6 +1736,8 @@ def admin_dashboard_ops_metrics(request):
                 'costs': {
                     'estimated_total_usd': round(estimated_total_usd, 6),
                     'estimated_total_cop': round(estimated_total_cop, 2),
+                    'reconciled_total_usd': round(reconciled_total_usd, 6),
+                    'reconciled_total_cop': round(reconciled_total_cop, 2),
                     'source': cost_source,
                     'source_meta': cost_source_meta,
                     'active_users_range': int(active_users_range),
